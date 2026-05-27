@@ -40,7 +40,8 @@ from typing import Optional
 
 # Import the lever system from the same package
 # (assumes ksa_lever.py is on sys.path or in the same directory)
-import sys, os
+import sys
+import os
 sys.path.insert(0, os.path.dirname(__file__))
 from ksa_lever import ThreeBarSystem
 
@@ -108,9 +109,9 @@ class SnapshotRecord:
 
     def to_system(self) -> ThreeBarSystem:
         """Instantiate and hydrate a ThreeBarSystem from this record."""
-        sys = ThreeBarSystem()
-        sys.hydrate(self.snapshot)
-        return sys
+        three_bar = ThreeBarSystem()
+        three_bar.hydrate(self.snapshot)
+        return three_bar
 
 
 # ---------------------------------------------------------------------------

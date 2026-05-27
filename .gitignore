@@ -1,0 +1,43 @@
+# Byte-compiled / optimised / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+*.egg
+.eggs/
+.installed.cfg
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Pytest / test artefacts
+.pytest_cache/
+.coverage
+htmlcov/
+*.xml
+
+# KSA runtime files
+*.db
+.ksa_index.txt
+
+# Config files with local paths
+ksa_config.toml
+ksa_config.json
+
+# Binary / archive artefacts
+files.zip
+
+# macOS
+.DS_Store
+
+# IDEs
+.vscode/
+.idea/
+*.iml

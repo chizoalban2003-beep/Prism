@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import logging
 import os
+import shlex
 import subprocess
 import threading
 import time
@@ -309,7 +310,7 @@ class FileIndexExecutor(TaskExecutor):
             rc, out, err = 0, "[dry-run] would run nice find", ""
         else:
             cmd = (
-                f"nice -n 19 find {ctx.working_dir} -type f "
+                f"nice -n 19 find {shlex.quote(ctx.working_dir)} -type f "
                 f"> {self.INDEX_FILE}"
             )
             rc, out, err = self._run_shell(cmd, ctx.working_dir)
@@ -372,7 +373,7 @@ class LocalSearchExecutor(TaskExecutor):
         elif not query:
             rc, out, err = 1, "", "No query provided in ctx.payload['query']"
         else:
-            cmd = f"grep -rl {query!r} {ctx.working_dir}"
+            cmd = f"grep -rl {shlex.quote(query)} {shlex.quote(ctx.working_dir)}"
             rc, out, err = self._run_shell(cmd, ctx.working_dir)
 
         elapsed = (time.perf_counter() - t0) * 1000
@@ -390,7 +391,7 @@ class LocalSearchExecutor(TaskExecutor):
         elif not query:
             rc, out, err = 1, "", "No query provided in ctx.payload['query']"
         else:
-            cmd = f"find . -name '*{query}*'"
+            cmd = f"find . -name {shlex.quote(f'*{query}*')}"
             rc, out, err = self._run_shell(cmd, ctx.working_dir)
 
         elapsed = (time.perf_counter() - t0) * 1000

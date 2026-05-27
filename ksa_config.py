@@ -254,10 +254,7 @@ class KSAConfig:
         logger.info("Config saved to %s", dest)
 
     def _to_dict(self) -> dict:
-        d = asdict(self)
-        # Convert TaskConfig objects
-        d["tasks"] = [asdict(t) for t in self.tasks]
-        return d
+        return asdict(self)
 
     # ── Helpers ───────────────────────────────────────────────────────────────
 
