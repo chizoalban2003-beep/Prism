@@ -6,7 +6,8 @@ FileIndexExecutor, LocalSearchExecutor, ShellExecutor.
 """
 
 import pytest
-import sys, os
+import sys
+import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from ksa_lever import ThreeBarSystem, TiltDirection, EquilibriumResult, LeverState
