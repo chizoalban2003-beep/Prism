@@ -313,7 +313,6 @@ def _build_parser() -> argparse.ArgumentParser:
     )
 
     sub = parser.add_subparsers(dest="command", metavar="<command>")
-    sub.required = True
 
     # run
     p_run = sub.add_parser("run", help="Route a prompt through the KSA pipeline")
@@ -371,6 +370,11 @@ def _build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args   = parser.parse_args(argv)
+
+    # Require a command (handles all Python versions explicitly)
+    if not args.command:
+        parser.print_help()
+        return 1
 
     _setup_logging(args.verbose, args.quiet)
 
