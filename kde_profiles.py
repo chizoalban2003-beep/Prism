@@ -39,7 +39,8 @@ ROLE_CAPABILITIES = {
     UserRole.AGENT: ["prediction_engine", "sport_tasks"],
     UserRole.UNIVERSAL: ["ksa", "sports_pro", "daily_workflow", "device_hub",
                          "duel_analyzer", "moment_analyzer", "moment_pipeline",
-                         "prediction_engine", "domain_configs", "sport_tasks"],
+                         "prediction_engine", "domain_configs", "sport_tasks",
+                         "sport_data", "tasks"],
 }
 
 DEFAULT_CONFIG_PATH = Path(os.environ.get("KDE_CONFIG", "~/.kde/config.toml")).expanduser()
