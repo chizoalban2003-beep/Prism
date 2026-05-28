@@ -1,0 +1,26 @@
+[user]
+role  = "universal"
+name  = "PRISM User"
+sport = "Football"
+team  = ""
+
+[agent]
+db_path      = "~/.prism/prism.db"
+media_dir    = "~/.prism/media"
+auto_watch   = true
+ollama_model = "mistral"
+ollama_host  = "http://localhost:11434"
+text_model   = "mistral"
+ffmpeg_path  = "ffmpeg"
+poll_interval = 30
+
+[[devices]]
+name       = "Apple Watch"
+type       = "apple_watch"
+watch_path = "~/Downloads/apple_health_export"
+
+[[devices]]
+name       = "GoPro Hero 12"
+type       = "gopro"
+watch_path = "~/GoPro/DCIM"
+api_url    = "http://10.5.5.9:8080"

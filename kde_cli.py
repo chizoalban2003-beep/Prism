@@ -9,7 +9,7 @@ Usage:
 
 Commands:
     setup                    First-time setup wizard
-    server                   Start local KDE server + open browser
+    server | prism           Start local PRISM server + open browser
     morning                  Run morning briefing
     ask "<prompt>"           Natural language task
     session                  Log a session
@@ -77,7 +77,7 @@ _DEVICE_TYPE_ALIASES: dict[str, DeviceType] = {
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog        = "kde",
-        description = "KDE Sports Agent — Digital AI Coach & Analyst",
+        description = "PRISM — local decision intelligence chat and sports platform",
         formatter_class = argparse.RawDescriptionHelpFormatter,
     )
 
@@ -97,7 +97,7 @@ def _build_parser() -> argparse.ArgumentParser:
     sp_setup.add_argument("--sport", required=False, help="Sport")
     sp_setup.add_argument("--team",  required=False, default="", help="Team")
 
-    sp_server = sub.add_parser("server", help="Start local KDE server")
+    sp_server = sub.add_parser("server", help="Start local PRISM server", aliases=["prism"])
     sp_server.add_argument("--port", type=int, default=DEFAULT_PORT, help="Port to bind (default 8742)")
 
     # morning
@@ -514,6 +514,7 @@ def main(argv=None) -> int:
         "reflect":   cmd_reflect,
         "status":    cmd_status,
         "server":    cmd_server,
+        "prism":     cmd_server,
     }
 
     handler = dispatch.get(command)

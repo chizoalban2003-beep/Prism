@@ -1,12 +1,11 @@
 <p align="center">
-  <img src="docs/logo.svg" width="480" alt="KDE — Kinetic Decision Engine"/>
+  <img src="docs/logo.svg" width="480" alt="PRISM — Decision Intelligence"/>
 </p>
 
-<h1>KDE — Kinetic Decision Engine</h1>
-<p><strong>Local · Interpretable · Adaptive</strong></p>
+<h1>PRISM — Decision Intelligence</h1>
+<p><strong>Crystallised into You.</strong></p>
 <p>
-  A physics-inspired decision intelligence platform for sport, and for any
-  domain where decisions are bounded, high-stakes, and need to be explained.
+  A unified local decision intelligence platform with a PRISM chat interface for sport, software work, and any domain where decisions are bounded, high-stakes, and need to be explained.
 </p>
 
 <p>
@@ -21,11 +20,11 @@
 
 ## What it is
 
-KDE is two applications sharing one mathematical engine.
+PRISM is the user-facing platform that unifies KSA and KDE behind one chat-first interface.
 
 **KSA — Kinetic State Agent** is a local AI agent for developers and knowledge workers. It routes natural-language tasks to hardware-aware executors, learns your working patterns without neural training, and stores every successful configuration as a versioned, rollback-able snapshot. No cloud. No API keys. No fine-tuning.
 
-**KDE Platform** is a sports intelligence and domain decision system for athletes, coaches, physiotherapists, analysts, and executives. It predicts decisions at match, player, duel, and moment level for any sport. It manages the daily life of sports practitioners. It generalises to any domain — medical triage, financial portfolio allocation, legal case strategy — without changing a line of engine code.
+**KDE Platform** remains the internal sports intelligence and domain decision system for athletes, coaches, physiotherapists, analysts, and executives. It predicts decisions at match, player, duel, and moment level for any sport. It manages the daily life of sports practitioners. It generalises to any domain — medical triage, financial portfolio allocation, legal case strategy — without changing a line of engine code.
 
 The engine underneath both is identical: a spectrum of options, a fulcrum whose position is set by named contextual factors, and a Gaussian kernel that produces a probability distribution over those options. Every recommendation has an inspectable, named cause. Nothing is a black box.
 

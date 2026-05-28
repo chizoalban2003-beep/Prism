@@ -125,11 +125,11 @@ class KDEHandler(BaseHTTPRequestHandler):
         qs     = self._qs(parsed)
 
         try:
-            if path in ("/", "/app", "/index.html"):
-                from kde_ui import get_ui_html
+            if path in ('/', '/app', '/chat', '/index.html'):
+                from prism_chat import get_chat_html
 
-                html = get_ui_html().encode("utf-8")
-                self._respond(html, 200, "text/html; charset=utf-8")
+                self._respond(get_chat_html().encode('utf-8'), 200, 'text/html; charset=utf-8')
+                return
 
             elif path == "/status":
                 self._json_response(self.agent.status())
@@ -521,6 +521,13 @@ class KDEHandler(BaseHTTPRequestHandler):
         body   = self._read_body()
 
         try:
+            if path == '/chat':
+                message = body.get('message', '')
+                context = body.get('context', {})
+                card = self.server.prism_agent.chat(message, context)
+                self._json_response(card.to_json())
+                return
+
             if path == "/ask":
                 prompt = body.get("prompt", "")
                 if not prompt:
@@ -748,6 +755,12 @@ class KDEServer:
             except ImportError:
                 domain_models = {}
         self._domain_models = domain_models
+        try:
+            from prism_agent import PrismAgent
+
+            self._prism_agent = PrismAgent(kde_agent=agent)
+        except Exception:
+            self._prism_agent = None
 
         self._server:  Optional[HTTPServer] = None
         self._thread:  Optional[threading.Thread] = None
@@ -789,6 +802,7 @@ class KDEServer:
         _Handler._moment_history = {}  # player → list[MomentResult]
 
         self._server = HTTPServer((self._host, self._port), _Handler)
+        self._server.prism_agent = self._prism_agent
         logger.warning("KDE server running on %s", self.url)
         print(f"KDE server running on {self.url}")
 
