@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import time
 import urllib.error
@@ -42,7 +43,7 @@ from sport_executor import (
 )
 from daily_workflow import DailyWorkflow, MorningBrief, SessionLog, EveningReview
 from ksa_router import MasterFulcrum
-from ksa_registry import SnapshotRegistry
+from ksa_registry import PerformanceMetrics, SnapshotRegistry
 from ksa_fixes import LiveWeightInjector, GroundTruthOptimizer
 from sport_tasks import (
     TrainingPlanTask,
@@ -55,6 +56,8 @@ from sport_tasks import (
     PredictionReportTask,
 )
 from prediction_engine import PredictionPlatform
+from domain_configs import ALL_DOMAINS, DomainDecisionModel
+from ksa_executor import ExecutionContext, ExecutionOutcome, TaskExecutor, _ResourceSampler
 
 logger = logging.getLogger(__name__)
 
@@ -85,12 +88,183 @@ class TaskResult:
     artifact_id: str = ""
 
 
+def _domain_outcome(
+    ctx: ExecutionContext,
+    action: str,
+    rc: int,
+    stdout: str,
+    stderr: str,
+    elapsed: float,
+    sampler: _ResourceSampler,
+) -> ExecutionOutcome:
+    metrics = PerformanceMetrics(
+        execution_time_ms=elapsed,
+        cpu_peak_pct=sampler.cpu_peak,
+        ram_peak_mb=sampler.ram_peak_mb,
+        success=rc == 0,
+        override_fired=ctx.result.override_active,
+        notes=f"action={action}",
+    )
+    return ExecutionOutcome(
+        task_name=ctx.task_name,
+        version=ctx.version,
+        action_taken=action,
+        return_code=rc,
+        stdout=stdout,
+        stderr=stderr,
+        metrics=metrics,
+        elapsed_ms=elapsed,
+    )
+
+
+class DomainEvaluateExecutor(TaskExecutor):
+    task_name = "domain_evaluate"
+
+    def __init__(
+        self,
+        domain_models: dict[str, DomainDecisionModel],
+        registry=None,
+        mode: str = "evaluate",
+    ) -> None:
+        self.task_name = {
+            "evaluate": "domain_evaluate",
+            "compare": "domain_compare",
+            "report": "domain_report",
+        }.get(mode, "domain_evaluate")
+        self._models = domain_models
+        self._registry = registry
+        self._mode = mode
+
+    def _extract_domain(self, prompt: str) -> str | None:
+        prompt_lower = prompt.lower()
+        for domain in self._models:
+            if domain.lower() in prompt_lower:
+                return domain
+        return next(iter(self._models), None)
+
+    def _extract_profile(self, domain: str, prompt: str) -> str | None:
+        prompt_lower = prompt.lower()
+        for profile in self._models[domain].config.profiles:
+            if profile.name.lower() in prompt_lower:
+                return profile.name
+        return self._models[domain].config.profiles[0].name if self._models[domain].config.profiles else None
+
+    def _extract_factors(self, domain: str, prompt: str) -> dict[str, float]:
+        factors = {factor.id: 0.5 for factor in self._models[domain].config.factors}
+        prompt_lower = prompt.lower()
+        for factor in self._models[domain].config.factors:
+            match = re.search(rf"{re.escape(factor.id.lower())}\s*[:=]?\s*(0(?:\.\d+)?|1(?:\.0+)?)", prompt_lower)
+            if match:
+                factors[factor.id] = max(0.0, min(1.0, float(match.group(1))))
+        return factors
+
+    def primary(self, ctx: ExecutionContext) -> ExecutionOutcome:
+        sampler = _ResourceSampler(); sampler.start()
+        t0 = time.perf_counter()
+        prompt = str(ctx.payload.get("prompt", ""))
+        try:
+            domain = self._extract_domain(prompt)
+            if not domain or domain not in self._models:
+                elapsed = (time.perf_counter() - t0) * 1000
+                sampler.stop()
+                return _domain_outcome(ctx, "primary", 1, "", "No matching domain found", elapsed, sampler)
+
+            model = self._models[domain]
+            profile = self._extract_profile(domain, prompt)
+            factors = self._extract_factors(domain, prompt)
+
+            if self._mode == "compare":
+                payload = {
+                    "domain": domain,
+                    "profiles": model.cross_profile_compare(factors),
+                }
+            elif self._mode == "report":
+                payload = {
+                    "domain": domain,
+                    "profiles": [profile.name for profile in model.config.profiles],
+                    "factors": [factor.id for factor in model.config.factors],
+                    "guidance": "Provide labeled cases to /domain/validate for an accuracy report.",
+                }
+            else:
+                beam = model.make_beam(profile, factors)
+                diagnosis = beam.evaluate()
+                payload = {
+                    "domain": domain,
+                    "profile": profile,
+                    "recommended": diagnosis.primary_plank.name,
+                    "confidence": diagnosis.activations[0].activation,
+                    "fulcrum": diagnosis.fulcrum_position,
+                    "options": [
+                        {
+                            "name": activation.plank.name,
+                            "activation": activation.activation,
+                            "position": activation.plank.position,
+                        }
+                        for activation in diagnosis.activations
+                    ],
+                }
+
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
+            return _domain_outcome(ctx, "primary", 0, json.dumps(payload), "", elapsed, sampler)
+        except Exception as exc:
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
+            return _domain_outcome(ctx, "primary", 1, "", str(exc), elapsed, sampler)
+
+    def secondary(self, ctx: ExecutionContext) -> ExecutionOutcome:
+        sampler = _ResourceSampler(); sampler.start()
+        t0 = time.perf_counter()
+        data = {
+            domain: [profile.name for profile in model.config.profiles]
+            for domain, model in self._models.items()
+        }
+        elapsed = (time.perf_counter() - t0) * 1000
+        sampler.stop()
+        return _domain_outcome(ctx, "secondary", 0, json.dumps(data), "", elapsed, sampler)
+
+    def safe(self, ctx: ExecutionContext) -> ExecutionOutcome:
+        sampler = _ResourceSampler(); sampler.start()
+        t0 = time.perf_counter()
+        prompt = str(ctx.payload.get("prompt", ""))
+        domain = self._extract_domain(prompt)
+        profile = self._extract_profile(domain, prompt) if domain else None
+        factors = self._extract_factors(domain, prompt) if domain else {}
+        out = json.dumps({
+            "would_evaluate": {
+                "domain": domain,
+                "profile": profile,
+                "factor_values": factors,
+            }
+        })
+        elapsed = (time.perf_counter() - t0) * 1000
+        sampler.stop()
+        return _domain_outcome(ctx, "safe", 0, out, "", elapsed, sampler)
+
+
 # ---------------------------------------------------------------------------
 # Intent routing map
 # ---------------------------------------------------------------------------
 
 # keyword fragments → task_name
 INTENT_MAP: dict[str, str] = {
+    # domain decisions
+    "triage":         "domain_evaluate",
+    "advise":         "domain_evaluate",
+    "recommend":      "domain_evaluate",
+    "portfolio":      "domain_evaluate",
+    "legal advice":   "domain_evaluate",
+    "hr decision":    "domain_evaluate",
+    "supply chain":   "domain_evaluate",
+    "climate":        "domain_evaluate",
+    "compare profiles": "domain_compare",
+    "who should":     "domain_compare",
+    "which option":   "domain_compare",
+    "best approach":  "domain_compare",
+    "all profiles":   "domain_compare",
+    "domain report":  "domain_report",
+    "validation report": "domain_report",
+    "accuracy":       "domain_report",
     # video analysis
     "analyse":        "video_analysis",
     "analyze":        "video_analysis",
@@ -264,6 +438,27 @@ class KDEAgent:
             "draft_email":           EmailDraftTask(**_task_kwargs),
             "performance_dashboard": PerformanceDashboardTask(**_task_kwargs),
             "prediction_report":     PredictionReportTask(**_task_kwargs),
+        })
+        domain_models = {
+            domain: DomainDecisionModel(config)
+            for domain, config in ALL_DOMAINS.items()
+        }
+        self._executors.update({
+            "domain_evaluate": DomainEvaluateExecutor(
+                domain_models=domain_models,
+                registry=self._registry,
+                mode="evaluate",
+            ),
+            "domain_compare": DomainEvaluateExecutor(
+                domain_models=domain_models,
+                registry=self._registry,
+                mode="compare",
+            ),
+            "domain_report": DomainEvaluateExecutor(
+                domain_models=domain_models,
+                registry=self._registry,
+                mode="report",
+            ),
         })
 
         # Register intents in router
@@ -551,13 +746,16 @@ class KDEAgent:
         system.levers[0].set_weights(left=6.0, right=4.0)
         eq = system.simulate()
 
-        from ksa_executor import ExecutionContext
         ctx = ExecutionContext(
             task_name   = task_name,
             version     = 1,
             result      = eq,
             working_dir = str(Path(self._config.media_dir).expanduser()),
-            payload     = {"sport": self._profile.sport, "role": self._profile.role.value},
+            payload     = {
+                "sport": self._profile.sport,
+                "role": self._profile.role.value,
+                "prompt": prompt,
+            },
         )
 
         outcome = executor.primary(ctx)
