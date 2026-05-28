@@ -203,7 +203,10 @@ class GroundTruthOptimizer:
 
         # Positive error → score is above target → slight reinforcement
         # Negative error → score below target → push fulcrum_bias toward zero
-        delta   = self._step * math.tanh(error * 3.0)
+        # Gradient via tanh; multiplier 3.0 controls sensitivity — higher values
+        # make the update more aggressive for mid-range errors, lower values smoother.
+        _TANH_SCALE = 3.0
+        delta   = self._step * math.tanh(error * _TANH_SCALE)
         new_val = current + delta
         new_val = max(clamp[0], min(clamp[1], new_val))
         lever.fulcrum_bias = new_val

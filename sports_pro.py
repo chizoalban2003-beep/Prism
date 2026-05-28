@@ -652,6 +652,8 @@ class SportsProAssistant:
             ).fetchone()
             if row:
                 current   = row["fixed_fulcrum"]
+                # rating >= 3.0 → plan was well-tolerated → target more activity (0.4)
+                # rating <  3.0 → plan was too hard/stressful → target more recovery (0.6)
                 target    = 0.4 if rating >= 3.0 else 0.6
                 new_value = current + _ALPHA * (target - current)
                 new_value = max(0.2, min(0.8, new_value))
