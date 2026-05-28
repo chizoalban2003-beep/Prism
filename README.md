@@ -9,7 +9,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/tests-413%20passing-brightgreen">
+  <img src="https://img.shields.io/badge/tests-439%20passing-brightgreen">
   <img src="https://img.shields.io/badge/CodeQL-0%20alerts-brightgreen">
   <img src="https://img.shields.io/badge/python-3.11%2B-blue">
   <img src="https://img.shields.io/badge/license-MIT-lightgrey">
@@ -266,7 +266,7 @@ KDE/
 │   ├── domain_configs.py       Medical · Financial · Legal · HR · Supply Chain · Climate
 │   └── domain_validator.py     Expert-label accuracy validation
 │
-└── tests/                      413 tests, all passing
+└── tests/                      439 tests, all passing
 ```
 
 ---
@@ -312,7 +312,7 @@ All decision mathematics is pure Python arithmetic.
 
 ```bash
 pytest tests/ -v
-# 413 passed in < 20 seconds
+# 439 passed in < 20 seconds
 ```
 
 ---
