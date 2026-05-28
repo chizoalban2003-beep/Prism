@@ -1,0 +1,35 @@
+<svg viewBox="0 0 520 180" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="beam" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%"   stop-color="#3B8BD4"/>
+      <stop offset="40%"  stop-color="#5DCAA5"/>
+      <stop offset="70%"  stop-color="#EF9F27"/>
+      <stop offset="100%" stop-color="#E24B4A"/>
+    </linearGradient>
+  </defs>
+  <rect x="52" y="71" width="196" height="14" rx="7" fill="url(#beam)" opacity="0.92"/>
+  <g fill="white" opacity="0.5">
+    <rect x="72"  y="71" width="1.5" height="14"/>
+    <rect x="95"  y="71" width="1.5" height="14"/>
+    <rect x="118" y="71" width="1.5" height="14"/>
+    <rect x="150" y="71" width="1.5" height="14"/>
+    <rect x="180" y="71" width="1.5" height="14"/>
+    <rect x="210" y="71" width="1.5" height="14"/>
+    <rect x="232" y="71" width="1.5" height="14"/>
+  </g>
+  <ellipse cx="152" cy="60" rx="22" ry="8" fill="#5DCAA5" opacity="0.35"/>
+  <ellipse cx="152" cy="60" rx="12" ry="5" fill="#5DCAA5" opacity="0.55"/>
+  <polygon points="150,85 160,100 150,115 140,100" fill="#5DCAA5" opacity="0.9"/>
+  <rect x="135" y="113" width="30" height="2.5" rx="1.25" fill="#5DCAA5" opacity="0.7"/>
+  <text x="50" y="96" font-family="system-ui,sans-serif" font-size="8"
+        fill="#3B8BD4" opacity="0.7" font-weight="500">SAFE</text>
+  <text x="225" y="96" font-family="system-ui,sans-serif" font-size="8"
+        fill="#E24B4A" opacity="0.7" font-weight="500">MAX</text>
+  <line x1="272" y1="45" x2="272" y2="135" stroke="#888" stroke-width="1" opacity="0.2"/>
+  <text x="290" y="100" font-family="system-ui,-apple-system,sans-serif"
+        font-size="52" font-weight="700" fill="#1a1f2e" letter-spacing="-2">KDE</text>
+  <text x="291" y="118" font-family="system-ui,sans-serif" font-size="11"
+        fill="#6b7280" letter-spacing="0.5">Kinetic Decision Engine</text>
+  <text x="291" y="158" font-family="system-ui,sans-serif" font-size="8.5"
+        fill="#9ca3af" letter-spacing="1">LOCAL · INTERPRETABLE · ADAPTIVE</text>
+</svg>
