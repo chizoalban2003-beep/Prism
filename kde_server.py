@@ -660,7 +660,7 @@ class KDEHandler(BaseHTTPRequestHandler):
                     )
                     for index, item in enumerate(body.get("cases", []), start=1)
                 ]
-                result = DomainValidator(domain).validate(cases, domain=domain)
+                result = DomainValidator(domain).validate(cases)
                 self._json_response(dataclasses.asdict(result))
 
             else:

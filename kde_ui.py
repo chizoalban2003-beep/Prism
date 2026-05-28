@@ -239,7 +239,10 @@ button.secondary { background: var(--accent-2); color: white; border: none; }
   </main>
 </div>
 <script>
-const API = 'http://127.0.0.1:8742';
+const FALLBACK_API = 'http://127.0.0.1:8742';
+const API = window.location && window.location.origin && window.location.origin !== 'null'
+  ? window.location.origin
+  : FALLBACK_API;
 const state = { momentConfigs: [], domainList: [], domainProfiles: new Map(), status: null };
 
 async function api(path) {
