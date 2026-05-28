@@ -59,6 +59,9 @@ from sport_tasks import (
 from prediction_engine import PredictionPlatform
 from domain_configs import ALL_DOMAINS, DomainDecisionModel
 from ksa_executor import ExecutionContext, ExecutionOutcome, TaskExecutor, _ResourceSampler
+from artifact_store import Artifact, ArtifactStore
+from digital_identity import CrystallisationEngine
+from identity_bus import IdentityBus
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +74,9 @@ logger = logging.getLogger(__name__)
 class KDEConfig:
     db_path:       str  = "~/.kde/kde.db"
     media_dir:     str  = "~/.kde/media"
+    bus_db_path:   str  = "~/.prism/identity_bus.db"
+    identity_db_path: str = "~/.prism/identity.db"
+    artifact_db_path: str = "~/.prism/artifacts.db"
     ollama_host:   str  = "http://localhost:11434"
     ollama_model:  str  = "llava"
     text_model:    str  = "mistral"
@@ -372,8 +378,14 @@ class KDEAgent:
         # Expand paths
         db_path   = str(Path(self._config.db_path).expanduser())
         media_dir = str(Path(self._config.media_dir).expanduser())
+        bus_db_path = str(Path(self._config.bus_db_path).expanduser())
+        identity_db = str(Path(self._config.identity_db_path).expanduser())
+        artifact_db = str(Path(self._config.artifact_db_path).expanduser())
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         Path(media_dir).mkdir(parents=True, exist_ok=True)
+        Path(bus_db_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(identity_db).parent.mkdir(parents=True, exist_ok=True)
+        Path(artifact_db).parent.mkdir(parents=True, exist_ok=True)
 
         # Core layers
         self._assistant  = SportsProAssistant(db_path)
@@ -390,6 +402,9 @@ class KDEAgent:
         self._router     = MasterFulcrum(self._registry)
         self._injector   = LiveWeightInjector()
         self._optimizer  = GroundTruthOptimizer()
+        self._bus        = IdentityBus(db_path=bus_db_path)
+        self._crystal    = CrystallisationEngine(profile.name, self._bus, db_path=identity_db)
+        self._artifacts  = ArtifactStore(db_path=artifact_db)
 
         # Register profile
         self._assistant.register(profile)
@@ -525,6 +540,9 @@ class KDEAgent:
                 config = KDEConfig(
                     db_path=profile.db_path,
                     media_dir=profile.media_dir,
+                    bus_db_path=getattr(profile, "bus_db_path", "~/.prism/identity_bus.db"),
+                    identity_db_path=getattr(profile, "identity_db_path", "~/.prism/identity.db"),
+                    artifact_db_path=getattr(profile, "artifact_db_path", "~/.prism/artifacts.db"),
                     ollama_host=profile.ollama_host,
                     ollama_model=profile.ollama_model,
                     text_model=profile.text_model,
@@ -614,7 +632,31 @@ class KDEAgent:
                 energy       = energy or 7,
                 baseline_hrv = 60.0,
             )
-        return self._workflow.morning_briefing(manual_reading=reading)
+        brief = self._workflow.morning_briefing(manual_reading=reading)
+        try:
+            self._record_identity_artifact(
+                domain="sport",
+                fulcrum=float(brief.plan.fulcrum),
+                outcome_rating=float(brief.plan.activation),
+                artifact_type="plan",
+                title=f"{self._profile.name} morning briefing",
+                content={
+                    "time": brief.time,
+                    "plan": {
+                        "primary_focus": brief.plan.primary_focus,
+                        "activation": brief.plan.activation,
+                        "fulcrum": brief.plan.fulcrum,
+                        "tasks": [task.__dict__ for task in brief.plan.tasks],
+                        "warnings": list(brief.plan.warnings),
+                        "rationale": brief.plan.rationale,
+                    },
+                    "priority_tasks": list(brief.priority_tasks),
+                    "alerts": list(brief.alerts),
+                },
+            )
+        except Exception as exc:
+            logger.debug("Identity recording skipped for morning briefing: %s", exc)
+        return brief
 
     def log_session(
         self,
@@ -747,6 +789,62 @@ class KDEAgent:
         """Current learned state: fixed_fulcrum, drift, history summary."""
         return self._assistant.reflect(self._profile.name)
 
+    def identity(self) -> dict:
+        identity = self._crystal.get_identity()
+        return identity.to_card_data() if identity else {}
+
+    def identity_domains(self) -> list[dict]:
+        identity = self._crystal.get_identity()
+        if identity is None:
+            return []
+        return [
+            {
+                "domain": domain,
+                "fixed_fulcrum": profile.fixed_fulcrum,
+                "variance": profile.variance,
+                "n_observations": profile.n_observations,
+                "crystallised": profile.crystallised,
+                "confidence": profile.confidence,
+                "last_updated": profile.last_updated,
+            }
+            for domain, profile in sorted(identity.domains.items())
+        ]
+
+    def observe_identity(self, domain: str, fulcrum: float, rating: float, context: Optional[dict] = None) -> dict:
+        self._crystal.observe(domain, fulcrum, rating, context=context)
+        identity = self._crystal.get_identity()
+        return identity.to_card_data() if identity else {}
+
+    def reset_identity_domain(self, domain: str) -> dict:
+        self._crystal.reset_domain(domain)
+        identity = self._crystal.get_identity()
+        return identity.to_card_data() if identity else {}
+
+    def recent_artifacts(self, domain: Optional[str] = None, n: int = 10) -> list[dict]:
+        return [
+            {
+                "artifact_id": artifact.artifact_id,
+                "user_name": artifact.user_name,
+                "domain": artifact.domain,
+                "artifact_type": artifact.artifact_type,
+                "title": artifact.title,
+                "content": artifact.content,
+                "fulcrum_at_time": artifact.fulcrum_at_time,
+                "identity_version": artifact.identity_version,
+                "created_at": artifact.created_at,
+                "rating": artifact.rating,
+            }
+            for artifact in self._artifacts.recent(domain=domain, n=n)
+        ]
+
+    def rate_artifact(self, artifact_id: str, rating: float) -> dict:
+        self._artifacts.rate(artifact_id, rating)
+        artifact = self._artifacts.get(artifact_id)
+        return {
+            "artifact_id": artifact_id,
+            "rating": artifact.rating if artifact else max(0.0, min(1.0, float(rating))),
+        }
+
     def start_server(self, port: int = 8742, blocking: bool = False) -> str:
         """Start the local REST API. Returns the server URL."""
         from kde_server import KDEServer
@@ -833,9 +931,22 @@ class KDEAgent:
 
         outcome = executor.primary(ctx)
         try:
-            return json.loads(outcome.stdout) if outcome.stdout else outcome.stderr
+            payload = json.loads(outcome.stdout) if outcome.stdout else outcome.stderr
         except (json.JSONDecodeError, ValueError):
-            return outcome.stdout or outcome.stderr
+            payload = outcome.stdout or outcome.stderr
+        if task_name == "domain_evaluate" and isinstance(payload, dict) and "domain" in payload and "fulcrum" in payload:
+            try:
+                self._record_identity_artifact(
+                    domain=str(payload["domain"]),
+                    fulcrum=float(payload["fulcrum"]),
+                    outcome_rating=float(payload.get("confidence", 0.5)),
+                    artifact_type="domain",
+                    title=f"{payload['domain']} domain evaluation",
+                    content=payload,
+                )
+            except Exception as exc:
+                logger.debug("Identity recording skipped for domain evaluation: %s", exc)
+        return payload
 
     def _llm_classify(self, prompt: str) -> tuple[str, str]:
         """Ask Ollama to classify the intent. Returns (task_name, method)."""
@@ -880,3 +991,29 @@ class KDEAgent:
                 self._router.register_intent(task_name, keywords=keywords)
             except Exception:
                 pass
+
+    def _record_identity_artifact(
+        self,
+        domain: str,
+        fulcrum: float,
+        outcome_rating: float,
+        artifact_type: str,
+        title: str,
+        content: dict,
+        context: Optional[dict] = None,
+    ) -> str:
+        self._crystal.observe(domain, fulcrum, outcome_rating, context=context)
+        identity = self._crystal.get_identity()
+        version = identity.version if identity else 1
+        artifact = Artifact(
+            artifact_id="",
+            user_name=self._profile.name,
+            domain=domain,
+            artifact_type=artifact_type,
+            title=title,
+            content=content,
+            fulcrum_at_time=max(0.0, min(1.0, float(fulcrum))),
+            identity_version=version,
+            created_at=time.time(),
+        )
+        return self._artifacts.save(artifact)

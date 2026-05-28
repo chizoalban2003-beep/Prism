@@ -146,6 +146,17 @@ class KDEHandler(BaseHTTPRequestHandler):
             elif path == "/reflect":
                 self._json_response(self.agent.reflect())
 
+            elif path == "/identity":
+                self._json_response(self.agent.identity())
+
+            elif path == "/identity/domains":
+                self._json_response({"domains": self.agent.identity_domains()})
+
+            elif path == "/artifacts":
+                domain = qs.get("domain")
+                n = int(qs.get("n", 10))
+                self._json_response({"artifacts": self.agent.recent_artifacts(domain=domain, n=n)})
+
             elif path == "/history":
                 days    = int(qs.get("days", 14))
                 history = self.agent._assistant.history(
@@ -573,6 +584,34 @@ class KDEHandler(BaseHTTPRequestHandler):
             elif path == "/device/sync":
                 result = self.agent.sync_devices()
                 self._json_response({"synced": result})
+
+            elif path == "/identity/observe":
+                domain = body.get("domain")
+                if not domain:
+                    self._error("'domain' field required", 400)
+                    return
+                identity = self.agent.observe_identity(
+                    domain=domain,
+                    fulcrum=float(body.get("fulcrum", 0.5)),
+                    rating=float(body.get("rating", 0.5)),
+                    context=body.get("context") or {},
+                )
+                self._json_response(identity)
+
+            elif path == "/identity/reset":
+                domain = body.get("domain")
+                if not domain:
+                    self._error("'domain' field required", 400)
+                    return
+                self._json_response(self.agent.reset_identity_domain(domain))
+
+            elif path == "/artifacts/rate":
+                artifact_id = body.get("artifact_id")
+                if not artifact_id:
+                    self._error("'artifact_id' field required", 400)
+                    return
+                rating = float(body.get("rating", 0.0))
+                self._json_response(self.agent.rate_artifact(artifact_id, rating))
 
             # ── Moment POST endpoints ─────────────────────────────────────
 

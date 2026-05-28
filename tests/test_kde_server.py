@@ -58,6 +58,50 @@ def _make_agent() -> MagicMock:
         output     = {"content": "Mock plan"},
     )
     agent.reflect.return_value = {"fixed_fulcrum": 0.5, "drift": 0.02}
+    agent.identity.return_value = {
+        "domains": [{"label": "sport", "value": 0.5, "crystallised": False}],
+        "insight": "Identity still crystallising",
+        "confidence": 0.4,
+        "n_decisions": 2,
+    }
+    agent.identity_domains.return_value = [
+        {
+            "domain": "sport",
+            "fixed_fulcrum": 0.5,
+            "variance": 0.1,
+            "n_observations": 2,
+            "crystallised": False,
+            "confidence": 0.3,
+            "last_updated": 1.0,
+        }
+    ]
+    agent.observe_identity.return_value = {
+        "domains": [{"label": "sport", "value": 0.55, "crystallised": False}],
+        "insight": "Identity still crystallising",
+        "confidence": 0.5,
+        "n_decisions": 3,
+    }
+    agent.reset_identity_domain.return_value = {
+        "domains": [{"label": "sport", "value": 0.5, "crystallised": False}],
+        "insight": "Identity still crystallising",
+        "confidence": 0.2,
+        "n_decisions": 0,
+    }
+    agent.recent_artifacts.return_value = [
+        {
+            "artifact_id": "a1",
+            "domain": "sport",
+            "artifact_type": "plan",
+            "title": "Mock artifact",
+            "content": {"ok": True},
+            "fulcrum_at_time": 0.5,
+            "identity_version": 1,
+            "created_at": 1.0,
+            "rating": None,
+            "user_name": "TestAthlete",
+        }
+    ]
+    agent.rate_artifact.return_value = {"artifact_id": "a1", "rating": 0.9}
     agent._assistant = MagicMock()
     agent._assistant.history.return_value = []
     agent._hub = MagicMock()
@@ -274,5 +318,43 @@ def test_devices_endpoint():
         status, data = _get(f"http://127.0.0.1:{port}/devices")
         assert status == 200
         assert "devices" in data
+    finally:
+        server.stop()
+
+
+def test_identity_endpoint_returns_json():
+    port = 18750
+    server = _start_server(port)
+    try:
+        status, data = _get(f"http://127.0.0.1:{port}/identity")
+        assert status == 200
+        assert "domains" in data
+        assert "insight" in data
+    finally:
+        server.stop()
+
+
+def test_identity_observe_endpoint_updates_identity():
+    port = 18751
+    server = _start_server(port)
+    try:
+        status, data = _post(
+            f"http://127.0.0.1:{port}/identity/observe",
+            {"domain": "sport", "fulcrum": 0.6, "rating": 0.8},
+        )
+        assert status == 200
+        assert "n_decisions" in data
+    finally:
+        server.stop()
+
+
+def test_artifacts_endpoint_returns_json():
+    port = 18752
+    server = _start_server(port)
+    try:
+        status, data = _get(f"http://127.0.0.1:{port}/artifacts?domain=sport&n=5")
+        assert status == 200
+        assert "artifacts" in data
+        assert isinstance(data["artifacts"], list)
     finally:
         server.stop()
