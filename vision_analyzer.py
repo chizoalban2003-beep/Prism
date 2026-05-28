@@ -128,7 +128,7 @@ class VisionAnalyzer:
         prompt:      str,
         images:      Optional[list[str]] = None,
         expect_json: bool                = True,
-    ) -> "dict | str":
+    ) -> dict | str:
         """
         POST {host}/api/generate.
         Raises ConnectionError if Ollama is unreachable.
