@@ -44,6 +44,7 @@ from pathlib import Path
 from typing import Any
 
 from kde_agent import KDEAgent, KDEConfig
+from kde_profiles import from_toml
 from sports_pro import Role
 from device_hub import DeviceType
 
@@ -54,6 +55,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _SEARCH_PATHS = [
+    Path("~/.kde/config.toml"),
     Path("~/.kde/kde.toml"),
     Path("~/.kde/kde.json"),
     Path("./kde_config.toml"),
@@ -114,14 +116,14 @@ def build_agent_from_config(path: str = None) -> KDEAgent:
     # Build KDEConfig
     cfg = _build_kde_config(agent_section)
 
-    # Extract profile fields
-    name  = agent_section.get("name", "KDE User")
-    role  = _parse_role(agent_section.get("role", "athlete"))
-    sport = agent_section.get("sport", "general")
-    team  = agent_section.get("team", "")
-
-    # Create agent
-    agent = KDEAgent.setup(name=name, role=role, sport=sport, team=team, config=cfg)
+    if "user" in raw:
+        agent = KDEAgent.setup(config_path=path, config=cfg) if path is None else KDEAgent.setup(profile=from_toml(path), config=cfg)
+    else:
+        name = agent_section.get("name", "KDE User")
+        role = _parse_role(agent_section.get("role", "athlete"))
+        sport = agent_section.get("sport", "general")
+        team = agent_section.get("team", "")
+        agent = KDEAgent.setup(name=name, role=role, sport=sport, team=team, config=cfg)
 
     # Register devices
     devices_section = raw.get("devices", [])

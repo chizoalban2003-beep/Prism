@@ -459,57 +459,78 @@ class DeviceHub:
 
     def parse_apple_health(self, export_xml_path: str) -> dict:
         """
-        Parse Apple Health export.xml (stdlib xml.etree only).
-        Returns: {hrv:[{date,value}], sleep:[{date,hrs,quality}],
-                  steps:[{date,count}], heart_rate:[{date,bpm}]}
+        Parse Apple Health export.xml using streaming stdlib XML parsing.
         """
-        tree = ET.parse(export_xml_path)
-        root = tree.getroot()
         result: dict = {"hrv": [], "sleep": [], "steps": [], "heart_rate": []}
+        hrv_by_day: dict[str, dict] = {}
+        sleep_by_day: dict[str, dict] = {}
+        steps_by_day: dict[str, list[float]] = {}
+        heart_by_day: dict[str, list[float]] = {}
 
-        for record in root.iter("Record"):
-            rtype      = record.get("type", "")
-            start_date = record.get("startDate", "")[:10]
+        def _parse_date(raw: str) -> Optional[datetime]:
+            if not raw:
+                return None
+            try:
+                return datetime.strptime(raw, "%Y-%m-%d %H:%M:%S %z")
+            except ValueError:
+                return None
 
-            if "HeartRateVariabilitySDNN" in rtype:
-                val = record.get("value")
-                if val:
-                    result["hrv"].append({"date": start_date, "value": float(val)})
+        def _mean(values: list[float]) -> float:
+            return sum(values) / len(values) if values else 0.0
 
-            elif "StepCount" in rtype:
-                val = record.get("value")
-                if val:
-                    result["steps"].append(
-                        {"date": start_date, "count": int(float(val))}
-                    )
+        for _, elem in ET.iterparse(export_xml_path, events=("end",)):
+            if elem.tag != "Record":
+                continue
 
-            elif "HeartRate" in rtype and "HeartRateVariability" not in rtype:
-                val = record.get("value")
-                if val:
-                    result["heart_rate"].append(
-                        {"date": start_date, "bpm": float(val)}
-                    )
+            record_type = elem.get("type", "")
+            start_date = elem.get("startDate", "")
+            day = start_date[:10]
+            value_text = elem.get("value", "")
 
-            elif "SleepAnalysis" in rtype:
-                start_dt = record.get("startDate", "")
-                end_dt   = record.get("endDate", "")
-                value    = record.get("value", "")
-                if "Asleep" in value and start_dt and end_dt:
-                    try:
-                        fmt = "%Y-%m-%d %H:%M:%S %z"
-                        s   = datetime.strptime(start_dt, fmt)
-                        e   = datetime.strptime(end_dt, fmt)
-                        hrs = (e - s).total_seconds() / 3600
-                        result["sleep"].append(
-                            {
-                                "date":    start_dt[:10],
-                                "hrs":     round(hrs, 2),
-                                "quality": value,
-                            }
-                        )
-                    except Exception:
-                        logger.debug("Could not parse sleep record dates", exc_info=True)
+            try:
+                if record_type == "HKQuantityTypeIdentifierHeartRateVariabilitySDNN" and day and value_text:
+                    bucket = hrv_by_day.setdefault(day, {"values": [], "unit": elem.get("unit", "ms") or "ms"})
+                    bucket["values"].append(float(value_text))
 
+                elif record_type == "HKQuantityTypeIdentifierStepCount" and day and value_text:
+                    steps_by_day.setdefault(day, []).append(float(value_text))
+
+                elif record_type == "HKQuantityTypeIdentifierHeartRate" and day and value_text:
+                    heart_by_day.setdefault(day, []).append(float(value_text))
+
+                elif record_type == "HKCategoryTypeIdentifierSleepAnalysis":
+                    start_dt = _parse_date(start_date)
+                    end_dt = _parse_date(elem.get("endDate", ""))
+                    is_sleep = value_text in {"1", "HKCategoryValueSleepAnalysisAsleep", "HKCategoryValueSleepAnalysisInBed"}
+                    if start_dt and end_dt and is_sleep:
+                        hours = max(0.0, (end_dt - start_dt).total_seconds() / 3600.0)
+                        sleep_day = end_dt.date().isoformat()
+                        bucket = sleep_by_day.setdefault(sleep_day, {"hours": [], "quality": []})
+                        bucket["hours"].append(hours)
+                        bucket["quality"].append(min(hours / 10.0, 1.0))
+            except (TypeError, ValueError):
+                logger.debug("Skipping Apple Health record", exc_info=True)
+            finally:
+                elem.clear()
+
+        for day, data in sorted(hrv_by_day.items()):
+            result["hrv"].append({
+                "date": day,
+                "value": round(_mean(data["values"]), 2),
+                "unit": data["unit"],
+            })
+        for day, data in sorted(sleep_by_day.items()):
+            hours = round(_mean(data["hours"]), 2)
+            result["sleep"].append({
+                "date": day,
+                "hours": hours,
+                "hrs": hours,
+                "quality": round(_mean(data["quality"]), 2),
+            })
+        for day, values in sorted(steps_by_day.items()):
+            result["steps"].append({"date": day, "count": int(round(_mean(values)))})
+        for day, values in sorted(heart_by_day.items()):
+            result["heart_rate"].append({"date": day, "bpm": round(_mean(values), 2)})
         return result
 
     # ── Garmin Connect CSV parser ────────────────────────────────────────────

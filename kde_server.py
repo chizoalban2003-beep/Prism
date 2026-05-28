@@ -83,8 +83,11 @@ class KDEHandler(BaseHTTPRequestHandler):
 
     def _json_response(self, data: dict, status: int = 200) -> None:
         body = json.dumps(data, default=str).encode()
+        self._respond(body, status, "application/json")
+
+    def _respond(self, body: bytes, status: int = 200, content_type: str = "application/octet-stream") -> None:
         self.send_response(status)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Access-Control-Allow-Origin",  "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -118,11 +121,17 @@ class KDEHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
-        path   = parsed.path.rstrip("/")
+        path   = parsed.path.rstrip("/") or "/"
         qs     = self._qs(parsed)
 
         try:
-            if path == "/status":
+            if path in ("/", "/app", "/index.html"):
+                from kde_ui import get_ui_html
+
+                html = get_ui_html().encode("utf-8")
+                self._respond(html, 200, "text/html; charset=utf-8")
+
+            elif path == "/status":
                 self._json_response(self.agent.status())
 
             elif path == "/plan":
@@ -508,7 +517,7 @@ class KDEHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
-        path   = parsed.path.rstrip("/")
+        path   = parsed.path.rstrip("/") or "/"
         body   = self._read_body()
 
         try:

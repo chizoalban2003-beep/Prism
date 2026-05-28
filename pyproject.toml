@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "kde-platform"
+version = "0.1.0"
+description = "Kinetic Decision Engine — local sports intelligence and decision platform"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = ["psutil>=5.9", "Pillow>=10.0"]
+
+[project.optional-dependencies]
+video = ["ffmpeg-python"]
+full = ["psutil>=5.9", "Pillow>=10.0"]
+
+[project.scripts]
+kde = "kde_cli:main"
+ksa = "ksa_cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

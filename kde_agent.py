@@ -42,6 +42,7 @@ from sport_executor import (
     SessionLogExecutor,
 )
 from daily_workflow import DailyWorkflow, MorningBrief, SessionLog, EveningReview
+from kde_profiles import UserProfile, UserRole, from_toml
 from ksa_router import MasterFulcrum
 from ksa_registry import PerformanceMetrics, SnapshotRegistry
 from ksa_fixes import LiveWeightInjector, GroundTruthOptimizer
@@ -356,9 +357,17 @@ class KDEAgent:
         self,
         profile: SportsProProfile,
         config:  Optional[KDEConfig] = None,
+        capabilities: Optional[list[str]] = None,
+        display_role: Optional[str] = None,
     ) -> None:
         self._profile = profile
         self._config  = config or KDEConfig()
+        self._capabilities = set(capabilities or [
+            "sports_pro", "daily_workflow", "device_hub", "moment_analyzer",
+            "prediction_engine", "sport_tasks", "domain_configs",
+        ])
+        self._display_role = display_role or profile.role.value
+        self._user_profile: Optional[UserProfile] = None
 
         # Expand paths
         db_path   = str(Path(self._config.db_path).expanduser())
@@ -421,45 +430,47 @@ class KDEAgent:
         }
 
         # Prediction platform + sport-task executors (prompt-3)
-        self._platform = PredictionPlatform()
-        _task_kwargs = dict(
-            registry    = self._registry,
-            platform    = self._platform,
-            output_dir  = str(Path(media_dir) / "artifacts"),
-            ollama_host = self._config.ollama_host,
-            text_model  = self._config.text_model,
-        )
-        self._executors.update({
-            "create_training_plan":  TrainingPlanTask(**_task_kwargs),
-            "match_report":          MatchReportTask(**_task_kwargs),
-            "scouting_report":       ScoutingReportTask(**_task_kwargs),
-            "nutrition_plan":        NutritionPlanTask(**_task_kwargs),
-            "social_media_post":     SocialMediaTask(**_task_kwargs),
-            "draft_email":           EmailDraftTask(**_task_kwargs),
-            "performance_dashboard": PerformanceDashboardTask(**_task_kwargs),
-            "prediction_report":     PredictionReportTask(**_task_kwargs),
-        })
-        domain_models = {
-            domain: DomainDecisionModel(config)
-            for domain, config in ALL_DOMAINS.items()
-        }
-        self._executors.update({
-            "domain_evaluate": DomainEvaluateExecutor(
-                domain_models=domain_models,
+        self._platform = PredictionPlatform() if self._has_capability("prediction_engine", "sport_tasks") else None
+        if self._platform is not None and self._has_capability("sport_tasks"):
+            _task_kwargs = dict(
                 registry=self._registry,
-                mode="evaluate",
-            ),
-            "domain_compare": DomainEvaluateExecutor(
-                domain_models=domain_models,
-                registry=self._registry,
-                mode="compare",
-            ),
-            "domain_report": DomainEvaluateExecutor(
-                domain_models=domain_models,
-                registry=self._registry,
-                mode="report",
-            ),
-        })
+                platform=self._platform,
+                output_dir=str(Path(media_dir) / "artifacts"),
+                ollama_host=self._config.ollama_host,
+                text_model=self._config.text_model,
+            )
+            self._executors.update({
+                "create_training_plan": TrainingPlanTask(**_task_kwargs),
+                "match_report": MatchReportTask(**_task_kwargs),
+                "scouting_report": ScoutingReportTask(**_task_kwargs),
+                "nutrition_plan": NutritionPlanTask(**_task_kwargs),
+                "social_media_post": SocialMediaTask(**_task_kwargs),
+                "draft_email": EmailDraftTask(**_task_kwargs),
+                "performance_dashboard": PerformanceDashboardTask(**_task_kwargs),
+                "prediction_report": PredictionReportTask(**_task_kwargs),
+            })
+        if self._has_capability("domain_configs"):
+            domain_models = {
+                domain: DomainDecisionModel(config)
+                for domain, config in ALL_DOMAINS.items()
+            }
+            self._executors.update({
+                "domain_evaluate": DomainEvaluateExecutor(
+                    domain_models=domain_models,
+                    registry=self._registry,
+                    mode="evaluate",
+                ),
+                "domain_compare": DomainEvaluateExecutor(
+                    domain_models=domain_models,
+                    registry=self._registry,
+                    mode="compare",
+                ),
+                "domain_report": DomainEvaluateExecutor(
+                    domain_models=domain_models,
+                    registry=self._registry,
+                    mode="report",
+                ),
+            })
 
         # Register intents in router
         self._register_router_intents()
@@ -476,15 +487,72 @@ class KDEAgent:
     @classmethod
     def setup(
         cls,
-        name:   str,
-        role:   Role,
-        sport:  str,
-        team:   str        = "",
-        config: Optional[KDEConfig] = None,
+        profile: Optional[UserProfile] = None,
+        config_path: Optional[str] = None,
+        **kwargs,
     ) -> "KDEAgent":
-        """One-line setup: create profile, register, return agent."""
-        profile = SportsProProfile(name=name, role=role, sport=sport, team=team)
-        return cls(profile, config)
+        """Create an agent from a UserProfile or legacy keyword arguments."""
+        config = kwargs.pop("config", None)
+        if profile is None:
+            candidate = config_path
+            if candidate is None:
+                for option in (
+                    os.environ.get("KDE_CONFIG"),
+                    "~/.kde/config.toml",
+                    "~/.kde/kde.toml",
+                    "./kde_config.toml",
+                ):
+                    if option and Path(option).expanduser().exists():
+                        candidate = option
+                        break
+            if candidate:
+                try:
+                    profile = from_toml(candidate)
+                except Exception as exc:
+                    logger.debug("Could not load UserProfile from %s: %s", candidate, exc)
+
+        if profile is not None:
+            sports_role_map = {
+                UserRole.DEVELOPER: Role.ANALYST,
+                UserRole.ATHLETE: Role.ATHLETE,
+                UserRole.COACH: Role.COACH,
+                UserRole.ANALYST: Role.ANALYST,
+                UserRole.PHYSIO: Role.PHYSIOTHERAPIST,
+                UserRole.AGENT: Role.AGENT,
+                UserRole.UNIVERSAL: Role.ATHLETE,
+            }
+            if config is None:
+                config = KDEConfig(
+                    db_path=profile.db_path,
+                    media_dir=profile.media_dir,
+                    ollama_host=profile.ollama_host,
+                    ollama_model=profile.ollama_model,
+                    text_model=profile.text_model,
+                    ffmpeg_path=profile.ffmpeg_path,
+                    poll_interval=profile.poll_interval,
+                    auto_watch=profile.auto_watch,
+                )
+            sports_profile = SportsProProfile(
+                name=profile.name,
+                role=sports_role_map.get(profile.role, Role.ATHLETE),
+                sport=profile.sport,
+                team=profile.team,
+            )
+            agent = cls(
+                sports_profile,
+                config,
+                capabilities=profile.capabilities,
+                display_role=profile.role.value,
+            )
+            agent._user_profile = profile
+            return agent
+
+        name = kwargs.pop("name")
+        role = kwargs.pop("role")
+        sport = kwargs.pop("sport")
+        team = kwargs.pop("team", "")
+        sports_profile = SportsProProfile(name=name, role=role, sport=sport, team=team)
+        return cls(sports_profile, config)
 
     # ── device management ─────────────────────────────────────────────────
 
@@ -710,8 +778,10 @@ class KDEAgent:
 
         return {
             "profile":          self._profile.name,
-            "role":             self._profile.role.value,
+            "role":             self._display_role,
             "sport":            self._profile.sport,
+            "team":             self._profile.team,
+            "capabilities":     sorted(self._capabilities),
             "devices":          [{"name": d.name, "enabled": d.enabled} for d in devices],
             "ollama_available": ollama_ok,
             "ffmpeg_available": ffmpeg_ok,
@@ -721,6 +791,9 @@ class KDEAgent:
             "fixed_fulcrum":    reflect_data.get("fixed_fulcrum"),
             "fulcrum_trend":    reflect_data.get("fulcrum_trend"),
         }
+
+    def _has_capability(self, *names: str) -> bool:
+        return any(name in self._capabilities for name in names)
 
     # ── private helpers ───────────────────────────────────────────────────
 
