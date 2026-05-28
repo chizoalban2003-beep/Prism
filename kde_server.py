@@ -33,9 +33,11 @@ CORS headers included for local web dashboard access.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import logging
 import threading
+import uuid
 from dataclasses import asdict, fields
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Optional
@@ -69,8 +71,12 @@ class KDEHandler(BaseHTTPRequestHandler):
     ``agent`` and ``platform`` are injected as class attributes by KDEServer.
     """
 
-    agent:    object   # KDEAgent
-    platform: object   # PredictionPlatform
+    agent:            object   # KDEAgent
+    platform:         object   # PredictionPlatform
+    moment_analyzer:  object   # MomentAnalyzer
+    duel_analyzer:    object   # DuelAnalyzer
+    live_pipeline:    object   # LiveMomentPipeline
+    _moment_history:  dict     # player → list[MomentResult]
 
     # ── common ────────────────────────────────────────────────────────────
 
@@ -209,6 +215,176 @@ class KDEHandler(BaseHTTPRequestHandler):
                 }
                 self._json_response(serialised)
 
+            # ── Moment endpoints ─────────────────────────────────────────
+
+            elif path == "/moment/configs":
+                from moment_analyzer import ALL_MOMENT_CONFIGS
+                from moment_configs_ext import EXTENDED_CONFIGS
+                all_keys = set(ALL_MOMENT_CONFIGS.keys()) | set(EXTENDED_CONFIGS.keys())
+                configs = [
+                    {"sport": s, "moment_type": mt}
+                    for s, mt in sorted(all_keys)
+                ]
+                self._json_response({"configs": configs})
+
+            elif path == "/moment/analyze":
+                sport       = qs.get("sport")
+                moment_type = qs.get("moment_type")
+                player      = qs.get("player")
+                if not sport or not moment_type or not player:
+                    self._error("sport, moment_type, player are required", 400)
+                    return
+
+                from moment_analyzer import Moment, NearbyPlayer
+
+                # Primary opponent (goalkeeper)
+                primary_opp = None
+                gk_name = qs.get("gk_name")
+                if gk_name:
+                    gk_dist = float(qs.get("gk_distance", 6.0))
+                    primary_opp = NearbyPlayer(
+                        name=gk_name, team="", distance=gk_dist,
+                        arrival_time=gk_dist / 7.5, is_goalkeeper=True,
+                    )
+
+                # Secondary opponents
+                secondary = []
+                for i in (1, 2, 3):
+                    dname = qs.get(f"defender{i}")
+                    if dname:
+                        arr = float(qs.get(f"defender{i}_arrival", 3.0))
+                        secondary.append(NearbyPlayer(
+                            name=dname, team="", distance=arr * 7.5,
+                            arrival_time=arr,
+                        ))
+
+                # Teammates
+                teammates = []
+                for i in (1, 2, 3):
+                    tname = qs.get(f"teammate{i}")
+                    if tname:
+                        tdist = float(qs.get(f"teammate{i}_distance", 10.0))
+                        teammates.append(NearbyPlayer(
+                            name=tname, team="", distance=tdist,
+                            arrival_time=tdist / 7.5,
+                        ))
+
+                moment = Moment(
+                    moment_id           = str(uuid.uuid4()),
+                    match_id            = "api",
+                    sport               = sport,
+                    moment_type         = moment_type,
+                    timestamp           = 0.0,
+                    focal_player        = player,
+                    focal_profile       = qs.get("profile", "Forward"),
+                    focal_team          = qs.get("team", ""),
+                    focal_base          = float(qs.get("base", 0.5)),
+                    pitch_x             = float(qs.get("pitch_x", 0.5)),
+                    pitch_y             = float(qs.get("pitch_y", 0.5)),
+                    primary_opponent    = primary_opp,
+                    secondary_opponents = secondary,
+                    teammates           = teammates,
+                    fatigue             = float(qs.get("fatigue", 0.0)),
+                    confidence          = float(qs.get("confidence", 0.5)),
+                    score_pressure      = float(qs.get("score_pressure", 0.0)),
+                    xg_raw              = float(qs.get("xg_raw", 0.0)),
+                )
+
+                result = self.moment_analyzer.analyze(moment)
+
+                # Store in history
+                self._moment_history.setdefault(player, []).append(result)
+
+                # Build response
+                import math
+                bw = result.config.bandwidth
+                focal = result.focal_position
+                options_list = []
+                for opt in result.config.options:
+                    kernel = math.exp(
+                        -(opt.position - focal) ** 2 / (2.0 * bw ** 2)
+                    )
+                    options_list.append({
+                        "name":       opt.name,
+                        "activation": round(kernel, 4),
+                        "ev":         round(result.option_scores[opt.name], 4),
+                    })
+
+                # time_pressure: based on nearest opponent arrival_time
+                if moment.primary_opponent is not None:
+                    time_pressure = round(
+                        max(0.0, min(1.0, 1.0 / (1.0 + moment.primary_opponent.arrival_time))), 4
+                    )
+                elif secondary:
+                    min_arr = min(o.arrival_time for o in secondary)
+                    time_pressure = round(max(0.0, min(1.0, 1.0 / (1.0 + min_arr))), 4)
+                else:
+                    time_pressure = 0.0
+
+                self._json_response({
+                    "recommended":   result.recommended,
+                    "activation":    round(result.focal_position, 4),
+                    "xg_contextual": round(result.xg_contextual, 4),
+                    "time_pressure": time_pressure,
+                    "fulcrum":       round(result.focal_position, 4),
+                    "options":       options_list,
+                })
+
+            elif path == "/moment/history":
+                player = qs.get("player", "")
+                limit  = int(qs.get("limit", 20))
+                history_raw = self._moment_history.get(player, [])[-limit:]
+                moments_out = []
+                for r in history_raw:
+                    try:
+                        moments_out.append(dataclasses.asdict(r))
+                    except Exception:
+                        moments_out.append(str(r))
+                self._json_response({"player": player, "moments": moments_out})
+
+            elif path == "/moment/player_stats":
+                player = qs.get("player", "")
+                if not player:
+                    self._error("player is required", 400)
+                    return
+                stats = self.moment_analyzer.player_stats(player)
+                self._json_response({"player": player, **stats})
+
+            # ── Duel endpoints ────────────────────────────────────────────
+
+            elif path == "/duel/network":
+                match_id = qs.get("match_id", "")
+                edges = []
+                for (att, dfn), data in self.duel_analyzer.network._edges.items():
+                    if not match_id or True:   # no per-match filtering; return all
+                        edges.append({
+                            "attacker": att,
+                            "defender": dfn,
+                            "total":    data["total"],
+                            "won":      data["won"],
+                            "win_rate": data["won"] / data["total"] if data["total"] else 0.5,
+                        })
+                self._json_response({"match_id": match_id, "edges": edges})
+
+            elif path == "/duel/player":
+                player = qs.get("player", "")
+                if not player:
+                    self._error("player is required", 400)
+                    return
+                profile = self.duel_analyzer.network.player_attack_stats(player)
+                self._json_response(profile)
+
+            elif path == "/duel/summary":
+                network = self.duel_analyzer.network
+                total_duels = sum(e["total"] for e in network._edges.values())
+                total_won   = sum(e["won"]   for e in network._edges.values())
+                self._json_response({
+                    "total_duels": total_duels,
+                    "total_won":   total_won,
+                    "win_rate":    total_won / total_duels if total_duels else 0.5,
+                    "n_matchups":  len(network._edges),
+                })
+
             else:
                 self._error(f"Unknown route: {path}", 404)
 
@@ -270,6 +446,80 @@ class KDEHandler(BaseHTTPRequestHandler):
                 result = self.agent.sync_devices()
                 self._json_response({"synced": result})
 
+            # ── Moment POST endpoints ─────────────────────────────────────
+
+            elif path == "/moment/calibrate":
+                moment_id    = body.get("moment_id", "")
+                action_taken = body.get("action_taken", "")
+                success      = bool(body.get("success", False))
+                xg_realized  = float(body.get("xg_realized", 0.0))
+                notes        = body.get("notes", "")
+
+                from moment_analyzer import ActionOutcome, Moment
+
+                # Find the moment in history
+                target_moment = None
+                for results in self._moment_history.values():
+                    for r in results:
+                        if r.moment.moment_id == moment_id:
+                            target_moment = r.moment
+                            break
+                    if target_moment is not None:
+                        break
+
+                if target_moment is None:
+                    # Create a minimal placeholder moment for calibration
+                    target_moment = Moment(
+                        moment_id  = moment_id,
+                        match_id   = "calibration",
+                        sport      = body.get("sport", "Football"),
+                        moment_type= body.get("moment_type", "1v1_keeper"),
+                        timestamp  = 0.0,
+                        focal_player  = body.get("player", "Unknown"),
+                        focal_profile = "Forward",
+                        focal_team    = "",
+                        focal_base    = 0.5,
+                        pitch_x       = 0.5,
+                        pitch_y       = 0.5,
+                    )
+
+                outcome = ActionOutcome(
+                    action_taken = action_taken,
+                    success      = success,
+                    xg_delta     = xg_realized,
+                    notes        = notes,
+                )
+                self.moment_analyzer.calibrate(target_moment, outcome)
+                self._json_response({"status": "calibrated"})
+
+            elif path == "/moment/live_frame":
+                result = self.live_pipeline.feed_frame(body)
+                if result is None:
+                    self._json_response({"moment": None})
+                else:
+                    try:
+                        self._json_response({"moment": dataclasses.asdict(result)})
+                    except Exception:
+                        self._json_response({"moment": str(result)})
+
+            # ── Duel POST endpoints ───────────────────────────────────────
+
+            elif path == "/duel/add_match":
+                match_id    = body.get("match_id", str(uuid.uuid4()))
+                events      = body.get("events", [])
+                freeze_frames = body.get("freeze_frames", {})
+                profile_map = body.get("profile_map", {})
+
+                records = self.duel_analyzer.process_match(events, match_id)
+                self._json_response({
+                    "match_id": match_id,
+                    "n_duels":  len(records),
+                    "accuracy": (
+                        sum(1 for r in records if r.attacker_won) / len(records)
+                        if records else 0.0
+                    ),
+                })
+
             else:
                 self._error(f"Unknown route: {path}", 404)
 
@@ -309,6 +559,8 @@ class KDEServer:
         host:    str  = DEFAULT_HOST,   # localhost only
         verbose: bool = False,
         platform=None,
+        moment_analyzer=None,
+        duel_analyzer=None,
     ) -> None:
         # SECURITY: enforce localhost-only binding
         if host != DEFAULT_HOST:
@@ -323,6 +575,25 @@ class KDEServer:
         self._host     = host
         self._verbose  = verbose
         self._platform = platform or _get_or_create_platform(agent)
+
+        # Moment + Duel analyzers (lazy-import to keep startup fast)
+        if moment_analyzer is None:
+            try:
+                from moment_analyzer import MomentAnalyzer as _MA
+                moment_analyzer = _MA()
+            except ImportError:
+                moment_analyzer = None
+
+        if duel_analyzer is None:
+            try:
+                from duel_analyzer import DuelAnalyzer as _DA
+                duel_analyzer = _DA()
+            except ImportError:
+                duel_analyzer = None
+
+        self._moment_analyzer = moment_analyzer
+        self._duel_analyzer   = duel_analyzer
+
         self._server:  Optional[HTTPServer] = None
         self._thread:  Optional[threading.Thread] = None
 
@@ -336,14 +607,29 @@ class KDEServer:
     def start(self, blocking: bool = False) -> None:
         """Start the HTTP server. If blocking=False, run in a daemon thread."""
         # Build a handler class with agent + platform injected
-        agent    = self._agent
-        platform = self._platform
+        agent           = self._agent
+        platform        = self._platform
+        moment_analyzer = self._moment_analyzer
+        duel_analyzer   = self._duel_analyzer
+
+        # Build live pipeline from the moment analyzer
+        live_pipeline = None
+        if moment_analyzer is not None:
+            try:
+                from moment_pipeline import LiveMomentPipeline
+                live_pipeline = LiveMomentPipeline(moment_analyzer)
+            except ImportError:
+                pass
 
         class _Handler(KDEHandler):
             pass
 
-        _Handler.agent    = agent
-        _Handler.platform = platform
+        _Handler.agent           = agent
+        _Handler.platform        = platform
+        _Handler.moment_analyzer = moment_analyzer
+        _Handler.duel_analyzer   = duel_analyzer
+        _Handler.live_pipeline   = live_pipeline
+        _Handler._moment_history = {}  # player → list[MomentResult]
 
         self._server = HTTPServer((self._host, self._port), _Handler)
         logger.warning("KDE server running on %s", self.url)
