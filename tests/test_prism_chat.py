@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from kde_server import KDEServer
+from prism_chat import get_chat_html
 
 
 def _make_agent() -> MagicMock:
@@ -76,3 +77,34 @@ def test_post_chat_returns_card():
             assert "type" in data
     finally:
         server.stop()
+
+
+def test_html_has_sidebar_nav():
+    html = get_chat_html()
+    assert "Medical" in html
+    assert "Financial" in html
+    assert "Legal" in html
+
+
+def test_html_has_render_card():
+    assert "function renderCard(card)" in get_chat_html()
+
+
+def test_html_has_demo_fallback():
+    assert "function demoFallback(msg)" in get_chat_html()
+
+
+def test_html_no_external_deps():
+    html = get_chat_html().lower()
+    assert "cdn.jsdelivr" not in html
+    assert "unpkg" not in html
+    assert 'script src="http' not in html
+    assert "script src='http" not in html
+
+
+def test_html_css_dark_mode():
+    assert "prefers-color-scheme" in get_chat_html()
+
+
+def test_html_mobile_responsive():
+    assert "@media" in get_chat_html()
