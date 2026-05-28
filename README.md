@@ -284,7 +284,7 @@ KDE/
 
 Full validation report: `INVESTOR_VALIDATION_SUMMARY.md`
 
-Next milestone: 200 expert-labeled decisions → measured accuracy on optimal/suboptimal binary classification (target: &gt;60%).
+Next milestone: 200 expert-labeled decisions → measured accuracy on optimal/suboptimal binary classification (target: >60%).
 
 ---
 
