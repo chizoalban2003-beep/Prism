@@ -44,6 +44,17 @@ from daily_workflow import DailyWorkflow, MorningBrief, SessionLog, EveningRevie
 from ksa_router import MasterFulcrum
 from ksa_registry import SnapshotRegistry
 from ksa_fixes import LiveWeightInjector, GroundTruthOptimizer
+from sport_tasks import (
+    TrainingPlanTask,
+    MatchReportTask,
+    ScoutingReportTask,
+    NutritionPlanTask,
+    SocialMediaTask,
+    EmailDraftTask,
+    PerformanceDashboardTask,
+    PredictionReportTask,
+)
+from prediction_engine import PredictionPlatform
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +138,34 @@ INTENT_MAP: dict[str, str] = {
     "status":         "status",
     "what should":    "video_analysis",
     "technically":    "video_analysis",
+    # sport tasks (prompt-3)
+    "training plan":  "create_training_plan",
+    "weekly plan":    "create_training_plan",
+    "programme":      "create_training_plan",
+    "match report":   "match_report",
+    "post match":     "match_report",
+    "write report":   "match_report",
+    "scouting":       "scouting_report",
+    "opponent report": "scouting_report",
+    "analyse them":   "scouting_report",
+    "nutrition":      "nutrition_plan",
+    "meal plan":      "nutrition_plan",
+    "diet":           "nutrition_plan",
+    "food":           "nutrition_plan",
+    "instagram":      "social_media_post",
+    "twitter":        "social_media_post",
+    "social media":   "social_media_post",
+    "email":          "draft_email",
+    "draft":          "draft_email",
+    "write to":       "draft_email",
+    "message agent":  "draft_email",
+    "dashboard":      "performance_dashboard",
+    "overview":       "performance_dashboard",
+    "how am i doing": "performance_dashboard",
+    "predict":        "prediction_report",
+    "prediction":     "prediction_report",
+    "match preview":  "prediction_report",
+    "odds":           "prediction_report",
 }
 
 
@@ -206,6 +245,26 @@ class KDEAgent:
                 sport=profile.sport, role=profile.role.value,
             ),
         }
+
+        # Prediction platform + sport-task executors (prompt-3)
+        self._platform = PredictionPlatform()
+        _task_kwargs = dict(
+            registry    = self._registry,
+            platform    = self._platform,
+            output_dir  = str(Path(media_dir) / "artifacts"),
+            ollama_host = self._config.ollama_host,
+            text_model  = self._config.text_model,
+        )
+        self._executors.update({
+            "create_training_plan":  TrainingPlanTask(**_task_kwargs),
+            "match_report":          MatchReportTask(**_task_kwargs),
+            "scouting_report":       ScoutingReportTask(**_task_kwargs),
+            "nutrition_plan":        NutritionPlanTask(**_task_kwargs),
+            "social_media_post":     SocialMediaTask(**_task_kwargs),
+            "draft_email":           EmailDraftTask(**_task_kwargs),
+            "performance_dashboard": PerformanceDashboardTask(**_task_kwargs),
+            "prediction_report":     PredictionReportTask(**_task_kwargs),
+        })
 
         # Register intents in router
         self._register_router_intents()
@@ -424,6 +483,17 @@ class KDEAgent:
     def reflect(self) -> dict:
         """Current learned state: fixed_fulcrum, drift, history summary."""
         return self._assistant.reflect(self._profile.name)
+
+    def start_server(self, port: int = 8742, blocking: bool = False) -> str:
+        """Start the local REST API. Returns the server URL."""
+        from kde_server import KDEServer
+        self._server = KDEServer(
+            agent    = self,
+            port     = port,
+            platform = self._platform,
+        )
+        self._server.start(blocking=blocking)
+        return self._server.url
 
     # ── status ────────────────────────────────────────────────────────────
 

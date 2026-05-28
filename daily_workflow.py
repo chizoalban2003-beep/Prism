@@ -49,12 +49,13 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class MorningBrief:
-    time:             str
-    plan:             DailyPlan
-    wearable_summary: str
-    device_status:    list[str]
-    priority_tasks:   list[str]
-    alerts:           list[str]
+    time:               str
+    plan:               DailyPlan
+    wearable_summary:   str
+    device_status:      list[str]
+    priority_tasks:     list[str]
+    alerts:             list[str]
+    match_intelligence: Optional[dict] = None
 
 
 @dataclass
@@ -165,13 +166,35 @@ class DailyWorkflow:
         if not self._va.is_available():
             alerts.append("ℹ Ollama not running — vision analysis unavailable")
 
+        # --- Step 7: match intelligence (when match is close) ---
+        match_intelligence: Optional[dict] = None
+        try:
+            ctx = plan.tasks[0] if plan.tasks else None
+            # Retrieve days_to_match from reading-derived context if available
+            _days_to_match: float = 99.0
+            if reading is not None:
+                try:
+                    _dctx = reading.to_daily_context()
+                    _days_to_match = _dctx.days_to_match
+                except Exception:
+                    pass
+            if _days_to_match <= 4:
+                from prediction_engine import PredictionPlatform
+                _plat = PredictionPlatform()
+                match_intelligence = _plat.pre_match_brief(
+                    "Home Team", "Away Team", "football", [], {}, {}
+                )
+        except Exception as _exc:
+            logger.debug("match intelligence skipped: %s", _exc)
+
         return MorningBrief(
-            time             = now_str,
-            plan             = plan,
-            wearable_summary = wearable_summary,
-            device_status    = device_status,
-            priority_tasks   = priority_tasks,
-            alerts           = alerts,
+            time               = now_str,
+            plan               = plan,
+            wearable_summary   = wearable_summary,
+            device_status      = device_status,
+            priority_tasks     = priority_tasks,
+            alerts             = alerts,
+            match_intelligence = match_intelligence,
         )
 
     # ── session logging ───────────────────────────────────────────────────
