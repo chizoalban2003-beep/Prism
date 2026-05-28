@@ -38,21 +38,62 @@ After each successful run the optimizer perturbs the lever geometry with Gaussia
 
 ```
 KSA/
-├── ksa_lever.py      3-bar lever physics engine + snapshot serialisation
-├── ksa_registry.py   SQLite-backed snapshot registry + version control
-├── ksa_router.py     MasterFulcrum — intent router (keyword / alias / LLM)
-├── ksa_executor.py   Hardware execution layer (file index, search, shell)
-├── ksa_optimizer.py  Kinetic optimizer — gradient-free hill-climbing
-├── ksa_agent.py      Top-level orchestrator wiring all layers
-├── ksa_cli.py        Command-line interface entry point
-├── ksa_config.py     Config loader (TOML / JSON, with sensible defaults)
-├── requirements.txt  Python dependencies
+├── ksa_lever.py          3-bar lever physics engine + snapshot serialisation
+├── ksa_registry.py       SQLite-backed snapshot registry + version control
+├── ksa_router.py         MasterFulcrum — intent router (keyword / alias / LLM)
+├── ksa_executor.py       Hardware execution layer (file index, search, shell)
+├── ksa_optimizer.py      Kinetic optimizer — gradient-free hill-climbing
+├── ksa_agent.py          Top-level orchestrator wiring all layers
+├── ksa_cli.py            Command-line interface entry point
+├── ksa_config.py         Config loader (TOML / JSON, with sensible defaults)
+├── ksa_fixes.py          Live weight injection & ground-truth optimizer
+├── ksa_jarvis.py         Jarvis-like agent with memory & artifact storage
+│
+├── kde_agent.py          KDE Sports Agent — unified top-level agent
+├── kde_cli.py            KDE Sports Agent — CLI entry point
+├── kde_config.py         KDE Sports Agent — TOML / JSON config loader
+├── kde_dashboard.py      HTML report generator & terminal dashboard
+├── kde_server.py         Local REST API server
+│
+├── daily_workflow.py     Daily lifecycle orchestrator (morning/evening briefs)
+├── device_hub.py         Device registry & data ingestion
+│
+├── moment_analyzer.py    Moment detection & sport-specific configs
+├── moment_configs_ext.py Extended moment configuration profiles
+├── moment_pipeline.py    StatsBomb moment pipeline
+├── moment_validator.py   Moment quality validation
+│
+├── duel_analyzer.py      1v1 duel analysis engine
+├── vision_analyzer.py    Computer-vision frame & session analysis
+├── media_processor.py    Video & image pipeline (ffmpeg + Pillow)
+│
+├── sport_data.py         StatsBomb data connector
+├── sport_executor.py     Sport-specific task executor
+├── sport_tasks.py        Sport task definitions
+├── sports_pro.py         SportsProAssistant & daily planning
+├── prediction_engine.py  Prediction platform
+│
+├── requirements.txt      Python dependencies
 └── tests/
     ├── test_lever.py
     ├── test_registry.py
     ├── test_router.py
     ├── test_executor.py
-    └── test_optimizer.py
+    ├── test_optimizer.py
+    ├── test_jarvis.py
+    ├── test_kde_agent.py
+    ├── test_kde_server.py
+    ├── test_kde_server_moments.py
+    ├── test_kde_dashboard.py
+    ├── test_daily_workflow.py
+    ├── test_device_hub.py
+    ├── test_moment_pipeline.py
+    ├── test_moment_validator.py
+    ├── test_moment_configs_ext.py
+    ├── test_media_processor.py
+    ├── test_vision_analyzer.py
+    ├── test_sport_executor.py
+    └── test_sport_tasks.py
 ```
 
 ---
@@ -64,7 +105,8 @@ pip install -r requirements.txt
 ```
 
 > **Python 3.9+** required.  
-> TOML config files additionally require Python 3.11+ (stdlib `tomllib`) or the `tomli` back-port (`pip install tomli`).
+> TOML config files additionally require Python 3.11+ (stdlib `tomllib`) or the `tomli` back-port — already listed in `requirements.txt` as a conditional dependency for Python < 3.11.  
+> Video processing requires `ffmpeg` on your system PATH (`apt install ffmpeg` / `brew install ffmpeg`); if missing, video tasks are skipped gracefully.
 
 ---
 
@@ -205,7 +247,7 @@ registry.delete_task(task_name)            → remove all versions
 pytest tests/ -v
 ```
 
-All 100 tests should pass in < 1 second.
+All 376 tests should pass in < 15 seconds.
 
 ---
 
