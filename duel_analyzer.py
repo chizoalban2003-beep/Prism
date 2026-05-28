@@ -21,6 +21,9 @@ import uuid as _uuid_mod
 from dataclasses import dataclass, field
 from typing import Optional
 
+from decision_spectrum import DecisionBeam, Factor, SpectrumFulcrum, OutcomeDiagnosis
+from sport_spectrum import ALL_SPORTS, SportDecisionModel, DuelModel, DuelOutcome
+
 
 # ---------------------------------------------------------------------------
 # DuelRecord
@@ -42,6 +45,16 @@ class DuelRecord:
     duel_type:     str          # "ground", "aerial", "tackle", "interception"
     duration:      float = 0.0  # seconds (if available)
     notes:         str   = ""
+    zone_label:          str   = ""
+    pitch_zone_norm:     float = 0.0
+    defensive_press:     float = 0.0
+    xg_at_location:      float = 0.0
+    coupling:            float = 0.0
+    predicted_winner:    str   = ""
+    attacker_fulcrum:    float = 0.0
+    defender_fulcrum:    float = 0.0
+    model_confidence:    float = 0.0
+    model_correct:       bool  = False
 
 
 # ---------------------------------------------------------------------------
@@ -214,43 +227,127 @@ class DuelNetwork:
 
 class DuelAnalyzer:
     """
-    High-level analyser that processes match events into DuelRecord objects
-    and maintains a DuelNetwork for win-probability queries.
-
-    Usage::
-
-        analyzer = DuelAnalyzer()
-        records  = analyzer.process_match(events, "match-42")
-        prob     = analyzer.expected_outcome("Messi", "Boateng", location_x=105.0)
+    Upgraded: uses DuelModel from sport_spectrum for physics-based predictions
+    alongside the existing DuelNetwork statistics.
     """
 
-    def __init__(self) -> None:
-        self.network   = DuelNetwork()
+    def __init__(self, sport: str = "Football") -> None:
+        self.network = DuelNetwork()
         self.extractor = DuelExtractor()
+        self.sport = sport
+        self._records: list[DuelRecord] = []
+        config = ALL_SPORTS.get(sport)
+        self._model = SportDecisionModel(config) if config else None
+        self._duel_model = DuelModel(self._model, coupling_strength=0.7) if self._model else None
 
-    def process_match(
-        self,
-        events:   list[dict],
-        match_id: str,
-    ) -> list[DuelRecord]:
-        """Extract duel records from *events* and add them to the network."""
+    def process_match(self, events: list[dict], match_id: str) -> list[DuelRecord]:
+        """Extract, predict, and store duel records."""
         records = self.extractor.extract(events, match_id)
         for rec in records:
+            self._enrich(rec)
             self.network.add_record(rec)
+            self._records.append(rec)
         return records
+
+    def _enrich(self, rec: DuelRecord) -> None:
+        """Add zone, normalised coords, and model prediction to a record."""
+        x = rec.location_x
+        rec.pitch_zone_norm = min(1.0, x / 120.0)
+        rec.zone_label = (
+            "own_third" if rec.pitch_zone_norm < 0.33 else
+            "middle" if rec.pitch_zone_norm < 0.67 else
+            "final_third" if rec.pitch_zone_norm < 0.88 else
+            "box"
+        )
+        rec.defensive_press = max(0.0, 1.0 - rec.location_y / 80.0)
+        rec.xg_at_location = rec.pitch_zone_norm * 0.4
+        rec.coupling = max(0.0, min(1.0, abs(rec.pitch_zone_norm - rec.defensive_press)))
+
+        if self._duel_model is None:
+            return
+
+        config = ALL_SPORTS.get(self.sport)
+        profile_names = [p.name for p in config.profiles] if config else []
+
+        def best_profile(default_idx: int) -> str:
+            if not profile_names:
+                return "Unknown"
+            return profile_names[min(default_idx, len(profile_names) - 1)]
+
+        att_ctx = {
+            "pitch_zone": rec.pitch_zone_norm,
+            "press": rec.defensive_press,
+            "xg": rec.xg_at_location,
+        }
+        def_ctx = {
+            "pitch_zone": rec.pitch_zone_norm,
+            "press": 0.3,
+        }
+
+        try:
+            result = self._duel_model.simulate(
+                best_profile(7),
+                best_profile(1),
+                att_ctx,
+                def_ctx,
+            )
+        except Exception:
+            return
+
+        rec.predicted_winner = result.advantage
+        rec.attacker_fulcrum = result.attacker_fulcrum
+        rec.defender_fulcrum = result.defender_fulcrum
+        rec.model_confidence = max(result.attacker_activation, result.defender_activation)
+        actual = (
+            "attacker" if rec.attacker_won is True else
+            "defender" if rec.attacker_won is False else
+            "draw"
+        )
+        rec.model_correct = rec.predicted_winner in (actual, "contested")
 
     def expected_outcome(
         self,
-        attacker:   str,
-        defender:   str,
+        attacker: str,
+        defender: str,
         location_x: float = 60.0,
+        attacker_profile: str = None,
+        defender_profile: str = None,
     ) -> float:
         """
-        Return the probability (0–1) that *attacker* wins this duel.
-
-        Adds a small position bonus when deep in the attacking third
-        (x > 80 yards) where attackers historically perform better.
+        Blends historical win rate with physics model prediction.
+        Returns probability (0-1) that attacker wins.
         """
-        base   = self.network.win_rate(attacker, defender)
-        bonus  = max(0.0, (location_x - 80.0) / 80.0) * 0.05
-        return min(0.99, max(0.01, base + bonus))
+        historical = self.network.win_rate(attacker, defender)
+
+        if (
+            self._duel_model is None
+            or attacker_profile is None
+            or defender_profile is None
+        ):
+            bonus = max(0.0, (location_x - 80.0) / 80.0) * 0.05
+            return min(0.99, max(0.01, historical + bonus))
+
+        try:
+            ctx = {"pitch_zone": min(1.0, location_x / 120.0), "press": 0.4}
+            result = self._duel_model.simulate(attacker_profile, defender_profile, ctx, {})
+            physics = (
+                1.0 if result.advantage == "attacker" else
+                0.0 if result.advantage == "defender" else
+                0.5
+            )
+            total = self.network._edges.get((attacker, defender), {}).get("total", 0)
+            hist_weight = min(0.6, 0.1 * total)
+            blended = hist_weight * historical + (1 - hist_weight) * physics
+            return min(1.0, max(0.0, blended))
+        except Exception:
+            return historical
+
+    def model_accuracy(self) -> float:
+        """Fraction of enriched records where model_correct is True."""
+        enriched = [r for r in self._all_records() if r.predicted_winner]
+        if not enriched:
+            return 0.0
+        return sum(1 for r in enriched if r.model_correct) / len(enriched)
+
+    def _all_records(self) -> list[DuelRecord]:
+        return list(self._records)
