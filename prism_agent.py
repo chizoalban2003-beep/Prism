@@ -3,16 +3,11 @@ from __future__ import annotations
 import json
 import logging
 import re
-import urllib.error
 import urllib.request
-from pathlib import Path
 from typing import Optional
 
 from domain_configs import ALL_DOMAINS, DomainDecisionModel
-from kde_agent import KDEAgent, KDEConfig
-from ksa_agent import KSAgent
 from prism_responses import (
-    CardType,
     PrismCard,
     domain_card,
     identity_card,
@@ -20,273 +15,201 @@ from prism_responses import (
     plan_card,
     prediction_card,
     risk_card,
+    squad_card,
     text_card,
 )
-from sports_pro import Role
 
 logger = logging.getLogger(__name__)
 
 
 class PrismAgent:
     """
-    Unified PRISM agent wrapping KDEAgent + KSAgent.
+    Unified PRISM agent. Routes natural language to sub-agents.
+    Returns PrismCard for every request. Never raises.
     """
 
     INTENTS = [
-        ("plan my day|morning|daily plan|today", "plan"),
-        ("predict|match prediction|fixture", "predict_match"),
-        ("injury|risk|squad|fitness", "injury_risk"),
-        ("moment|1v1|keeper|analyse moment", "moment"),
-        ("footage|video|session|analyse", "session"),
-        ("transfer|value|market", "transfer"),
-        ("scouting|opponent|scout", "scouting"),
-        ("triage|medical|patient|symptoms", "domain_medical"),
-        ("portfolio|invest|allocation|financial", "domain_financial"),
-        ("legal|case|litigat|settle", "domain_legal"),
-        ("hire|hiring|talent|recruitment", "domain_hr"),
-        ("supply|procurement|inventory", "domain_supply"),
-        ("my profile|identity|who am i|digital dna|crystal", "identity"),
-        ("artifacts|history|what have i", "artifacts"),
-        ("index|scan|file|search|grep", "ksa_task"),
-        ("run|execute|shell|command", "ksa_task"),
-        ("status|connected|devices", "status"),
-        ("help|what can you", "help"),
+        (r"plan|morning|daily|today|schedule", "plan"),
+        (r"predict|match|fixture|vs|versus", "predict_match"),
+        (r"injury|risk|squad|fitness|medical|available", "squad_risk"),
+        (r"moment|1v1|keeper|shot|attack", "moment"),
+        (r"session|footage|video|analyse.*play", "session"),
+        (r"transfer|market|value|worth", "transfer"),
+        (r"triage|chest|pain|fever|symptom|patient", "domain_medical"),
+        (r"portfolio|invest|allocation|bonds|equity", "domain_financial"),
+        (r"legal|case|litigat|settle|arbitrat", "domain_legal"),
+        (r"hire|hiring|recruit|talent|headcount", "domain_hr"),
+        (r"supply|procurement|inventory|stock", "domain_supply"),
+        (r"climate|carbon|emission|energy\.policy", "domain_climate"),
+        (r"identity|profile|who\.am|digital\.dna|crystal", "identity"),
+        (r"artifact|history|past\.decision|what\.have\.i", "artifacts"),
+        (r"status|connected|device|sync", "status"),
+        (r"index|scan\.files|search\.code|grep|find\.file", "ksa_task"),
+        (r"help|what\.can|commands|options", "help"),
     ]
 
     def __init__(
         self,
-        kde_agent: Optional[KDEAgent] = None,
-        ksa_agent: Optional[KSAgent] = None,
+        kde_agent=None,
+        ksa_agent=None,
         ollama_host: str = "http://localhost:11434",
         text_model: str = "mistral",
     ):
-        self.kde_agent = kde_agent
-        self.ksa_agent = ksa_agent
-        self.ollama_host = ollama_host.rstrip("/")
-        self.text_model = text_model
-        self._domain_models = {
-            name: DomainDecisionModel(config)
-            for name, config in ALL_DOMAINS.items()
-        }
+        self._kde = kde_agent
+        self._ksa = ksa_agent
+        self._ollama_host = ollama_host.rstrip('/')
+        self._text_model = text_model
 
     @classmethod
     def setup(
         cls,
         name: str,
-        role: Role,
         sport: str = "Football",
         team: str = "",
         db_path: str = "~/.prism/prism.db",
     ) -> "PrismAgent":
-        prism_db = str(Path(db_path).expanduser())
-        kde_cfg = KDEConfig(
-            db_path=prism_db,
-            media_dir=str(Path("~/.prism/media").expanduser()),
-            ollama_host="http://localhost:11434",
-            ollama_model="llava",
-            text_model="mistral",
-        )
-        kde_agent = KDEAgent.setup(name=name, role=role, sport=sport, team=team, config=kde_cfg)
-        ksa_agent = KSAgent(
-            db_path=prism_db,
-            working_dir=".",
-            ollama_model=None,
-            auto_optimise=False,
-            dry_run=True,
-        )
-        return cls(kde_agent=kde_agent, ksa_agent=ksa_agent, ollama_host=kde_cfg.ollama_host, text_model=kde_cfg.text_model)
-
-    def chat(self, message: str, context: dict = None) -> PrismCard:
-        context = context or {}
         try:
-            message = (message or "").strip()
-            if not message:
-                return self._bootstrap_card()
-            intent = self._route(message)
-            return self._execute_intent(intent, message, context)
+            from kde_agent import KDEAgent
+            from sports_pro import Role
+
+            kde = KDEAgent.setup(
+                name=name,
+                role=Role.UNIVERSAL,
+                sport=sport,
+                team=team,
+                config=type(
+                    'C',
+                    (),
+                    {
+                        'db_path': db_path,
+                        'media_dir': '~/.prism/media',
+                        'ollama_model': 'mistral',
+                        'ollama_host': 'http://localhost:11434',
+                        'auto_watch': False,
+                    },
+                )(),
+            )
+        except Exception:
+            kde = None
+        try:
+            from ksa_agent import KSAgent
+
+            ksa = KSAgent(db_path=db_path.replace('prism.db', 'ksa.db'))
+        except Exception:
+            ksa = None
+        return cls(kde_agent=kde, ksa_agent=ksa)
+
+    def chat(self, message: str, context: dict | None = None) -> PrismCard:
+        try:
+            intent = self._route(message or "")
+            return self._execute(intent, message or "", context or {})
         except Exception as exc:
-            logger.exception("PRISM chat failed")
-            return PrismCard(CardType.ERROR, "PRISM error", str(exc), {}, actions=["Try again", "Show help"])
+            logging.exception("PrismAgent.chat error")
+            return text_card(f"Something went wrong: {exc}", "Error")
 
     def _route(self, message: str) -> str:
-        text = (message or "").lower()
+        lowered = message.lower()
         for pattern, intent in self.INTENTS:
-            if re.search(pattern, text, flags=re.IGNORECASE):
+            if re.search(pattern, lowered):
                 return intent
-        llm_intent = self._classify_with_ollama(message)
-        return llm_intent or "bootstrap"
+        return self._llm_classify(message) or "help"
 
-    def _classify_with_ollama(self, message: str) -> Optional[str]:
-        payload = {
-            "model": self.text_model,
-            "stream": False,
-            "prompt": (
-                "Return one PRISM intent label only: plan, predict_match, injury_risk, "
-                "moment, session, transfer, scouting, domain_medical, domain_financial, "
-                "domain_legal, domain_hr, domain_supply, identity, artifacts, ksa_task, "
-                "status, help, bootstrap.\nMessage: " + message
-            ),
-        }
+    def _llm_classify(self, message: str) -> Optional[str]:
         try:
-            req = urllib.request.Request(
-                f"{self.ollama_host}/api/generate",
-                data=json.dumps(payload).encode("utf-8"),
-                headers={"Content-Type": "application/json"},
-                method="POST",
+            labels = [intent for _, intent in self.INTENTS]
+            prompt = (
+                f"Classify this message into exactly one of: {labels}\n"
+                f"Message: {message}\n"
+                "Reply with ONLY the label, nothing else."
             )
-            with urllib.request.urlopen(req, timeout=2.0) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-            response = str(data.get("response", "")).strip().splitlines()[0].strip().lower()
-            valid = {intent for _, intent in self.INTENTS} | {"bootstrap"}
-            return response if response in valid else None
-        except (urllib.error.URLError, TimeoutError, json.JSONDecodeError, KeyError, OSError):
+            payload = json.dumps({"model": self._text_model, "prompt": prompt, "stream": False}).encode()
+            request = urllib.request.Request(
+                f"{self._ollama_host}/api/generate",
+                data=payload,
+                headers={"Content-Type": "application/json"},
+            )
+            with urllib.request.urlopen(request, timeout=5) as response:
+                result = json.loads(response.read()).get("response", "").strip().lower()
+            return result if result in labels else None
+        except Exception:
             return None
 
-    def _execute_intent(self, intent: str, message: str, context: dict) -> PrismCard:
-        if intent == "plan":
-            if self.kde_agent and hasattr(self.kde_agent, "morning_briefing"):
-                brief = self.kde_agent.morning_briefing()
-                return plan_card(getattr(brief, "plan", brief))
-            return text_card("No sports planner is connected yet.", "Daily plan")
-
-        if intent == "predict_match":
-            output = self._ask_kde(message)
-            if hasattr(output, "p_home_win") or hasattr(output, "p_draw"):
-                return prediction_card(output)
-            return text_card(self._stringify(output), "Match prediction")
-
-        if intent == "injury_risk":
-            output = self._ask_kde(message)
-            if hasattr(output, "risk_level"):
-                return risk_card(output)
-            return text_card(self._stringify(output), "Risk assessment")
-
-        if intent == "moment":
-            output = self._ask_kde(message)
-            if hasattr(output, "recommended") and hasattr(output, "activations"):
-                return moment_card(output)
-            return text_card(self._stringify(output), "Moment analysis")
-
+    def _execute(self, intent: str, message: str, ctx: dict) -> PrismCard:
         if intent.startswith("domain_"):
-            domain_name = {
+            domain_key = {
                 "domain_medical": "Medical",
                 "domain_financial": "Financial",
                 "domain_legal": "Legal",
                 "domain_hr": "HR",
                 "domain_supply": "Supply Chain",
+                "domain_climate": "Climate",
             }.get(intent, "Medical")
-            diagnosis = self._evaluate_domain(domain_name, message, context)
-            return domain_card(domain_name, diagnosis)
+            config = ALL_DOMAINS.get(domain_key)
+            if config is None:
+                return text_card(f"Domain '{domain_key}' not configured.")
+            profile = ctx.get("profile") or config.profiles[min(2, len(config.profiles) - 1)].name
+            factors = {factor.id: float(ctx.get(factor.id, 0.5)) for factor in config.factors}
+            diagnosis = DomainDecisionModel(config).evaluate(profile, factors)
+            return domain_card(domain_key, diagnosis)
+
+        if self._kde:
+            try:
+                result = self._kde.ask(message)
+                output = getattr(result, 'output', result)
+                try:
+                    from sports_pro import DailyPlan
+                    from prediction_engine import MatchPrediction, InjuryRiskPrediction
+                except Exception:
+                    DailyPlan = MatchPrediction = InjuryRiskPrediction = None
+                if DailyPlan and isinstance(output, DailyPlan):
+                    return plan_card(output)
+                if MatchPrediction and isinstance(output, MatchPrediction):
+                    return prediction_card(output)
+                if InjuryRiskPrediction and isinstance(output, InjuryRiskPrediction):
+                    return risk_card(output)
+                if isinstance(output, list) and output and hasattr(output[0], 'risk_level'):
+                    return squad_card(output)
+                if hasattr(output, 'recommended') and hasattr(output, 'activations') and hasattr(output, 'moment'):
+                    return moment_card(output)
+                if isinstance(output, str):
+                    return text_card(output)
+                return text_card(str(output))
+            except Exception as exc:
+                logger.debug("KDE ask failed: %s", exc)
+
+        if intent == "ksa_task" and self._ksa:
+            try:
+                return text_card(str(self._ksa.run(message)))
+            except Exception:
+                pass
 
         if intent == "identity":
-            return identity_card(self.reflect())
+            identity_data = {}
+            if self._kde and hasattr(self._kde, 'identity'):
+                try:
+                    identity_data = self._kde.identity() or {}
+                except Exception:
+                    identity_data = {}
+            elif self._kde and hasattr(self._kde, 'reflect'):
+                try:
+                    identity_data = self._kde.reflect() or {}
+                except Exception:
+                    identity_data = {}
+            return identity_card(identity_data)
 
         if intent == "artifacts":
-            tasks = []
-            if self.ksa_agent is not None and hasattr(self.ksa_agent, "registry"):
-                try:
-                    tasks = list(self.ksa_agent.registry.list_tasks())
-                except Exception:
-                    tasks = []
-            return PrismCard(
-                CardType.ARTIFACTS,
-                "Artifacts",
-                f"{len(tasks)} artifact record(s) available.",
-                {"artifacts": tasks},
-                actions=["Show recent work", "Search artifacts"],
-            )
-
-        if intent == "ksa_task":
-            if self.ksa_agent and hasattr(self.ksa_agent, "run"):
-                try:
-                    outcome = self.ksa_agent.run(message)
-                    body = getattr(outcome, "stdout", "") or getattr(outcome, "stderr", "") or str(outcome)
-                    return text_card(body.strip() or str(outcome), "Developer task")
-                except Exception as exc:
-                    return text_card(f"Developer task unavailable: {exc}", "Developer task")
-            return text_card("Developer task routing is not configured yet.", "Developer task")
-
-        if intent == "status":
-            return text_card(json.dumps(self.status(), default=str, indent=2), "Status")
-
+            return text_card("Artifacts are available via the /artifacts endpoint.", "Artifacts")
         if intent == "help":
-            return self._help_card()
-
-        if intent in {"session", "transfer", "scouting"}:
-            output = self._ask_kde(message)
-            return text_card(self._stringify(output), "PRISM")
-
-        return self._bootstrap_card()
-
-    def _ask_kde(self, message: str):
-        if self.kde_agent and hasattr(self.kde_agent, "ask"):
-            result = self.kde_agent.ask(message)
-            return getattr(result, "output", result)
-        return "KDE agent unavailable"
-
-    def _evaluate_domain(self, domain_name: str, message: str, context: dict):
-        model = self._domain_models[domain_name]
-        config = ALL_DOMAINS[domain_name]
-        profile = context.get("profile") or config.profiles[0].name
-        factors = {factor.id: 0.5 for factor in config.factors}
-        lowered = message.lower()
-        for factor in config.factors:
-            if factor.id in lowered or factor.label.lower() in lowered:
-                factors[factor.id] = 0.8
-        if "urgent" in lowered or "emergency" in lowered or "severe" in lowered:
-            for key in ("severity", "vital_signs", "deteriorating"):
-                if key in factors:
-                    factors[key] = 0.85
-        return model.evaluate(profile, factors)
-
-    def _help_card(self) -> PrismCard:
-        return text_card(
-            "Try: plan my day, predict Arsenal vs City, assess injury risk, analyse a moment, triage chest pain, or scan my files.",
-            "PRISM help",
-        )
-
-    def _bootstrap_card(self) -> PrismCard:
-        return PrismCard(
-            CardType.TEXT,
-            "Welcome to PRISM",
-            "PRISM routes developer, sport, and domain questions through one local chat interface.",
-            {},
-            actions=[
-                "Plan my day",
-                "Predict the next match",
-                "Assess injury risk",
-                "Triage a patient",
-            ],
-        )
-
-    def _stringify(self, value) -> str:
-        if isinstance(value, str):
-            return value
-        try:
-            return json.dumps(value, default=str, indent=2)
-        except TypeError:
-            return str(value)
-
-    def status(self) -> dict:
-        kde_status = {}
-        if self.kde_agent and hasattr(self.kde_agent, "status"):
-            try:
-                kde_status = dict(self.kde_agent.status())
-            except Exception:
-                kde_status = {"kde": "unavailable"}
-        ksa_status = {}
-        if self.ksa_agent and hasattr(self.ksa_agent, "status"):
-            try:
-                ksa_status = dict(self.ksa_agent.status())
-            except Exception:
-                ksa_status = {"ksa": "unavailable"}
-        return {"kde": kde_status, "ksa": ksa_status}
-
-    def reflect(self) -> dict:
-        if self.kde_agent and hasattr(self.kde_agent, "reflect"):
-            try:
-                data = self.kde_agent.reflect()
-                return data if isinstance(data, dict) else {"value": data}
-            except Exception as exc:
-                return {"error": str(exc)}
-        return {"profile": "Unknown", "fixed_fulcrum": 0.5, "total_ratings": 0, "total_plans": 0}
+            return text_card(
+                "I can help with: plan my day · match prediction · squad risk · moment analysis · "
+                "session footage · medical triage · financial portfolio · legal strategy · "
+                "identity profile · developer tasks (scan files, search code).",
+                "PRISM — What I can do",
+            )
+        if intent == "status":
+            return text_card(
+                f"Connected. KDE: {'active' if self._kde else 'offline'}. "
+                f"KSA: {'active' if self._ksa else 'offline'}.",
+                "Status",
+            )
+        return text_card("I'm not sure how to help with that. Try: 'help'")

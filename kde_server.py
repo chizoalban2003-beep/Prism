@@ -241,17 +241,17 @@ class KDEHandler(BaseHTTPRequestHandler):
             elif path == "/domain/list":
                 from domain_configs import ALL_DOMAINS
 
-                domains = [
-                    {
-                        "name": config.name,
-                        "domain": config.domain,
-                        "n_planks": len(config.planks),
-                        "n_profiles": len(config.profiles),
-                        "calibrated": config.calibrated,
-                    }
-                    for config in ALL_DOMAINS.values()
-                ]
-                self._json_response({"domains": domains})
+                self._json_response({
+                    "domains": [
+                        {
+                            "name": name,
+                            "domain": config.domain,
+                            "n_planks": len(config.planks),
+                            "n_profiles": len(config.profiles),
+                        }
+                        for name, config in ALL_DOMAINS.items()
+                    ]
+                })
 
             elif path == "/domain/profiles":
                 domain = qs.get("domain")
@@ -271,50 +271,33 @@ class KDEHandler(BaseHTTPRequestHandler):
                 self._json_response({"domain": domain, "profiles": profiles})
 
             elif path == "/domain/evaluate":
-                domain = qs.get("domain")
-                profile = qs.get("profile")
-                model = self.domain_models.get(domain)
-                if model is None:
-                    self._error(f"Unknown domain: {domain}", 404)
-                    return
-                if not profile:
-                    self._error("profile is required", 400)
-                    return
+                from domain_configs import ALL_DOMAINS, DomainDecisionModel
 
+                domain = qs.get("domain", "Medical")
+                profile = qs.get("profile")
+                config = ALL_DOMAINS.get(domain)
+                if config is None:
+                    self._error(f"Unknown: {domain}", 404)
+                    return
+                model = DomainDecisionModel(config)
+                if not profile:
+                    profile = config.profiles[0].name
                 factor_values = {
                     factor.id: float(qs.get(factor.id, 0.5))
-                    for factor in model.config.factors
+                    for factor in config.factors
                 }
-                beam = model.make_beam(profile, factor_values)
-                diagnosis = beam.evaluate()
-                labels = {factor.id: factor.label for factor in model.config.factors}
-                key_factors = sorted(
-                    [
-                        {
-                            "name": labels.get(factor.name, factor.name),
-                            "contribution": factor.contribution(),
-                        }
-                        for factor in beam.fulcrum.factors
-                        if factor.name != "_base"
-                    ],
-                    key=lambda item: abs(item["contribution"]),
-                    reverse=True,
-                )
+                diagnosis = model.evaluate(profile, factor_values)
                 self._json_response({
-                    "domain": domain,
-                    "profile": profile,
                     "recommended": diagnosis.primary_plank.name,
-                    "confidence": diagnosis.activations[0].activation,
-                    "fulcrum": diagnosis.fulcrum_position,
+                    "fulcrum": round(diagnosis.fulcrum_position, 3),
+                    "confidence": round(diagnosis.activations[0].activation, 3),
                     "options": [
                         {
                             "name": activation.plank.name,
-                            "activation": activation.activation,
-                            "position": activation.plank.position,
+                            "activation": round(activation.activation, 3),
                         }
                         for activation in diagnosis.activations
                     ],
-                    "key_factors": key_factors[:5],
                 })
 
             elif path == "/domain/sensitivity":
@@ -533,9 +516,10 @@ class KDEHandler(BaseHTTPRequestHandler):
 
         try:
             if path == '/chat':
-                message = body.get('message', '')
-                context = body.get('context', {})
-                card = self.server.prism_agent.chat(message, context)
+                from prism_agent import PrismAgent
+
+                agent = getattr(self.server, 'prism_agent', None) or PrismAgent()
+                card = agent.chat(body.get('message', ''), body.get('context', {}))
                 self._json_response(card.to_json())
                 return
 
