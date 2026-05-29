@@ -26,11 +26,11 @@ def test_fulcrum_weighted_centroid():
     assert fulcrum.position() == pytest.approx(expected)
 
 
-def test_fulcrum_empty_returns_half():
+def test_fulcrum_no_factors_returns_half():
     assert SpectrumFulcrum().position() == pytest.approx(0.5)
 
 
-def test_gaussian_activation_sums_to_one():
+def test_activations_sum_to_one():
     beam = DecisionBeam("beam", bandwidth=0.2)
     beam.add_plank(DecisionPlank("safe", 0.0, 10, 1, 2))
     beam.add_plank(DecisionPlank("mid", 0.5, 20, 2, 3))
@@ -39,7 +39,7 @@ def test_gaussian_activation_sums_to_one():
     assert sum(a.activation for a in acts) == pytest.approx(1.0, abs=1e-9)
 
 
-def test_primary_plank_is_highest():
+def test_primary_plank_is_maximum():
     beam = DecisionBeam("beam", bandwidth=0.2)
     beam.add_plank(DecisionPlank("left", 0.0, 10, 1, 2))
     beam.add_plank(DecisionPlank("center", 0.5, 20, 2, 3))
@@ -55,7 +55,7 @@ def test_expected_net_formula():
     assert diag.expected_net == pytest.approx((100 * 0.8) - 10)
 
 
-def test_adaptive_observe_updates_weights():
+def test_adaptive_observe_changes_weight():
     fulcrum = AdaptiveFulcrum(
         [
             Factor("a", 0.8, 1.0, 0.7),
@@ -66,6 +66,11 @@ def test_adaptive_observe_updates_weights():
     fulcrum.observe(actual_payoff=120.0, predicted_payoff=80.0, chosen_position=0.65)
     after = {f.name: f.weight for f in fulcrum.factors}
     assert any(after[name] != before[name] for name in before)
+
+
+def test_beam_no_planks_raises():
+    with pytest.raises(ValueError):
+        DecisionBeam("empty").evaluate()
 
 
 def test_decision_network_converges():
