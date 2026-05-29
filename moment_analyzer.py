@@ -101,6 +101,7 @@ class ActionOutcome:
     action_taken: str
     success:      bool
     xg_delta:     float = 0.0
+    xg_realized:  float = 0.0
     notes:        str   = ""
 
 
@@ -179,8 +180,9 @@ class MomentAnalyzer:
             chosen = next((o for o in cfg.options if o.name == outcome.action_taken), None)
             if chosen:
                 actual = chosen.payoff * (1.0 if outcome.success else 0.15)
-                if hasattr(outcome, "xg_realized") and outcome.xg_realized > 0:
-                    actual = outcome.xg_realized * chosen.payoff
+                realized_xg = outcome.xg_realized if outcome.xg_realized > 0 else outcome.xg_delta
+                if realized_xg > 0:
+                    actual = realized_xg * chosen.payoff
                 self._get_fulcrum(moment.focal_player, moment.moment_type).observe(
                     actual, chosen.payoff * chosen.base_prob, chosen.position)
         player = moment.focal_player
