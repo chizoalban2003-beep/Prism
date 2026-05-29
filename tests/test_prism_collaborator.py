@@ -86,7 +86,7 @@ def test_call_claude_raw_sends_api_key_and_extracts_text():
         raw = collaborator._call_claude_raw("prompt")
 
     assert json.loads(raw)["findings"]["eta_min"] == 12
-    assert captured["headers"]["X-api-key"] == "secret-key"
+    assert captured["headers"]["x-api-key"] == "secret-key"
 
 
 def test_synthesise_tool_requires_sandbox_test_when_testing():
