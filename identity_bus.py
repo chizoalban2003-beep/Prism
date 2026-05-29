@@ -46,7 +46,13 @@ class IdentityBus:
     """
 
     def __init__(self, db_path: str = "~/.prism/bus.db"):
-        self.db_path = Path(db_path).expanduser()
+        requested_path = Path(db_path).expanduser()
+        legacy_path = requested_path.with_name("identity_bus.db")
+        self.db_path = (
+            legacy_path
+            if db_path == "~/.prism/bus.db" and not requested_path.exists() and legacy_path.exists()
+            else requested_path
+        )
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._subs: dict[str, list[Callable[[IdentitySignal], None]]] = {}
         with sqlite3.connect(self.db_path) as conn:

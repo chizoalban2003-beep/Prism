@@ -47,7 +47,10 @@ def test_emergent_insight_compartmentaliser():
         created_at=time.time(),
         last_updated=time.time(),
     )
-    assert "Compartmentaliser" in identity.emergent_insight()
+    assert (
+        identity.emergent_insight()
+        == "Compartmentaliser — aggressive in some domains, conservative in others."
+    )
 
 
 def test_to_card_data_structure():
