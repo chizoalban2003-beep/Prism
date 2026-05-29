@@ -12,8 +12,13 @@ SECURITY: This server binds to 127.0.0.1 ONLY by design.
 
 Routes:
   GET  /status                 → agent.status()
+  GET  /policy                 → policy JSON for a user
   GET  /plan                   → today's daily plan (JSON)
+  GET  /tools/find             → tool discovery JSON
+  GET  /policy/spend           → policy spend summary JSON
   POST /ask                    → body: {"prompt":"..."} → TaskResult
+  POST /policy/set             → set one policy allocation
+  POST /policy/update_from_chat→ parse/update policy from chat text
   GET  /predict/match          → MatchPrediction JSON
   GET  /predict/injury         → InjuryRiskPrediction JSON
   GET  /predict/performance    → PerformancePrediction JSON
@@ -77,6 +82,8 @@ class KDEHandler(BaseHTTPRequestHandler):
     duel_analyzer:    object   # DuelAnalyzer
     domain_models:    dict     # domain name -> DomainDecisionModel
     live_pipeline:    object   # LiveMomentPipeline
+    policy_engine:    object   # PolicyEngine
+    tool_finder:      object   # ToolFinder
     _moment_history:  dict     # player → list[MomentResult]
 
     # ── common ────────────────────────────────────────────────────────────
@@ -142,6 +149,38 @@ class KDEHandler(BaseHTTPRequestHandler):
                 except TypeError:
                     data = str(brief)
                 self._json_response(data)
+
+            elif path == "/policy":
+                user = qs.get("user", "")
+                if not user:
+                    self._error('Query parameter "user" is required', 400)
+                    return
+                self._json_response(_safe_dict(self.policy_engine.get_policy(user)))
+
+            elif path == "/tools/find":
+                task = qs.get("task", "")
+                if not task:
+                    self._error("task is required", 400)
+                    return
+                provider = qs.get("provider", task)
+                result = self.tool_finder.find(
+                    task=task,
+                    provider_name=provider,
+                    urgency=float(qs.get("urgency", 0.5)),
+                    cost_tolerance=float(qs.get("cost_tolerance", 0.5)),
+                    prefers_auto=float(qs.get("prefers_auto", 0.5)),
+                    budget_left=float(qs.get("budget_left", 1.0)),
+                )
+                self._json_response(_safe_dict(result))
+
+            elif path == "/policy/spend":
+                user = qs.get("user", "")
+                category = qs.get("category", "")
+                if not user or not category:
+                    self._error("user and category are required", 400)
+                    return
+                days = int(qs.get("days", 30))
+                self._json_response(self.policy_engine.spend_summary(user, category, days))
 
             elif path == "/reflect":
                 self._json_response(self.agent.reflect())
@@ -241,17 +280,17 @@ class KDEHandler(BaseHTTPRequestHandler):
             elif path == "/domain/list":
                 from domain_configs import ALL_DOMAINS
 
-                domains = [
-                    {
-                        "name": config.name,
-                        "domain": config.domain,
-                        "n_planks": len(config.planks),
-                        "n_profiles": len(config.profiles),
-                        "calibrated": config.calibrated,
-                    }
-                    for config in ALL_DOMAINS.values()
-                ]
-                self._json_response({"domains": domains})
+                self._json_response({
+                    "domains": [
+                        {
+                            "name": name,
+                            "domain": config.domain,
+                            "n_planks": len(config.planks),
+                            "n_profiles": len(config.profiles),
+                        }
+                        for name, config in ALL_DOMAINS.items()
+                    ]
+                })
 
             elif path == "/domain/profiles":
                 domain = qs.get("domain")
@@ -271,50 +310,33 @@ class KDEHandler(BaseHTTPRequestHandler):
                 self._json_response({"domain": domain, "profiles": profiles})
 
             elif path == "/domain/evaluate":
-                domain = qs.get("domain")
-                profile = qs.get("profile")
-                model = self.domain_models.get(domain)
-                if model is None:
-                    self._error(f"Unknown domain: {domain}", 404)
-                    return
-                if not profile:
-                    self._error("profile is required", 400)
-                    return
+                from domain_configs import ALL_DOMAINS, DomainDecisionModel
 
+                domain = qs.get("domain", "Medical")
+                profile = qs.get("profile")
+                config = ALL_DOMAINS.get(domain)
+                if config is None:
+                    self._error(f"Unknown: {domain}", 404)
+                    return
+                model = DomainDecisionModel(config)
+                if not profile:
+                    profile = config.profiles[0].name
                 factor_values = {
                     factor.id: float(qs.get(factor.id, 0.5))
-                    for factor in model.config.factors
+                    for factor in config.factors
                 }
-                beam = model.make_beam(profile, factor_values)
-                diagnosis = beam.evaluate()
-                labels = {factor.id: factor.label for factor in model.config.factors}
-                key_factors = sorted(
-                    [
-                        {
-                            "name": labels.get(factor.name, factor.name),
-                            "contribution": factor.contribution(),
-                        }
-                        for factor in beam.fulcrum.factors
-                        if factor.name != "_base"
-                    ],
-                    key=lambda item: abs(item["contribution"]),
-                    reverse=True,
-                )
+                diagnosis = model.evaluate(profile, factor_values)
                 self._json_response({
-                    "domain": domain,
-                    "profile": profile,
                     "recommended": diagnosis.primary_plank.name,
-                    "confidence": diagnosis.activations[0].activation,
-                    "fulcrum": diagnosis.fulcrum_position,
+                    "fulcrum": round(diagnosis.fulcrum_position, 3),
+                    "confidence": round(diagnosis.activations[0].activation, 3),
                     "options": [
                         {
                             "name": activation.plank.name,
-                            "activation": activation.activation,
-                            "position": activation.plank.position,
+                            "activation": round(activation.activation, 3),
                         }
                         for activation in diagnosis.activations
                     ],
-                    "key_factors": key_factors[:5],
                 })
 
             elif path == "/domain/sensitivity":
@@ -533,9 +555,10 @@ class KDEHandler(BaseHTTPRequestHandler):
 
         try:
             if path == '/chat':
-                message = body.get('message', '')
-                context = body.get('context', {})
-                card = self.server.prism_agent.chat(message, context)
+                from prism_agent import PrismAgent
+
+                agent = getattr(self.server, 'prism_agent', None) or PrismAgent()
+                card = agent.chat(body.get('message', ''), body.get('context', {}))
                 self._json_response(card.to_json())
                 return
 
@@ -584,6 +607,42 @@ class KDEHandler(BaseHTTPRequestHandler):
             elif path == "/device/sync":
                 result = self.agent.sync_devices()
                 self._json_response({"synced": result})
+
+            elif path == "/policy/set":
+                from prism_policy import ResourceAllocation
+
+                user = body.get("user", "")
+                category = body.get("category", "")
+                if not user or not category:
+                    self._error("'user' and 'category' fields required", 400)
+                    return
+                policy = self.policy_engine.get_policy(user)
+                allocation = policy.allocations.get(category, ResourceAllocation(name=category))
+                for field_name in (
+                    "currency",
+                    "total_budget",
+                    "per_action_limit",
+                    "monthly_limit",
+                    "auto_approve_below",
+                    "preferred_providers",
+                    "blacklisted",
+                    "time_window",
+                    "notifications",
+                    "notes",
+                ):
+                    if field_name in body:
+                        setattr(allocation, field_name, body[field_name])
+                self.policy_engine.set_allocation(user, category, allocation)
+                self._json_response({"ok": True, "allocation": _safe_dict(allocation)})
+
+            elif path == "/policy/update_from_chat":
+                user = body.get("user", "")
+                message = body.get("message", "")
+                if not user or not message:
+                    self._error("'user' and 'message' fields required", 400)
+                    return
+                result = self.policy_engine.parse_policy_update(message, user)
+                self._json_response({"result": result})
 
             elif path == "/identity/observe":
                 domain = body.get("domain")
@@ -751,6 +810,8 @@ class KDEServer:
         moment_analyzer=None,
         duel_analyzer=None,
         domain_models=None,
+        policy_engine=None,
+        tool_finder=None,
     ) -> None:
         # SECURITY: enforce localhost-only binding
         if host != DEFAULT_HOST:
@@ -800,6 +861,23 @@ class KDEServer:
             self._prism_agent = PrismAgent(kde_agent=agent)
         except Exception:
             self._prism_agent = None
+        self._policy_engine = policy_engine
+        self._tool_finder = tool_finder
+        if self._policy_engine is None:
+            try:
+                from prism_policy import PolicyEngine
+
+                self._policy_engine = PolicyEngine()
+            except Exception:
+                self._policy_engine = None
+        if self._tool_finder is None:
+            try:
+                from prism_collaborator import PrismCollaborator
+                from prism_tool_finder import ToolFinder
+
+                self._tool_finder = ToolFinder(collaborator=PrismCollaborator())
+            except Exception:
+                self._tool_finder = None
 
         self._server:  Optional[HTTPServer] = None
         self._thread:  Optional[threading.Thread] = None
@@ -819,6 +897,8 @@ class KDEServer:
         moment_analyzer = self._moment_analyzer
         duel_analyzer   = self._duel_analyzer
         domain_models   = self._domain_models
+        policy_engine   = self._policy_engine
+        tool_finder     = self._tool_finder
 
         # Build live pipeline from the moment analyzer
         live_pipeline = None
@@ -838,6 +918,8 @@ class KDEServer:
         _Handler.duel_analyzer   = duel_analyzer
         _Handler.domain_models   = domain_models
         _Handler.live_pipeline   = live_pipeline
+        _Handler.policy_engine   = policy_engine
+        _Handler.tool_finder     = tool_finder
         _Handler._moment_history = {}  # player → list[MomentResult]
 
         self._server = HTTPServer((self._host, self._port), _Handler)

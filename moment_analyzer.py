@@ -22,8 +22,6 @@ MomentAnalyzer     — the analysis engine
 
 from __future__ import annotations
 
-import math
-import uuid
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -103,6 +101,7 @@ class ActionOutcome:
     action_taken: str
     success:      bool
     xg_delta:     float = 0.0
+    xg_realized:  float = 0.0
     notes:        str   = ""
 
 
@@ -124,151 +123,80 @@ class MomentResult:
 # ---------------------------------------------------------------------------
 
 class MomentAnalyzer:
-    """
-    Upgraded: wraps decision_spectrum.DecisionBeam for full activation
-    distribution and uses AdaptiveFulcrum for proper learning.
-    The focal_position calculation is unchanged from existing _compute_focal().
-    """
-
     def __init__(self) -> None:
         self._fulcrums: dict[str, AdaptiveFulcrum] = {}
         self._calibration: dict[str, dict] = {}
 
-    def _key(self, player: str, moment_type: str) -> str:
-        return f"{player}:{moment_type}"
-
     def _get_fulcrum(self, player: str, moment_type: str) -> AdaptiveFulcrum:
-        key = self._key(player, moment_type)
+        key = f"{player}:{moment_type}"
         if key not in self._fulcrums:
-            self._fulcrums[key] = AdaptiveFulcrum(
-                learning_rate=0.04,
-                weight_min=0.10,
-                weight_max=8.0,
-            )
+            self._fulcrums[key] = AdaptiveFulcrum(learning_rate=0.04,
+                                                   weight_min=0.10, weight_max=8.0)
         return self._fulcrums[key]
 
-    def analyze(self, moment: Moment) -> MomentResult:
-        """Score all options for *moment* and return a MomentResult."""
+    def analyze(self, moment) -> MomentResult:
         cfg = ALL_MOMENT_CONFIGS.get((moment.sport, moment.moment_type))
         if cfg is None:
-            raise KeyError(
-                f"No MomentSportConfig registered for "
-                f"({moment.sport!r}, {moment.moment_type!r})"
-            )
-
+            raise KeyError(f"No config for ({moment.sport}, {moment.moment_type})")
         focal = self._compute_focal(moment)
         adaptive = self._get_fulcrum(moment.focal_player, moment.moment_type)
-        anchor = next((f for f in adaptive.factors if f.name == "_focal_anchor"), None)
-        if anchor is None:
-            adaptive.add_factor(Factor("_focal_anchor", 1.0, 2.0, focal, "focal position"))
-        else:
-            anchor.value = 1.0
-            anchor.target = focal
-            anchor.description = "focal position"
-
+        adaptive.add_factor(Factor("_focal_anchor", 1.0, 2.0, focal))
         beam = DecisionBeam(moment.moment_id, bandwidth=cfg.bandwidth, fulcrum=adaptive)
-        adjusted_probs = {opt.name: self._adjusted_prob(opt, moment) for opt in cfg.options}
         for opt in cfg.options:
-            beam.add_plank(
-                DecisionPlank(
-                    opt.name,
-                    opt.position,
-                    opt.payoff,
-                    opt.cost,
-                    opt.risk,
-                    adjusted_probs[opt.name],
-                )
-            )
+            beam.add_plank(DecisionPlank(opt.name, opt.position, opt.payoff,
+                                          opt.cost, opt.risk, opt.base_prob))
         diag = beam.evaluate()
-
-        scores: dict[str, float] = {}
-        activations: list[tuple[str, float, float]] = []
-        for pa in diag.activations:
-            kernel = math.exp(
-                -(pa.plank.position - focal) ** 2 / (2.0 * cfg.bandwidth ** 2)
-            )
-            ev = adjusted_probs[pa.plank.name] * pa.plank.payoff - pa.plank.cost
-            raw_score = ev * kernel
-            scores[pa.plank.name] = raw_score
-            activations.append((pa.plank.name, pa.activation, raw_score))
-
-        best = max(scores, key=scores.__getitem__)
-        time_pressure = 0.0
+        option_scores = {a.plank.name: a.activation * a.plank.payoff * a.plank.probability
+                         for a in diag.activations}
+        activations = [(a.plank.name, a.activation,
+                        a.activation * a.plank.payoff * a.plank.probability)
+                       for a in diag.activations]
+        shoot_acts = [a for a in diag.activations
+                      if any(w in a.plank.name.lower()
+                             for w in ("shoot", "shot", "cross", "post", "corner", "driven"))]
+        xg = 0.0
+        if shoot_acts:
+            tot = sum(a.activation for a in shoot_acts)
+            wp = sum(a.activation * a.plank.probability for a in shoot_acts) / max(tot, 1e-9)
+            xg = (moment.xg_raw + wp) / 2.0 if moment.xg_raw > 0 else wp
+        tp = 0.0
         if moment.secondary_opponents:
             fastest = min(moment.secondary_opponents, key=lambda p: p.arrival_time)
-            time_pressure = max(0.0, 1.0 - fastest.arrival_time / 4.0)
-
-        shoot_acts = [
-            pa for pa in diag.activations
-            if "shoot" in pa.plank.name.lower()
-            or "shot" in pa.plank.name.lower()
-            or "cross" in pa.plank.name.lower()
-        ]
-        if shoot_acts:
-            total_activation = sum(a.activation for a in shoot_acts)
-            weighted_prob = sum(
-                a.activation * a.plank.probability for a in shoot_acts
-            ) / max(total_activation, 1e-9)
-            base_xg = moment.xg_raw if moment.xg_raw > 0 else moment.pitch_x * 0.35
-            xg_contextual = (base_xg + weighted_prob) / 2.0
-        else:
-            xg_contextual = 0.0
-
+            tp = max(0.0, 1.0 - fastest.arrival_time / 4.0)
         return MomentResult(
             moment=moment,
-            recommended=best,
-            xg_contextual=round(xg_contextual, 3),
-            option_scores=scores,
+            recommended=diag.primary_plank.name,
+            xg_contextual=round(xg, 3),
+            option_scores=option_scores,
             focal_position=focal,
             config=cfg,
             activations=activations,
-            time_pressure=time_pressure,
+            time_pressure=tp,
         )
 
-    def calibrate(self, moment: Moment, outcome: ActionOutcome) -> None:
+    def calibrate(self, moment, outcome) -> None:
         cfg = ALL_MOMENT_CONFIGS.get((moment.sport, moment.moment_type))
         if cfg:
             chosen = next((o for o in cfg.options if o.name == outcome.action_taken), None)
-            if chosen is not None:
-                actual_pay = chosen.payoff * (1.0 if outcome.success else 0.15)
-                if outcome.xg_delta > 0:
-                    actual_pay = outcome.xg_delta * chosen.payoff
-                adaptive = self._get_fulcrum(moment.focal_player, moment.moment_type)
-                adaptive.observe(
-                    actual_pay,
-                    chosen.payoff * chosen.base_prob,
-                    chosen.position,
-                )
-
+            if chosen:
+                actual = chosen.payoff * (1.0 if outcome.success else 0.15)
+                realized_xg = outcome.xg_realized if outcome.xg_realized > 0 else outcome.xg_delta
+                if realized_xg > 0:
+                    actual = realized_xg * chosen.payoff
+                self._get_fulcrum(moment.focal_player, moment.moment_type).observe(
+                    actual, chosen.payoff * chosen.base_prob, chosen.position)
         player = moment.focal_player
         if player not in self._calibration:
-            self._calibration[player] = {
-                "total": 0,
-                "success": 0,
-                "last_action": None,
-            }
-        cal = self._calibration[player]
-        cal["total"] += 1
+            self._calibration[player] = {"total": 0, "success": 0, "last_action": None}
+        c = self._calibration[player]
+        c["total"] += 1
         if outcome.success:
-            cal["success"] += 1
-        cal["last_action"] = outcome.action_taken
+            c["success"] += 1
+        c["last_action"] = outcome.action_taken
 
     def player_stats(self, player: str) -> dict:
-        """Return calibration statistics for *player*."""
-        cal = self._calibration.get(
-            player,
-            {"total": 0, "success": 0, "last_action": None},
-        )
-        total = cal.get("total", 0)
-        success = cal.get("success", 0)
-        return {
-            **cal,
-            "success_rate": success / total if total > 0 else 0.0,
-        }
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
+        c = self._calibration.get(player, {"total": 0, "success": 0, "last_action": None})
+        return {**c, "success_rate": c["success"] / c["total"] if c["total"] > 0 else 0.0}
 
     def _compute_focal(self, moment: Moment) -> float:
         """Derive the KDE focal position (0–1) from moment context."""

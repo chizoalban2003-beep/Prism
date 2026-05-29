@@ -5,6 +5,7 @@ on:
     branches: ["**"]
   pull_request:
     branches: ["**"]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -26,6 +27,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+          cache: pip
 
       - name: Install system dependencies
         run: |
@@ -37,6 +39,13 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest
+          python -m pip install .
 
       - name: Run tests
         run: pytest tests/ -v --tb=short
+
+      - name: Smoke test installed CLIs
+        run: |
+          prism --help > /dev/null
+          kde --help > /dev/null
+          ksa --help > /dev/null

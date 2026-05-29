@@ -30,12 +30,12 @@ def test_save_returns_id(tmp_path):
     assert artifact_id
 
 
-def test_recent_returns_list(tmp_path):
+def test_save_and_retrieve(tmp_path):
     store = _artifact_store(tmp_path)
-    store.save(_artifact())
+    artifact_id = store.save(_artifact())
     recent = store.recent()
-    assert isinstance(recent, list)
     assert recent
+    assert any(artifact.artifact_id == artifact_id for artifact in recent)
 
 
 def test_rate_updates(tmp_path):

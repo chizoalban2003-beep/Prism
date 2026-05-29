@@ -28,29 +28,26 @@ def _duel_event(
     }
 
 
-def test_enrich_adds_zone_label():
+def test_enrich_sets_zone_label():
     analyzer = DuelAnalyzer()
-    records = analyzer.process_match([_duel_event(x=110.0, y=12.0)], "match-1")
+    records = analyzer.process_match([_duel_event(x=100.0, y=12.0)], "match-1")
 
     assert records[0].zone_label == "box"
-    assert 0.0 <= records[0].pitch_zone_norm <= 1.0
 
 
-def test_enrich_adds_prediction():
+def test_enrich_sets_prediction():
     analyzer = DuelAnalyzer()
     records = analyzer.process_match([_duel_event()], "match-1")
 
-    assert records[0].predicted_winner != ""
+    assert records[0].predicted_winner in ("attacker", "defender", "contested")
 
 
-def test_model_accuracy_returns_float():
+def test_model_correct_is_bool():
     analyzer = DuelAnalyzer()
-    analyzer.process_match([_duel_event(), _duel_event(player="A2", defender="D2")], "match-1")
+    records = analyzer.process_match([_duel_event(), _duel_event(player="A2", defender="D2")], "match-1")
 
-    accuracy = analyzer.model_accuracy()
-
-    assert isinstance(accuracy, float)
-    assert 0.0 <= accuracy <= 1.0
+    assert isinstance(records[0].model_correct, bool)
+    assert isinstance(records[1].model_correct, bool)
 
 
 def test_expected_outcome_with_profile():

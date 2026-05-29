@@ -16,13 +16,14 @@ DuelAnalyzer  — high-level analyser: processes matches and evaluates duels
 
 from __future__ import annotations
 
-import math
 import uuid as _uuid_mod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
-from decision_spectrum import DecisionBeam, Factor, SpectrumFulcrum, OutcomeDiagnosis
-from sport_spectrum import ALL_SPORTS, SportDecisionModel, DuelModel, DuelOutcome
+from decision_spectrum import DecisionBeam, Factor, SpectrumFulcrum
+from sport_spectrum import ALL_SPORTS, SportDecisionModel, DuelModel
+
+BOX_ZONE_START = 100.0 / 120.0
 
 
 # ---------------------------------------------------------------------------
@@ -250,60 +251,41 @@ class DuelAnalyzer:
         return records
 
     def _enrich(self, rec: DuelRecord) -> None:
-        """Add zone, normalised coords, and model prediction to a record."""
+        """Add zone, normalised coords, and spectrum prediction to one DuelRecord."""
         x = rec.location_x
         rec.pitch_zone_norm = min(1.0, x / 120.0)
-        rec.zone_label = (
-            "own_third" if rec.pitch_zone_norm < 0.33 else
-            "middle" if rec.pitch_zone_norm < 0.67 else
-            "final_third" if rec.pitch_zone_norm < 0.88 else
-            "box"
-        )
+        rec.zone_label = ("own_third" if rec.pitch_zone_norm < 0.33
+                          else "middle" if rec.pitch_zone_norm < 0.67
+                          else "final_third" if rec.pitch_zone_norm < BOX_ZONE_START else "box")
         rec.defensive_press = max(0.0, 1.0 - rec.location_y / 80.0)
         rec.xg_at_location = rec.pitch_zone_norm * 0.4
-        rec.coupling = max(0.0, min(1.0, abs(rec.pitch_zone_norm - rec.defensive_press)))
-
-        if self._duel_model is None:
+        config = ALL_SPORTS.get("Football")
+        if config is None:
             return
-
-        config = ALL_SPORTS.get(self.sport)
-        profile_names = [p.name for p in config.profiles] if config else []
-
-        def best_profile(default_idx: int) -> str:
-            if not profile_names:
-                return "Unknown"
-            return profile_names[min(default_idx, len(profile_names) - 1)]
-
-        att_ctx = {
-            "pitch_zone": rec.pitch_zone_norm,
-            "press": rec.defensive_press,
-            "xg": rec.xg_at_location,
-        }
-        def_ctx = {
-            "pitch_zone": rec.pitch_zone_norm,
-            "press": 0.3,
-        }
-
+        model = SportDecisionModel(config)
+        duel = DuelModel(model, coupling_strength=0.65)
+        names = [p.name for p in config.profiles]
         try:
-            result = self._duel_model.simulate(
-                best_profile(7),
-                best_profile(1),
-                att_ctx,
-                def_ctx,
+            ctx = {
+                "pitch_zone": rec.pitch_zone_norm,
+                "press": rec.defensive_press,
+                "xg": rec.xg_at_location,
+            }
+            result = duel.simulate(
+                names[7],
+                names[1],
+                ctx,
+                {"pitch_zone": rec.pitch_zone_norm},
             )
+            rec.predicted_winner = result.advantage
+            rec.attacker_fulcrum = result.attacker_fulcrum
+            rec.defender_fulcrum = result.defender_fulcrum
+            rec.model_confidence = max(result.attacker_activation, result.defender_activation)
+            actual = ("attacker" if rec.attacker_won else
+                      "defender" if rec.attacker_won is False else "draw")
+            rec.model_correct = rec.predicted_winner in (actual, "contested")
         except Exception:
-            return
-
-        rec.predicted_winner = result.advantage
-        rec.attacker_fulcrum = result.attacker_fulcrum
-        rec.defender_fulcrum = result.defender_fulcrum
-        rec.model_confidence = max(result.attacker_activation, result.defender_activation)
-        actual = (
-            "attacker" if rec.attacker_won is True else
-            "defender" if rec.attacker_won is False else
-            "draw"
-        )
-        rec.model_correct = rec.predicted_winner in (actual, "contested")
+            pass
 
     def expected_outcome(
         self,

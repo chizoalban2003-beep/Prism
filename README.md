@@ -9,8 +9,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/tests-461%20passing-brightgreen">
-  <img src="https://img.shields.io/badge/CodeQL-0%20alerts-brightgreen">
+  <img src="https://github.com/chizoalban2003-beep/KSA/actions/workflows/ci.yml/badge.svg" alt="CI status">
   <img src="https://img.shields.io/badge/python-3.11%2B-blue">
   <img src="https://img.shields.io/badge/license-MIT-lightgrey">
   <img src="https://img.shields.io/badge/cloud-none-orange">
@@ -75,8 +74,9 @@ If you want installed CLI entry points instead of calling the Python files direc
 
 ```bash
 pip install .
-ksa --help
+prism --help
 kde --help
+ksa --help
 ```
 
 ### As a developer agent (KSA)
@@ -149,8 +149,10 @@ print(portfolio.primary_plank.name)  # "Equity focused"
 
 ## Configuration
 
-KDE detects your role from `kde_config.toml`. Create it anywhere in this order:
-`--config` flag · `$KDE_CONFIG` env · `~/.kde/config.toml` · `./kde_config.toml`
+PRISM/KDE detects your role from the first config file it finds in this order:
+`--config` flag · `$KDE_CONFIG` env · `~/.kde/config.toml` · `~/.kde/kde.toml` · `./prism_config.toml` · `./kde_config.toml`
+
+The repository includes `prism_config.toml` as a ready-to-edit sample.
 
 ```toml
 [user]
@@ -286,7 +288,7 @@ KDE/
 ├── Optimisation
 │   └── ksa_optimizer.py        Snapshot and executor optimisation helpers
 │
-└── tests/                      461 tests, all passing
+└── tests/                      Pytest suite covering the shipped modules
 ```
 
 ---
@@ -301,8 +303,6 @@ KDE/
 | Seasons covered | 10 |
 | Data source | StatsBomb Open Data |
 
-Full validation report: `INVESTOR_VALIDATION_SUMMARY.md`
-
 Next milestone: 200 expert-labeled decisions → measured accuracy on optimal/suboptimal binary classification (target: >60%).
 
 ---
@@ -312,7 +312,6 @@ Next milestone: 200 expert-labeled decisions → measured accuracy on optimal/su
 ```
 Python 3.11+
 psutil          resource monitoring
-tomli           TOML config (Python < 3.11)
 Pillow          image processing
 ```
 
@@ -332,7 +331,7 @@ All decision mathematics is pure Python arithmetic.
 
 ```bash
 python -m pytest tests/ -q
-# 461 passed in ~20 seconds
+# current suite passes locally in ~20 seconds
 ```
 
 ---
