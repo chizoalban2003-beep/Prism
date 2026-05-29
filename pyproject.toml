@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Kinetic Decision Engine — local sports intelligence and decision platform"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
+license = "MIT"
 dependencies = ["psutil>=5.9", "Pillow>=10.0"]
 urls = { Homepage = "https://github.com/chizoalban2003-beep/KSA", Repository = "https://github.com/chizoalban2003-beep/KSA" }
 
@@ -19,6 +19,51 @@ full = ["ffmpeg-python"]
 [project.scripts]
 kde = "kde_cli:main"
 ksa = "ksa_cli:main"
+
+[tool.setuptools]
+py-modules = [
+    "artifact_store",
+    "daily_workflow",
+    "decision_spectrum",
+    "device_hub",
+    "digital_identity",
+    "domain_configs",
+    "domain_validator",
+    "duel_analyzer",
+    "identity_bus",
+    "kde_agent",
+    "kde_cli",
+    "kde_config",
+    "kde_dashboard",
+    "kde_profiles",
+    "kde_server",
+    "kde_ui",
+    "ksa_agent",
+    "ksa_cli",
+    "ksa_config",
+    "ksa_executor",
+    "ksa_fixes",
+    "ksa_jarvis",
+    "ksa_lever",
+    "ksa_optimizer",
+    "ksa_registry",
+    "ksa_router",
+    "media_processor",
+    "moment_analyzer",
+    "moment_configs_ext",
+    "moment_pipeline",
+    "moment_validator",
+    "prediction_engine",
+    "prism_agent",
+    "prism_chat",
+    "prism_responses",
+    "sport_data",
+    "sport_executor",
+    "sport_spectrum",
+    "sport_tasks",
+    "sports_pro",
+    "vision_analyzer",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
