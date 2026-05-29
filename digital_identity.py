@@ -356,7 +356,7 @@ class CrystallisationEngine:
         return json.dumps(identity.to_dict() if identity else {})
 
     def reset_domain(self, domain: str) -> None:
-        """Clear a domain's profile. User-initiated — does not affect other domains."""
+        """Remove a domain profile and its history without affecting other domains."""
         now = time.time()
         with self._connect() as conn:
             conn.execute(
