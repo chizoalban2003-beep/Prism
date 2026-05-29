@@ -57,6 +57,7 @@ py-modules = [
     "prediction_engine",
     "prism_agent",
     "prism_chat",
+    "prism_policy",
     "prism_responses",
     "sport_data",
     "sport_executor",
