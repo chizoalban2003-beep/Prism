@@ -312,7 +312,6 @@ Next milestone: 200 expert-labeled decisions → measured accuracy on optimal/su
 ```
 Python 3.11+
 psutil          resource monitoring
-tomli           TOML config (Python < 3.11)
 Pillow          image processing
 ```
 

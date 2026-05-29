@@ -9,7 +9,7 @@ description = "PRISM — Decision intelligence. Crystallised into you."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-dependencies = ["psutil>=5.9", "Pillow>=10.0", "tomli>=2.0; python_version<'3.11'"]
+dependencies = ["psutil>=5.9", "Pillow>=10.0"]
 urls = { Homepage = "https://github.com/chizoalban2003-beep/KSA", Repository = "https://github.com/chizoalban2003-beep/KSA" }
 
 [project.optional-dependencies]
