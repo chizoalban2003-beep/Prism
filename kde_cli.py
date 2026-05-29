@@ -178,6 +178,7 @@ def _load_agent(args) -> KDEAgent:
         for candidate in [
             Path("~/.kde/config.toml").expanduser(),
             Path("~/.kde/kde.toml").expanduser(),
+            Path("./prism_config.toml"),
             Path("./kde_config.toml"),
         ]:
             if candidate.exists():

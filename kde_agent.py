@@ -515,6 +515,7 @@ class KDEAgent:
                     os.environ.get("KDE_CONFIG"),
                     "~/.kde/config.toml",
                     "~/.kde/kde.toml",
+                    "./prism_config.toml",
                     "./kde_config.toml",
                 ):
                     if option and Path(option).expanduser().exists():

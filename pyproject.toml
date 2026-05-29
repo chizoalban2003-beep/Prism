@@ -22,6 +22,7 @@ kde = "kde_cli:main"
 ksa = "ksa_cli:main"
 
 [tool.setuptools]
+license-files = ["LICENSE"]
 py-modules = [
     "artifact_store",
     "daily_workflow",

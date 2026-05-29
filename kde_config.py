@@ -11,8 +11,11 @@ Config file search order (first found wins):
     2. $KDE_CONFIG environment variable
     3. ~/.kde/kde.toml
     4. ~/.kde/kde.json
-    5. ./kde_config.toml
-    6. ./kde_config.json
+    5. ~/.kde/config.toml
+    6. ./prism_config.toml
+    7. ./prism_config.json
+    8. ./kde_config.toml
+    9. ./kde_config.json
 
 TOML schema:
     [agent]
@@ -58,6 +61,8 @@ _SEARCH_PATHS = [
     Path("~/.kde/config.toml"),
     Path("~/.kde/kde.toml"),
     Path("~/.kde/kde.json"),
+    Path("./prism_config.toml"),
+    Path("./prism_config.json"),
     Path("./kde_config.toml"),
     Path("./kde_config.json"),
 ]
