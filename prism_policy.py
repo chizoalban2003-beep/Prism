@@ -205,8 +205,13 @@ class PolicyEngine:
 
         if ":" in window and "-" in window:
             start_text, end_text = [part.strip() for part in window.split("-", maxsplit=1)]
-            start = datetime.strptime(start_text, "%H:%M").time()
-            end = datetime.strptime(end_text, "%H:%M").time()
+            try:
+                start = datetime.strptime(start_text, "%H:%M").time()
+                end = datetime.strptime(end_text, "%H:%M").time()
+            except ValueError as exc:
+                raise ValueError(
+                    f"Invalid time window '{window}'. Expected HH:MM-HH:MM format."
+                ) from exc
             current = now.time()
             if start <= end:
                 return start <= current <= end
