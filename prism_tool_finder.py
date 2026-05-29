@@ -258,7 +258,23 @@ class ToolFinder:
             cost_penalty = option.estimated_cost * max(0.2, 1.0 - cost_tolerance) * (1.2 - min(budget_left, 1.0)) * 0.12
             free_bonus = 0.35 if budget_left <= 0.0 and option.estimated_cost <= 0.0 else 0.0
             manual_bonus = 0.25 if budget_left <= 0.0 and option.execution_type == "manual" else 0.0
-            return closeness + auto_bonus + urgency_bonus + free_bonus + manual_bonus - time_penalty - cost_penalty
+            urgency_type_bonus = 0.0
+            if urgency >= 0.8 and option.execution_type in {"phone", "aggregator"}:
+                urgency_type_bonus = 0.30
+            urgency_type_penalty = 0.0
+            if urgency >= 0.8 and option.execution_type == "alternative":
+                urgency_type_penalty = 0.45
+            return (
+                closeness
+                + auto_bonus
+                + urgency_bonus
+                + free_bonus
+                + manual_bonus
+                + urgency_type_bonus
+                - time_penalty
+                - cost_penalty
+                - urgency_type_penalty
+            )
 
         return max(options, key=score)
 
