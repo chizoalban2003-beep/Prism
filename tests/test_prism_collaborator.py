@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import urllib.error
+import urllib.request
 from unittest.mock import patch
 
 from prism_collaborator import PrismCollaborator, ResearchResult
@@ -27,7 +28,7 @@ def test_research_parses_fenced_json_from_ollama():
         "response": '```json\n{"findings":{"transport_cost":1.8},"confidence":0.9}\n```'
     }
 
-    with patch("prism_collaborator.urllib.request.urlopen", return_value=_MockResponse(json.dumps(payload).encode())):
+    with patch.object(urllib.request, "urlopen", return_value=_MockResponse(json.dumps(payload).encode())):
         result = collaborator.research("uber surge price", ["transport_cost"], prefer_local=True)
 
     assert result.source == "ollama"
@@ -38,10 +39,7 @@ def test_research_parses_fenced_json_from_ollama():
 def test_research_falls_back_to_heuristics_when_ollama_fails():
     collaborator = PrismCollaborator()
 
-    with patch(
-        "prism_collaborator.urllib.request.urlopen",
-        side_effect=urllib.error.URLError("offline"),
-    ):
+    with patch.object(urllib.request, "urlopen", side_effect=urllib.error.URLError("offline")):
         result = collaborator.research(
             "Pizza Palace official website online ordering",
             ["website_url", "has_online_ordering", "phone_number"],
@@ -84,7 +82,7 @@ def test_call_claude_raw_sends_api_key_and_extracts_text():
         }
         return _MockResponse(json.dumps(body).encode())
 
-    with patch("prism_collaborator.urllib.request.urlopen", side_effect=_fake_urlopen):
+    with patch.object(urllib.request, "urlopen", side_effect=_fake_urlopen):
         raw = collaborator._call_claude_raw("prompt")
 
     assert json.loads(raw)["findings"]["eta_min"] == 12
