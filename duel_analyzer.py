@@ -254,7 +254,7 @@ class DuelAnalyzer:
         rec.pitch_zone_norm = min(1.0, x / 120.0)
         rec.zone_label = ("own_third" if rec.pitch_zone_norm < 0.33
                           else "middle" if rec.pitch_zone_norm < 0.67
-                          else "final_third" if rec.pitch_zone_norm < 0.88 else "box")
+                          else "final_third" if rec.pitch_zone_norm < (100.0 / 120.0) else "box")
         rec.defensive_press = max(0.0, 1.0 - rec.location_y / 80.0)
         rec.xg_at_location = rec.pitch_zone_norm * 0.4
         config = ALL_SPORTS.get("Football")
