@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "kde-platform"
@@ -10,10 +10,11 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = ["psutil>=5.9", "Pillow>=10.0"]
+urls = { Homepage = "https://github.com/chizoalban2003-beep/KSA", Repository = "https://github.com/chizoalban2003-beep/KSA" }
 
 [project.optional-dependencies]
 video = ["ffmpeg-python"]
-full = ["psutil>=5.9", "Pillow>=10.0"]
+full = ["ffmpeg-python"]
 
 [project.scripts]
 kde = "kde_cli:main"

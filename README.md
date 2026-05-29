@@ -9,7 +9,7 @@
 </p>
 
 <p>
-  <img src="https://img.shields.io/badge/tests-439%20passing-brightgreen">
+  <img src="https://img.shields.io/badge/tests-461%20passing-brightgreen">
   <img src="https://img.shields.io/badge/CodeQL-0%20alerts-brightgreen">
   <img src="https://img.shields.io/badge/python-3.11%2B-blue">
   <img src="https://img.shields.io/badge/license-MIT-lightgrey">
@@ -69,6 +69,14 @@ git clone https://github.com/chizoalban2003-beep/KSA.git
 cd KSA
 pip install -r requirements.txt
 # Optional: ffmpeg (video), Ollama (local LLM fallback)
+```
+
+If you want installed CLI entry points instead of calling the Python files directly:
+
+```bash
+pip install .
+ksa --help
+kde --help
 ```
 
 ### As a developer agent (KSA)
@@ -239,7 +247,9 @@ KDE/
 │   ├── kde_server.py           Local REST API (stdlib http.server)
 │   ├── kde_dashboard.py        HTML reports + terminal dashboard
 │   ├── kde_cli.py              CLI entry point
-│   └── kde_config.py           Config loader
+│   ├── kde_config.py           Config loader
+│   ├── kde_profiles.py         Profile catalogue and role defaults
+│   └── kde_ui.py               PRISM terminal and HTML UI helpers
 │
 ├── Sport intelligence
 │   ├── sport_spectrum.py       SportConfig, DuelModel, ALL_SPORTS
@@ -258,6 +268,13 @@ KDE/
 │   ├── media_processor.py      Video/image pipeline (ffmpeg + Pillow)
 │   └── vision_analyzer.py      Local vision AI via Ollama LLaVA
 │
+├── PRISM chat + identity
+│   ├── prism_agent.py          Unified PRISM orchestration layer
+│   ├── prism_chat.py           Local chat interface and UI payloads
+│   ├── prism_responses.py      Response formatting helpers
+│   ├── digital_identity.py     User identity state and profile signals
+│   └── identity_bus.py         Cross-module identity event bus
+│
 ├── Sport task executors
 │   ├── sport_executor.py       Video analysis, highlight reel, reports
 │   └── sport_tasks.py          Training plan, scouting, nutrition, social
@@ -266,7 +283,10 @@ KDE/
 │   ├── domain_configs.py       Medical · Financial · Legal · HR · Supply Chain · Climate
 │   └── domain_validator.py     Expert-label accuracy validation
 │
-└── tests/                      439 tests, all passing
+├── Optimisation
+│   └── ksa_optimizer.py        Snapshot and executor optimisation helpers
+│
+└── tests/                      461 tests, all passing
 ```
 
 ---
@@ -311,8 +331,8 @@ All decision mathematics is pure Python arithmetic.
 ## Running the tests
 
 ```bash
-pytest tests/ -v
-# 439 passed in < 20 seconds
+python -m pytest tests/ -q
+# 461 passed in ~20 seconds
 ```
 
 ---
