@@ -57,22 +57,18 @@ class DigitalIdentity:
         return sum(p.confidence for p in self.domains.values()) / len(self.domains)
 
     def emergent_insight(self) -> str:
-        """
-        Derive a plain-English insight from the cross-domain pattern.
-        Returns the most salient single insight.
-        """
-        observed = [p.fixed_fulcrum for p in self.domains.values() if p.n_observations > 0]
-        if observed and (max(observed) - min(observed)) > 0.4:
-            return "Compartmentaliser"
+        vals = [p.fixed_fulcrum for p in self.domains.values() if p.crystallised]
+        if not vals:
+            return "Insufficient data for insight."
+        if max(vals) - min(vals) > 0.40:
+            return "Compartmentaliser — aggressive in some domains, conservative in others."
         if self.overall_risk > 0.65:
-            return "Risk-seeking across contexts"
+            return "Risk-seeking across contexts."
         if self.overall_risk < 0.35:
-            return "Consistently conservative"
+            return "Consistently conservative decision-maker."
         if self.cross_signals.get("time_pressure_response", 0.5) > 0.75:
-            return "Thrives under pressure"
-        if self.consistency > 0.80:
-            return "Highly predictable decision-maker"
-        return "Identity still crystallising"
+            return "Thrives under pressure — decisions improve with urgency."
+        return "Balanced and consistent decision-maker."
 
     def to_dict(self) -> dict:
         return {
@@ -204,16 +200,19 @@ class CrystallisationEngine:
         context = context or {}
         with self._connect() as conn:
             row = self._get_domain_row(conn, domain)
-            if row is None or int(row["n_observations"]) <= 0:
-                fixed = fulcrum
-                variance = 0.0
-                n_observations = 1
+            if row is None:
+                previous_fixed = fulcrum
+                previous_variance = 0.5
+                previous_count = 0
             else:
                 previous_fixed = float(row["fixed_fulcrum"])
-                fixed = ((1.0 - self.EMA_ALPHA) * previous_fixed) + (self.EMA_ALPHA * fulcrum)
-                squared_error = (fulcrum - fixed) ** 2
-                variance = ((1.0 - self.EMA_ALPHA) * float(row["variance"])) + (self.EMA_ALPHA * squared_error)
-                n_observations = int(row["n_observations"]) + 1
+                previous_variance = float(row["variance"])
+                previous_count = int(row["n_observations"])
+            fixed = (self.EMA_ALPHA * fulcrum) + ((1.0 - self.EMA_ALPHA) * previous_fixed)
+            variance = (self.EMA_ALPHA * ((fulcrum - fixed) ** 2)) + (
+                (1.0 - self.EMA_ALPHA) * previous_variance
+            )
+            n_observations = previous_count + 1
             variance = max(0.0, min(1.0, variance))
             crystallised = int(n_observations >= self.MIN_OBS and variance < self.CRYSTALLISE_THR)
             conn.execute(
@@ -362,18 +361,10 @@ class CrystallisationEngine:
         with self._connect() as conn:
             conn.execute(
                 """
-                INSERT INTO domain_profiles (
-                    user_name, domain, fixed_fulcrum, variance, n_observations, crystallised, last_updated
-                )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(user_name, domain) DO UPDATE SET
-                    fixed_fulcrum = excluded.fixed_fulcrum,
-                    variance = excluded.variance,
-                    n_observations = excluded.n_observations,
-                    crystallised = excluded.crystallised,
-                    last_updated = excluded.last_updated
+                DELETE FROM domain_profiles
+                WHERE user_name = ? AND domain = ?
                 """,
-                (self.user_name, domain, 0.5, 1.0, 0, 0, now),
+                (self.user_name, domain),
             )
             conn.execute(
                 """

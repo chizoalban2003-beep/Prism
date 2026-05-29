@@ -1,15 +1,15 @@
 [build-system]
 requires = ["setuptools>=68", "wheel"]
-build-backend = "setuptools.build_meta"
+build-backend = "setuptools.backends.legacy:build"
 
 [project]
-name = "kde-platform"
+name = "prism-platform"
 version = "0.1.0"
-description = "Kinetic Decision Engine — local sports intelligence and decision platform"
+description = "PRISM — Decision intelligence. Crystallised into you."
 readme = "README.md"
 requires-python = ">=3.11"
-license = "MIT"
-dependencies = ["psutil>=5.9", "Pillow>=10.0"]
+license = { text = "MIT" }
+dependencies = ["psutil>=5.9", "Pillow>=10.0", "tomli>=2.0; python_version<'3.11'"]
 urls = { Homepage = "https://github.com/chizoalban2003-beep/KSA", Repository = "https://github.com/chizoalban2003-beep/KSA" }
 
 [project.optional-dependencies]
@@ -17,6 +17,7 @@ video = ["ffmpeg-python"]
 full = ["ffmpeg-python"]
 
 [project.scripts]
+prism = "kde_cli:main"
 kde = "kde_cli:main"
 ksa = "ksa_cli:main"
 
