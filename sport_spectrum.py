@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 from typing import Optional
 
@@ -82,7 +83,7 @@ class SportConfig:
 
 class SportDecisionModel:
     def __init__(self, config: SportConfig):
-        self.config = config
+        self.config = copy.deepcopy(config)
 
     def _resolve_profile(self, profile_name: str) -> SportProfile:
         wanted = _normalize_key(profile_name)
@@ -204,6 +205,7 @@ class DuelModel:
                     d_pos * cs,
                     cs * 1.5,
                     max(0.0, a_pos - d_pos * 0.4),
+                    "Defender pressure",
                 )
             )
             d_beam.fulcrum.add_factor(
@@ -212,6 +214,7 @@ class DuelModel:
                     a_pos * cs,
                     cs * 1.2,
                     min(1.0, d_pos + a_pos * 0.3),
+                    "Attacker threat",
                 )
             )
             new_a = a_beam.fulcrum.position()
