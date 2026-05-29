@@ -1,0 +1,25 @@
+<svg viewBox="0 0 640 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">PRISM — Decision Intelligence</title>
+  <desc id="desc">A prism mark refracting a decision spectrum into PRISM wordmark.</desc>
+  <defs>
+    <linearGradient id="beam" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3B82F6"/>
+      <stop offset="35%" stop-color="#22C55E"/>
+      <stop offset="68%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#EF4444"/>
+    </linearGradient>
+  </defs>
+  <rect width="640" height="220" rx="24" fill="#ffffff"/>
+  <rect x="40" y="100" width="150" height="14" rx="7" fill="#CBD5E1" opacity="0.55"/>
+  <polygon points="220,72 268,110 220,148" fill="#0F172A" opacity="0.92"/>
+  <rect x="70" y="100" width="120" height="14" rx="7" fill="#94A3B8" opacity="0.65"/>
+  <line x1="270" y1="108" x2="425" y2="70" stroke="#3B82F6" stroke-width="10" stroke-linecap="round" opacity="0.95"/>
+  <line x1="270" y1="110" x2="435" y2="110" stroke="#22C55E" stroke-width="10" stroke-linecap="round" opacity="0.95"/>
+  <line x1="270" y1="112" x2="425" y2="150" stroke="#F59E0B" stroke-width="10" stroke-linecap="round" opacity="0.95"/>
+  <line x1="270" y1="109" x2="448" y2="178" stroke="#EF4444" stroke-width="10" stroke-linecap="round" opacity="0.92"/>
+  <circle cx="448" cy="178" r="6" fill="#EF4444" opacity="0.85"/>
+  <text x="470" y="106" font-family="system-ui,-apple-system,BlinkMacSystemFont,sans-serif" font-size="54" font-weight="800" fill="#0F172A" letter-spacing="-2">PRISM</text>
+  <text x="472" y="130" font-family="system-ui,sans-serif" font-size="13" fill="#475569" letter-spacing="0.8">DECISION INTELLIGENCE</text>
+  <text x="472" y="168" font-family="system-ui,sans-serif" font-size="10" fill="#94A3B8" letter-spacing="1.4">CRYSTALLISED INTO YOU</text>
+  <rect x="40" y="180" width="190" height="6" rx="3" fill="url(#beam)" opacity="0.9"/>
+</svg>

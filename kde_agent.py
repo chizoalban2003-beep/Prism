@@ -19,6 +19,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import shutil
 import time
 import urllib.error
@@ -41,8 +42,9 @@ from sport_executor import (
     SessionLogExecutor,
 )
 from daily_workflow import DailyWorkflow, MorningBrief, SessionLog, EveningReview
+from kde_profiles import UserProfile, UserRole, from_toml
 from ksa_router import MasterFulcrum
-from ksa_registry import SnapshotRegistry
+from ksa_registry import PerformanceMetrics, SnapshotRegistry
 from ksa_fixes import LiveWeightInjector, GroundTruthOptimizer
 from sport_tasks import (
     TrainingPlanTask,
@@ -55,6 +57,11 @@ from sport_tasks import (
     PredictionReportTask,
 )
 from prediction_engine import PredictionPlatform
+from domain_configs import ALL_DOMAINS, DomainDecisionModel
+from ksa_executor import ExecutionContext, ExecutionOutcome, TaskExecutor, _ResourceSampler
+from artifact_store import Artifact, ArtifactStore
+from digital_identity import CrystallisationEngine
+from identity_bus import IdentityBus
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +74,9 @@ logger = logging.getLogger(__name__)
 class KDEConfig:
     db_path:       str  = "~/.kde/kde.db"
     media_dir:     str  = "~/.kde/media"
+    bus_db_path:   str  = "~/.prism/identity_bus.db"
+    identity_db_path: str = "~/.prism/identity.db"
+    artifact_db_path: str = "~/.prism/artifacts.db"
     ollama_host:   str  = "http://localhost:11434"
     ollama_model:  str  = "llava"
     text_model:    str  = "mistral"
@@ -85,12 +95,183 @@ class TaskResult:
     artifact_id: str = ""
 
 
+def _domain_outcome(
+    ctx: ExecutionContext,
+    action: str,
+    rc: int,
+    stdout: str,
+    stderr: str,
+    elapsed: float,
+    sampler: _ResourceSampler,
+) -> ExecutionOutcome:
+    metrics = PerformanceMetrics(
+        execution_time_ms=elapsed,
+        cpu_peak_pct=sampler.cpu_peak,
+        ram_peak_mb=sampler.ram_peak_mb,
+        success=rc == 0,
+        override_fired=ctx.result.override_active,
+        notes=f"action={action}",
+    )
+    return ExecutionOutcome(
+        task_name=ctx.task_name,
+        version=ctx.version,
+        action_taken=action,
+        return_code=rc,
+        stdout=stdout,
+        stderr=stderr,
+        metrics=metrics,
+        elapsed_ms=elapsed,
+    )
+
+
+class DomainEvaluateExecutor(TaskExecutor):
+    task_name = "domain_evaluate"
+
+    def __init__(
+        self,
+        domain_models: dict[str, DomainDecisionModel],
+        registry=None,
+        mode: str = "evaluate",
+    ) -> None:
+        self.task_name = {
+            "evaluate": "domain_evaluate",
+            "compare": "domain_compare",
+            "report": "domain_report",
+        }.get(mode, "domain_evaluate")
+        self._models = domain_models
+        self._registry = registry
+        self._mode = mode
+
+    def _extract_domain(self, prompt: str) -> str | None:
+        prompt_lower = prompt.lower()
+        for domain in self._models:
+            if domain.lower() in prompt_lower:
+                return domain
+        return next(iter(self._models), None)
+
+    def _extract_profile(self, domain: str, prompt: str) -> str | None:
+        prompt_lower = prompt.lower()
+        for profile in self._models[domain].config.profiles:
+            if profile.name.lower() in prompt_lower:
+                return profile.name
+        return self._models[domain].config.profiles[0].name if self._models[domain].config.profiles else None
+
+    def _extract_factors(self, domain: str, prompt: str) -> dict[str, float]:
+        factors = {factor.id: 0.5 for factor in self._models[domain].config.factors}
+        prompt_lower = prompt.lower()
+        for factor in self._models[domain].config.factors:
+            match = re.search(rf"{re.escape(factor.id.lower())}\s*[:=]?\s*(0(?:\.\d+)?|1(?:\.0+)?)", prompt_lower)
+            if match:
+                factors[factor.id] = max(0.0, min(1.0, float(match.group(1))))
+        return factors
+
+    def primary(self, ctx: ExecutionContext) -> ExecutionOutcome:
+        sampler = _ResourceSampler(); sampler.start()
+        t0 = time.perf_counter()
+        prompt = str(ctx.payload.get("prompt", ""))
+        try:
+            domain = self._extract_domain(prompt)
+            if not domain or domain not in self._models:
+                elapsed = (time.perf_counter() - t0) * 1000
+                sampler.stop()
+                return _domain_outcome(ctx, "primary", 1, "", "No matching domain found", elapsed, sampler)
+
+            model = self._models[domain]
+            profile = self._extract_profile(domain, prompt)
+            factors = self._extract_factors(domain, prompt)
+
+            if self._mode == "compare":
+                payload = {
+                    "domain": domain,
+                    "profiles": model.cross_profile_compare(factors),
+                }
+            elif self._mode == "report":
+                payload = {
+                    "domain": domain,
+                    "profiles": [profile.name for profile in model.config.profiles],
+                    "factors": [factor.id for factor in model.config.factors],
+                    "guidance": "Provide labeled cases to /domain/validate for an accuracy report.",
+                }
+            else:
+                beam = model.make_beam(profile, factors)
+                diagnosis = beam.evaluate()
+                payload = {
+                    "domain": domain,
+                    "profile": profile,
+                    "recommended": diagnosis.primary_plank.name,
+                    "confidence": diagnosis.activations[0].activation,
+                    "fulcrum": diagnosis.fulcrum_position,
+                    "options": [
+                        {
+                            "name": activation.plank.name,
+                            "activation": activation.activation,
+                            "position": activation.plank.position,
+                        }
+                        for activation in diagnosis.activations
+                    ],
+                }
+
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
+            return _domain_outcome(ctx, "primary", 0, json.dumps(payload), "", elapsed, sampler)
+        except Exception as exc:
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
+            return _domain_outcome(ctx, "primary", 1, "", str(exc), elapsed, sampler)
+
+    def secondary(self, ctx: ExecutionContext) -> ExecutionOutcome:
+        sampler = _ResourceSampler(); sampler.start()
+        t0 = time.perf_counter()
+        data = {
+            domain: [profile.name for profile in model.config.profiles]
+            for domain, model in self._models.items()
+        }
+        elapsed = (time.perf_counter() - t0) * 1000
+        sampler.stop()
+        return _domain_outcome(ctx, "secondary", 0, json.dumps(data), "", elapsed, sampler)
+
+    def safe(self, ctx: ExecutionContext) -> ExecutionOutcome:
+        sampler = _ResourceSampler(); sampler.start()
+        t0 = time.perf_counter()
+        prompt = str(ctx.payload.get("prompt", ""))
+        domain = self._extract_domain(prompt)
+        profile = self._extract_profile(domain, prompt) if domain else None
+        factors = self._extract_factors(domain, prompt) if domain else {}
+        out = json.dumps({
+            "would_evaluate": {
+                "domain": domain,
+                "profile": profile,
+                "factor_values": factors,
+            }
+        })
+        elapsed = (time.perf_counter() - t0) * 1000
+        sampler.stop()
+        return _domain_outcome(ctx, "safe", 0, out, "", elapsed, sampler)
+
+
 # ---------------------------------------------------------------------------
 # Intent routing map
 # ---------------------------------------------------------------------------
 
 # keyword fragments → task_name
 INTENT_MAP: dict[str, str] = {
+    # domain decisions
+    "triage":         "domain_evaluate",
+    "advise":         "domain_evaluate",
+    "recommend":      "domain_evaluate",
+    "portfolio":      "domain_evaluate",
+    "legal advice":   "domain_evaluate",
+    "hr decision":    "domain_evaluate",
+    "supply chain":   "domain_evaluate",
+    "climate":        "domain_evaluate",
+    "compare profiles": "domain_compare",
+    "who should":     "domain_compare",
+    "which option":   "domain_compare",
+    "best approach":  "domain_compare",
+    "all profiles":   "domain_compare",
+    "domain report":  "domain_report",
+    "validation report": "domain_report",
+    "accuracy":       "domain_report",
     # video analysis
     "analyse":        "video_analysis",
     "analyze":        "video_analysis",
@@ -182,15 +363,29 @@ class KDEAgent:
         self,
         profile: SportsProProfile,
         config:  Optional[KDEConfig] = None,
+        capabilities: Optional[list[str]] = None,
+        display_role: Optional[str] = None,
     ) -> None:
         self._profile = profile
         self._config  = config or KDEConfig()
+        self._capabilities = set(capabilities or [
+            "sports_pro", "daily_workflow", "device_hub", "moment_analyzer",
+            "prediction_engine", "sport_tasks", "domain_configs",
+        ])
+        self._display_role = display_role or profile.role.value
+        self._user_profile: Optional[UserProfile] = None
 
         # Expand paths
         db_path   = str(Path(self._config.db_path).expanduser())
         media_dir = str(Path(self._config.media_dir).expanduser())
+        bus_db_path = str(Path(self._config.bus_db_path).expanduser())
+        identity_db = str(Path(self._config.identity_db_path).expanduser())
+        artifact_db = str(Path(self._config.artifact_db_path).expanduser())
         Path(db_path).parent.mkdir(parents=True, exist_ok=True)
         Path(media_dir).mkdir(parents=True, exist_ok=True)
+        Path(bus_db_path).parent.mkdir(parents=True, exist_ok=True)
+        Path(identity_db).parent.mkdir(parents=True, exist_ok=True)
+        Path(artifact_db).parent.mkdir(parents=True, exist_ok=True)
 
         # Core layers
         self._assistant  = SportsProAssistant(db_path)
@@ -207,6 +402,9 @@ class KDEAgent:
         self._router     = MasterFulcrum(self._registry)
         self._injector   = LiveWeightInjector()
         self._optimizer  = GroundTruthOptimizer()
+        self._bus        = IdentityBus(db_path=bus_db_path)
+        self._crystal    = CrystallisationEngine(profile.name, self._bus, db_path=identity_db)
+        self._artifacts  = ArtifactStore(db_path=artifact_db)
 
         # Register profile
         self._assistant.register(profile)
@@ -247,24 +445,47 @@ class KDEAgent:
         }
 
         # Prediction platform + sport-task executors (prompt-3)
-        self._platform = PredictionPlatform()
-        _task_kwargs = dict(
-            registry    = self._registry,
-            platform    = self._platform,
-            output_dir  = str(Path(media_dir) / "artifacts"),
-            ollama_host = self._config.ollama_host,
-            text_model  = self._config.text_model,
-        )
-        self._executors.update({
-            "create_training_plan":  TrainingPlanTask(**_task_kwargs),
-            "match_report":          MatchReportTask(**_task_kwargs),
-            "scouting_report":       ScoutingReportTask(**_task_kwargs),
-            "nutrition_plan":        NutritionPlanTask(**_task_kwargs),
-            "social_media_post":     SocialMediaTask(**_task_kwargs),
-            "draft_email":           EmailDraftTask(**_task_kwargs),
-            "performance_dashboard": PerformanceDashboardTask(**_task_kwargs),
-            "prediction_report":     PredictionReportTask(**_task_kwargs),
-        })
+        self._platform = PredictionPlatform() if self._has_capability("prediction_engine", "sport_tasks") else None
+        if self._platform is not None and self._has_capability("sport_tasks"):
+            _task_kwargs = dict(
+                registry=self._registry,
+                platform=self._platform,
+                output_dir=str(Path(media_dir) / "artifacts"),
+                ollama_host=self._config.ollama_host,
+                text_model=self._config.text_model,
+            )
+            self._executors.update({
+                "create_training_plan": TrainingPlanTask(**_task_kwargs),
+                "match_report": MatchReportTask(**_task_kwargs),
+                "scouting_report": ScoutingReportTask(**_task_kwargs),
+                "nutrition_plan": NutritionPlanTask(**_task_kwargs),
+                "social_media_post": SocialMediaTask(**_task_kwargs),
+                "draft_email": EmailDraftTask(**_task_kwargs),
+                "performance_dashboard": PerformanceDashboardTask(**_task_kwargs),
+                "prediction_report": PredictionReportTask(**_task_kwargs),
+            })
+        if self._has_capability("domain_configs"):
+            domain_models = {
+                domain: DomainDecisionModel(config)
+                for domain, config in ALL_DOMAINS.items()
+            }
+            self._executors.update({
+                "domain_evaluate": DomainEvaluateExecutor(
+                    domain_models=domain_models,
+                    registry=self._registry,
+                    mode="evaluate",
+                ),
+                "domain_compare": DomainEvaluateExecutor(
+                    domain_models=domain_models,
+                    registry=self._registry,
+                    mode="compare",
+                ),
+                "domain_report": DomainEvaluateExecutor(
+                    domain_models=domain_models,
+                    registry=self._registry,
+                    mode="report",
+                ),
+            })
 
         # Register intents in router
         self._register_router_intents()
@@ -281,15 +502,75 @@ class KDEAgent:
     @classmethod
     def setup(
         cls,
-        name:   str,
-        role:   Role,
-        sport:  str,
-        team:   str        = "",
-        config: Optional[KDEConfig] = None,
+        profile: Optional[UserProfile] = None,
+        config_path: Optional[str] = None,
+        **kwargs,
     ) -> "KDEAgent":
-        """One-line setup: create profile, register, return agent."""
-        profile = SportsProProfile(name=name, role=role, sport=sport, team=team)
-        return cls(profile, config)
+        """Create an agent from a UserProfile or legacy keyword arguments."""
+        config = kwargs.pop("config", None)
+        if profile is None:
+            candidate = config_path
+            if candidate is None:
+                for option in (
+                    os.environ.get("KDE_CONFIG"),
+                    "~/.kde/config.toml",
+                    "~/.kde/kde.toml",
+                    "./kde_config.toml",
+                ):
+                    if option and Path(option).expanduser().exists():
+                        candidate = option
+                        break
+            if candidate:
+                try:
+                    profile = from_toml(candidate)
+                except Exception as exc:
+                    logger.debug("Could not load UserProfile from %s: %s", candidate, exc)
+
+        if profile is not None:
+            sports_role_map = {
+                UserRole.DEVELOPER: Role.ANALYST,
+                UserRole.ATHLETE: Role.ATHLETE,
+                UserRole.COACH: Role.COACH,
+                UserRole.ANALYST: Role.ANALYST,
+                UserRole.PHYSIO: Role.PHYSIOTHERAPIST,
+                UserRole.AGENT: Role.AGENT,
+                UserRole.UNIVERSAL: Role.ATHLETE,
+            }
+            if config is None:
+                config = KDEConfig(
+                    db_path=profile.db_path,
+                    media_dir=profile.media_dir,
+                    bus_db_path=getattr(profile, "bus_db_path", "~/.prism/identity_bus.db"),
+                    identity_db_path=getattr(profile, "identity_db_path", "~/.prism/identity.db"),
+                    artifact_db_path=getattr(profile, "artifact_db_path", "~/.prism/artifacts.db"),
+                    ollama_host=profile.ollama_host,
+                    ollama_model=profile.ollama_model,
+                    text_model=profile.text_model,
+                    ffmpeg_path=profile.ffmpeg_path,
+                    poll_interval=profile.poll_interval,
+                    auto_watch=profile.auto_watch,
+                )
+            sports_profile = SportsProProfile(
+                name=profile.name,
+                role=sports_role_map.get(profile.role, Role.ATHLETE),
+                sport=profile.sport,
+                team=profile.team,
+            )
+            agent = cls(
+                sports_profile,
+                config,
+                capabilities=profile.capabilities,
+                display_role=profile.role.value,
+            )
+            agent._user_profile = profile
+            return agent
+
+        name = kwargs.pop("name")
+        role = kwargs.pop("role")
+        sport = kwargs.pop("sport")
+        team = kwargs.pop("team", "")
+        sports_profile = SportsProProfile(name=name, role=role, sport=sport, team=team)
+        return cls(sports_profile, config)
 
     # ── device management ─────────────────────────────────────────────────
 
@@ -351,7 +632,31 @@ class KDEAgent:
                 energy       = energy or 7,
                 baseline_hrv = 60.0,
             )
-        return self._workflow.morning_briefing(manual_reading=reading)
+        brief = self._workflow.morning_briefing(manual_reading=reading)
+        try:
+            self._record_identity_artifact(
+                domain="sport",
+                fulcrum=float(brief.plan.fulcrum),
+                outcome_rating=float(brief.plan.activation),
+                artifact_type="plan",
+                title=f"{self._profile.name} morning briefing",
+                content={
+                    "time": brief.time,
+                    "plan": {
+                        "primary_focus": brief.plan.primary_focus,
+                        "activation": brief.plan.activation,
+                        "fulcrum": brief.plan.fulcrum,
+                        "tasks": [task.__dict__ for task in brief.plan.tasks],
+                        "warnings": list(brief.plan.warnings),
+                        "rationale": brief.plan.rationale,
+                    },
+                    "priority_tasks": list(brief.priority_tasks),
+                    "alerts": list(brief.alerts),
+                },
+            )
+        except Exception as exc:
+            logger.debug("Identity recording skipped for morning briefing: %s", exc)
+        return brief
 
     def log_session(
         self,
@@ -484,6 +789,62 @@ class KDEAgent:
         """Current learned state: fixed_fulcrum, drift, history summary."""
         return self._assistant.reflect(self._profile.name)
 
+    def identity(self) -> dict:
+        identity = self._crystal.get_identity()
+        return identity.to_card_data() if identity else {}
+
+    def identity_domains(self) -> list[dict]:
+        identity = self._crystal.get_identity()
+        if identity is None:
+            return []
+        return [
+            {
+                "domain": domain,
+                "fixed_fulcrum": profile.fixed_fulcrum,
+                "variance": profile.variance,
+                "n_observations": profile.n_observations,
+                "crystallised": profile.crystallised,
+                "confidence": profile.confidence,
+                "last_updated": profile.last_updated,
+            }
+            for domain, profile in sorted(identity.domains.items())
+        ]
+
+    def observe_identity(self, domain: str, fulcrum: float, rating: float, context: Optional[dict] = None) -> dict:
+        self._crystal.observe(domain, fulcrum, rating, context=context)
+        identity = self._crystal.get_identity()
+        return identity.to_card_data() if identity else {}
+
+    def reset_identity_domain(self, domain: str) -> dict:
+        self._crystal.reset_domain(domain)
+        identity = self._crystal.get_identity()
+        return identity.to_card_data() if identity else {}
+
+    def recent_artifacts(self, domain: Optional[str] = None, n: int = 10) -> list[dict]:
+        return [
+            {
+                "artifact_id": artifact.artifact_id,
+                "user_name": artifact.user_name,
+                "domain": artifact.domain,
+                "artifact_type": artifact.artifact_type,
+                "title": artifact.title,
+                "content": artifact.content,
+                "fulcrum_at_time": artifact.fulcrum_at_time,
+                "identity_version": artifact.identity_version,
+                "created_at": artifact.created_at,
+                "rating": artifact.rating,
+            }
+            for artifact in self._artifacts.recent(domain=domain, n=n)
+        ]
+
+    def rate_artifact(self, artifact_id: str, rating: float) -> dict:
+        self._artifacts.rate(artifact_id, rating)
+        artifact = self._artifacts.get(artifact_id)
+        return {
+            "artifact_id": artifact_id,
+            "rating": artifact.rating if artifact else max(0.0, min(1.0, float(rating))),
+        }
+
     def start_server(self, port: int = 8742, blocking: bool = False) -> str:
         """Start the local REST API. Returns the server URL."""
         from kde_server import KDEServer
@@ -515,8 +876,10 @@ class KDEAgent:
 
         return {
             "profile":          self._profile.name,
-            "role":             self._profile.role.value,
+            "role":             self._display_role,
             "sport":            self._profile.sport,
+            "team":             self._profile.team,
+            "capabilities":     sorted(self._capabilities),
             "devices":          [{"name": d.name, "enabled": d.enabled} for d in devices],
             "ollama_available": ollama_ok,
             "ffmpeg_available": ffmpeg_ok,
@@ -526,6 +889,9 @@ class KDEAgent:
             "fixed_fulcrum":    reflect_data.get("fixed_fulcrum"),
             "fulcrum_trend":    reflect_data.get("fulcrum_trend"),
         }
+
+    def _has_capability(self, *names: str) -> bool:
+        return any(name in self._capabilities for name in names)
 
     # ── private helpers ───────────────────────────────────────────────────
 
@@ -551,20 +917,36 @@ class KDEAgent:
         system.levers[0].set_weights(left=6.0, right=4.0)
         eq = system.simulate()
 
-        from ksa_executor import ExecutionContext
         ctx = ExecutionContext(
             task_name   = task_name,
             version     = 1,
             result      = eq,
             working_dir = str(Path(self._config.media_dir).expanduser()),
-            payload     = {"sport": self._profile.sport, "role": self._profile.role.value},
+            payload     = {
+                "sport": self._profile.sport,
+                "role": self._profile.role.value,
+                "prompt": prompt,
+            },
         )
 
         outcome = executor.primary(ctx)
         try:
-            return json.loads(outcome.stdout) if outcome.stdout else outcome.stderr
+            payload = json.loads(outcome.stdout) if outcome.stdout else outcome.stderr
         except (json.JSONDecodeError, ValueError):
-            return outcome.stdout or outcome.stderr
+            payload = outcome.stdout or outcome.stderr
+        if task_name == "domain_evaluate" and isinstance(payload, dict) and "domain" in payload and "fulcrum" in payload:
+            try:
+                self._record_identity_artifact(
+                    domain=str(payload["domain"]),
+                    fulcrum=float(payload["fulcrum"]),
+                    outcome_rating=float(payload.get("confidence", 0.5)),
+                    artifact_type="domain",
+                    title=f"{payload['domain']} domain evaluation",
+                    content=payload,
+                )
+            except Exception as exc:
+                logger.debug("Identity recording skipped for domain evaluation: %s", exc)
+        return payload
 
     def _llm_classify(self, prompt: str) -> tuple[str, str]:
         """Ask Ollama to classify the intent. Returns (task_name, method)."""
@@ -609,3 +991,29 @@ class KDEAgent:
                 self._router.register_intent(task_name, keywords=keywords)
             except Exception:
                 pass
+
+    def _record_identity_artifact(
+        self,
+        domain: str,
+        fulcrum: float,
+        outcome_rating: float,
+        artifact_type: str,
+        title: str,
+        content: dict,
+        context: Optional[dict] = None,
+    ) -> str:
+        self._crystal.observe(domain, fulcrum, outcome_rating, context=context)
+        identity = self._crystal.get_identity()
+        version = identity.version if identity else 1
+        artifact = Artifact(
+            artifact_id="",
+            user_name=self._profile.name,
+            domain=domain,
+            artifact_type=artifact_type,
+            title=title,
+            content=content,
+            fulcrum_at_time=max(0.0, min(1.0, float(fulcrum))),
+            identity_version=version,
+            created_at=time.time(),
+        )
+        return self._artifacts.save(artifact)

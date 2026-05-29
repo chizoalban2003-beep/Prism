@@ -9,6 +9,7 @@ Usage:
 
 Commands:
     setup                    First-time setup wizard
+    server | prism           Start local PRISM server + open browser
     morning                  Run morning briefing
     ask "<prompt>"           Natural language task
     session                  Log a session
@@ -24,7 +25,7 @@ Commands:
 
 Global flags:
     --profile NAME           Use a specific profile (default: last used)
-    --config PATH            Config file path (default: ~/.kde/kde.toml)
+    --config PATH            Config file path (default: ~/.kde/config.toml)
     --verbose                Debug logging
     --dry-run                Describe action without executing
 """
@@ -36,13 +37,16 @@ import json
 import logging
 import os
 import sys
+import webbrowser
 from pathlib import Path
 
 # Ensure the package directory is on the path when run as a script
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from kde_agent import KDEAgent, KDEConfig
+from kde_server import KDEServer, DEFAULT_PORT
 from kde_config import load_config, build_agent_from_config
+from kde_profiles import UserProfile, UserRole, setup_wizard, write_toml
 from sports_pro import Role
 from device_hub import DeviceType
 
@@ -73,7 +77,7 @@ _DEVICE_TYPE_ALIASES: dict[str, DeviceType] = {
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog        = "kde",
-        description = "KDE Sports Agent — Digital AI Coach & Analyst",
+        description = "PRISM — local decision intelligence chat and sports platform",
         formatter_class = argparse.RawDescriptionHelpFormatter,
     )
 
@@ -92,6 +96,9 @@ def _build_parser() -> argparse.ArgumentParser:
     sp_setup.add_argument("--role",  required=False, help="Role (athlete|coach|...)")
     sp_setup.add_argument("--sport", required=False, help="Sport")
     sp_setup.add_argument("--team",  required=False, default="", help="Team")
+
+    sp_server = sub.add_parser("server", help="Start local PRISM server", aliases=["prism"])
+    sp_server.add_argument("--port", type=int, default=DEFAULT_PORT, help="Port to bind (default 8742)")
 
     # morning
     sp_morning = sub.add_parser("morning", help="Morning briefing")
@@ -168,7 +175,11 @@ def _load_agent(args) -> KDEAgent:
     if config_path:
         cfg_file = config_path
     else:
-        for candidate in [Path("~/.kde/kde.toml").expanduser(), Path("./kde_config.toml")]:
+        for candidate in [
+            Path("~/.kde/config.toml").expanduser(),
+            Path("~/.kde/kde.toml").expanduser(),
+            Path("./kde_config.toml"),
+        ]:
             if candidate.exists():
                 cfg_file = str(candidate)
                 break
@@ -221,23 +232,19 @@ def _cache_profile(name: str) -> None:
 
 def _run_setup_wizard(config_path: str = None) -> KDEAgent:
     """Interactive first-time setup."""
-    print("\n=== KDE Sports Agent Setup ===\n")
-    name  = input("Your name: ").strip() or "Athlete"
-    print("Roles: athlete | coach | physiotherapist | analyst | performance_director | agent | nutritionist | psychologist")
-    role_str = input("Your role [athlete]: ").strip() or "athlete"
-    sport = input("Your sport: ").strip() or "general"
-    team  = input("Your team (optional): ").strip()
-
-    cfg = load_config(config_path)
-    role = Role.ATHLETE
-    for r in Role:
-        if r.value == role_str.lower():
-            role = r
-            break
-
-    agent = KDEAgent.setup(name=name, role=role, sport=sport, team=team, config=cfg)
-    _cache_profile(name)
-    print(f"\n✓ Profile created for {name} ({role.value}, {sport})\n")
+    original = os.environ.get("KDE_CONFIG")
+    if config_path:
+        os.environ["KDE_CONFIG"] = config_path
+    try:
+        profile = setup_wizard()
+    finally:
+        if config_path:
+            if original is None:
+                os.environ.pop("KDE_CONFIG", None)
+            else:
+                os.environ["KDE_CONFIG"] = original
+    agent = KDEAgent.setup(profile=profile)
+    _cache_profile(profile.name)
     return agent
 
 
@@ -245,20 +252,27 @@ def _run_setup_wizard(config_path: str = None) -> KDEAgent:
 # Command handlers
 # ---------------------------------------------------------------------------
 
-def cmd_setup(agent: KDEAgent, args) -> None:
+def cmd_setup(agent: KDEAgent | None, args) -> None:
     if args.name and args.role and args.sport:
-        role = Role.ATHLETE
-        for r in Role:
-            if r.value == args.role.lower():
-                role = r
-                break
-        new_agent = KDEAgent.setup(
-            name   = args.name,
-            role   = role,
-            sport  = args.sport,
-            team   = getattr(args, "team", ""),
-            config = agent._config,
+        role_aliases = {
+            "developer": UserRole.DEVELOPER,
+            "athlete": UserRole.ATHLETE,
+            "coach": UserRole.COACH,
+            "analyst": UserRole.ANALYST,
+            "physio": UserRole.PHYSIO,
+            "physiotherapist": UserRole.PHYSIO,
+            "agent": UserRole.AGENT,
+            "universal": UserRole.UNIVERSAL,
+        }
+        role = role_aliases.get(args.role.lower(), UserRole.ATHLETE)
+        profile = UserProfile(
+            name=args.name,
+            role=role,
+            sport=args.sport,
+            team=getattr(args, "team", ""),
         )
+        write_toml(profile, getattr(args, "config", None))
+        KDEAgent.setup(profile=profile)
         _cache_profile(args.name)
         print(f"✓ Profile created: {args.name} ({role.value}, {args.sport})")
     else:
@@ -443,6 +457,18 @@ def cmd_status(agent: KDEAgent, args) -> None:
     print()
 
 
+def cmd_server(agent: KDEAgent, args) -> None:
+    server = KDEServer(agent=agent, port=args.port, verbose=getattr(args, "verbose", False))
+    if args.dry_run:
+        print(f"[dry-run] Would start server at http://localhost:{args.port}")
+        return
+    try:
+        webbrowser.open(server.url)
+    except Exception:
+        logger.debug("Could not open browser automatically", exc_info=True)
+    server.start(blocking=True)
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -458,12 +484,7 @@ def main(argv=None) -> int:
     command = getattr(args, "command", None)
 
     if command == "setup":
-        # Setup may create a new agent, so handle separately
-        try:
-            agent = _load_agent(args)
-        except Exception:
-            agent = _run_setup_wizard(getattr(args, "config", None))
-        cmd_setup(agent, args)
+        cmd_setup(None, args)
         return 0
 
     if command is None:
@@ -492,6 +513,8 @@ def main(argv=None) -> int:
         "highlight": cmd_highlight,
         "reflect":   cmd_reflect,
         "status":    cmd_status,
+        "server":    cmd_server,
+        "prism":     cmd_server,
     }
 
     handler = dispatch.get(command)

@@ -75,6 +75,7 @@ class KDEHandler(BaseHTTPRequestHandler):
     platform:         object   # PredictionPlatform
     moment_analyzer:  object   # MomentAnalyzer
     duel_analyzer:    object   # DuelAnalyzer
+    domain_models:    dict     # domain name -> DomainDecisionModel
     live_pipeline:    object   # LiveMomentPipeline
     _moment_history:  dict     # player → list[MomentResult]
 
@@ -82,8 +83,11 @@ class KDEHandler(BaseHTTPRequestHandler):
 
     def _json_response(self, data: dict, status: int = 200) -> None:
         body = json.dumps(data, default=str).encode()
+        self._respond(body, status, "application/json")
+
+    def _respond(self, body: bytes, status: int = 200, content_type: str = "application/octet-stream") -> None:
         self.send_response(status)
-        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Access-Control-Allow-Origin",  "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -117,11 +121,17 @@ class KDEHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
-        path   = parsed.path.rstrip("/")
+        path   = parsed.path.rstrip("/") or "/"
         qs     = self._qs(parsed)
 
         try:
-            if path == "/status":
+            if path in ('/', '/app', '/chat', '/index.html'):
+                from prism_chat import get_chat_html
+
+                self._respond(get_chat_html().encode('utf-8'), 200, 'text/html; charset=utf-8')
+                return
+
+            elif path == "/status":
                 self._json_response(self.agent.status())
 
             elif path == "/plan":
@@ -135,6 +145,17 @@ class KDEHandler(BaseHTTPRequestHandler):
 
             elif path == "/reflect":
                 self._json_response(self.agent.reflect())
+
+            elif path == "/identity":
+                self._json_response(self.agent.identity())
+
+            elif path == "/identity/domains":
+                self._json_response({"domains": self.agent.identity_domains()})
+
+            elif path == "/artifacts":
+                domain = qs.get("domain")
+                n = int(qs.get("n", 10))
+                self._json_response({"artifacts": self.agent.recent_artifacts(domain=domain, n=n)})
 
             elif path == "/history":
                 days    = int(qs.get("days", 14))
@@ -214,6 +235,117 @@ class KDEHandler(BaseHTTPRequestHandler):
                     "generated_at":      brief_data["generated_at"],
                 }
                 self._json_response(serialised)
+
+            # ── Domain endpoints ─────────────────────────────────────────
+
+            elif path == "/domain/list":
+                from domain_configs import ALL_DOMAINS
+
+                domains = [
+                    {
+                        "name": config.name,
+                        "domain": config.domain,
+                        "n_planks": len(config.planks),
+                        "n_profiles": len(config.profiles),
+                        "calibrated": config.calibrated,
+                    }
+                    for config in ALL_DOMAINS.values()
+                ]
+                self._json_response({"domains": domains})
+
+            elif path == "/domain/profiles":
+                domain = qs.get("domain")
+                model = self.domain_models.get(domain)
+                if model is None:
+                    self._error(f"Unknown domain: {domain}", 404)
+                    return
+
+                profiles = [
+                    {
+                        "name": profile.name,
+                        "fixed_fulcrum": profile.fixed_fulcrum,
+                        "description": profile.description,
+                    }
+                    for profile in model.config.profiles
+                ]
+                self._json_response({"domain": domain, "profiles": profiles})
+
+            elif path == "/domain/evaluate":
+                domain = qs.get("domain")
+                profile = qs.get("profile")
+                model = self.domain_models.get(domain)
+                if model is None:
+                    self._error(f"Unknown domain: {domain}", 404)
+                    return
+                if not profile:
+                    self._error("profile is required", 400)
+                    return
+
+                factor_values = {
+                    factor.id: float(qs.get(factor.id, 0.5))
+                    for factor in model.config.factors
+                }
+                beam = model.make_beam(profile, factor_values)
+                diagnosis = beam.evaluate()
+                labels = {factor.id: factor.label for factor in model.config.factors}
+                key_factors = sorted(
+                    [
+                        {
+                            "name": labels.get(factor.name, factor.name),
+                            "contribution": factor.contribution(),
+                        }
+                        for factor in beam.fulcrum.factors
+                        if factor.name != "_base"
+                    ],
+                    key=lambda item: abs(item["contribution"]),
+                    reverse=True,
+                )
+                self._json_response({
+                    "domain": domain,
+                    "profile": profile,
+                    "recommended": diagnosis.primary_plank.name,
+                    "confidence": diagnosis.activations[0].activation,
+                    "fulcrum": diagnosis.fulcrum_position,
+                    "options": [
+                        {
+                            "name": activation.plank.name,
+                            "activation": activation.activation,
+                            "position": activation.plank.position,
+                        }
+                        for activation in diagnosis.activations
+                    ],
+                    "key_factors": key_factors[:5],
+                })
+
+            elif path == "/domain/sensitivity":
+                domain = qs.get("domain")
+                profile = qs.get("profile")
+                factor_id = qs.get("factor")
+                steps = int(qs.get("steps", 5))
+                model = self.domain_models.get(domain)
+                if model is None:
+                    self._error(f"Unknown domain: {domain}", 404)
+                    return
+                if not profile or not factor_id:
+                    self._error("profile and factor are required", 400)
+                    return
+
+                sweep = model.sensitivity_sweep(profile, factor_id, steps=steps)
+                values = [i / (steps - 1) for i in range(steps)] if steps > 1 else [0.0]
+                self._json_response({
+                    "domain": domain,
+                    "profile": profile,
+                    "factor": factor_id,
+                    "sweep": [
+                        {
+                            "value": value,
+                            "recommended": diagnosis.primary_plank.name,
+                            "fulcrum": diagnosis.fulcrum_position,
+                            "confidence": diagnosis.activations[0].activation,
+                        }
+                        for value, diagnosis in zip(values, sweep)
+                    ],
+                })
 
             # ── Moment endpoints ─────────────────────────────────────────
 
@@ -396,10 +528,17 @@ class KDEHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
-        path   = parsed.path.rstrip("/")
+        path   = parsed.path.rstrip("/") or "/"
         body   = self._read_body()
 
         try:
+            if path == '/chat':
+                message = body.get('message', '')
+                context = body.get('context', {})
+                card = self.server.prism_agent.chat(message, context)
+                self._json_response(card.to_json())
+                return
+
             if path == "/ask":
                 prompt = body.get("prompt", "")
                 if not prompt:
@@ -445,6 +584,34 @@ class KDEHandler(BaseHTTPRequestHandler):
             elif path == "/device/sync":
                 result = self.agent.sync_devices()
                 self._json_response({"synced": result})
+
+            elif path == "/identity/observe":
+                domain = body.get("domain")
+                if not domain:
+                    self._error("'domain' field required", 400)
+                    return
+                identity = self.agent.observe_identity(
+                    domain=domain,
+                    fulcrum=float(body.get("fulcrum", 0.5)),
+                    rating=float(body.get("rating", 0.5)),
+                    context=body.get("context") or {},
+                )
+                self._json_response(identity)
+
+            elif path == "/identity/reset":
+                domain = body.get("domain")
+                if not domain:
+                    self._error("'domain' field required", 400)
+                    return
+                self._json_response(self.agent.reset_identity_domain(domain))
+
+            elif path == "/artifacts/rate":
+                artifact_id = body.get("artifact_id")
+                if not artifact_id:
+                    self._error("'artifact_id' field required", 400)
+                    return
+                rating = float(body.get("rating", 0.0))
+                self._json_response(self.agent.rate_artifact(artifact_id, rating))
 
             # ── Moment POST endpoints ─────────────────────────────────────
 
@@ -520,6 +687,28 @@ class KDEHandler(BaseHTTPRequestHandler):
                     ),
                 })
 
+            elif path == "/domain/validate":
+                from domain_validator import DomainValidator, LabeledDecision
+
+                domain = body.get("domain")
+                if domain not in self.domain_models:
+                    self._error(f"Unknown domain: {domain}", 404)
+                    return
+                cases = [
+                    LabeledDecision(
+                        case_id=item.get("case_id", str(index)),
+                        domain=domain,
+                        profile=item.get("profile", ""),
+                        factor_values=dict(item.get("factor_values", {})),
+                        expert_choice=item.get("expert_choice", ""),
+                        outcome=item.get("outcome", ""),
+                        notes=item.get("notes", ""),
+                    )
+                    for index, item in enumerate(body.get("cases", []), start=1)
+                ]
+                result = DomainValidator(domain).validate(cases)
+                self._json_response(dataclasses.asdict(result))
+
             else:
                 self._error(f"Unknown route: {path}", 404)
 
@@ -561,6 +750,7 @@ class KDEServer:
         platform=None,
         moment_analyzer=None,
         duel_analyzer=None,
+        domain_models=None,
     ) -> None:
         # SECURITY: enforce localhost-only binding
         if host != DEFAULT_HOST:
@@ -593,6 +783,23 @@ class KDEServer:
 
         self._moment_analyzer = moment_analyzer
         self._duel_analyzer   = duel_analyzer
+        if domain_models is None:
+            try:
+                from domain_configs import ALL_DOMAINS, DomainDecisionModel
+
+                domain_models = {
+                    domain: DomainDecisionModel(config)
+                    for domain, config in ALL_DOMAINS.items()
+                }
+            except ImportError:
+                domain_models = {}
+        self._domain_models = domain_models
+        try:
+            from prism_agent import PrismAgent
+
+            self._prism_agent = PrismAgent(kde_agent=agent)
+        except Exception:
+            self._prism_agent = None
 
         self._server:  Optional[HTTPServer] = None
         self._thread:  Optional[threading.Thread] = None
@@ -611,6 +818,7 @@ class KDEServer:
         platform        = self._platform
         moment_analyzer = self._moment_analyzer
         duel_analyzer   = self._duel_analyzer
+        domain_models   = self._domain_models
 
         # Build live pipeline from the moment analyzer
         live_pipeline = None
@@ -628,10 +836,12 @@ class KDEServer:
         _Handler.platform        = platform
         _Handler.moment_analyzer = moment_analyzer
         _Handler.duel_analyzer   = duel_analyzer
+        _Handler.domain_models   = domain_models
         _Handler.live_pipeline   = live_pipeline
         _Handler._moment_history = {}  # player → list[MomentResult]
 
         self._server = HTTPServer((self._host, self._port), _Handler)
+        self._server.prism_agent = self._prism_agent
         logger.warning("KDE server running on %s", self.url)
         print(f"KDE server running on {self.url}")
 
