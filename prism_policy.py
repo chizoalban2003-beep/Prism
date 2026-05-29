@@ -232,6 +232,27 @@ class PolicyEngine:
             ).fetchone()
         return float(row[0]) if row else 0.0
 
+    def spend_summary(self, user: str, category: str, days: int = 30) -> dict:
+        cutoff = time.time() - (max(days, 1) * 86400)
+        with sqlite3.connect(self.db_path) as connection:
+            row = connection.execute(
+                """
+                SELECT COALESCE(SUM(amount), 0), COUNT(*)
+                FROM spend_log
+                WHERE user=? AND category=? AND ts>? AND approved=1
+                """,
+                (user, category, cutoff),
+            ).fetchone()
+        total = float(row[0]) if row else 0.0
+        count = int(row[1]) if row else 0
+        return {
+            "user": user,
+            "category": category,
+            "days": max(days, 1),
+            "approved_spend": total,
+            "approved_actions": count,
+        }
+
     def _log_spend(
         self,
         user: str,
