@@ -73,6 +73,8 @@ class ToolRegistry:
 
 
 class PrismExecutorAgent:
+    """Plans and executes tasks, escalating policy-gated work via `on_approval` when needed."""
+
     def __init__(
         self,
         registry: Optional[ToolRegistry] = None,
@@ -83,7 +85,7 @@ class PrismExecutorAgent:
         self.registry = registry or ToolRegistry()
         self.policy_engine = policy_engine
         self.tool_finder = tool_finder
-        self.on_approval = on_approval or (lambda plan: False)
+        self.on_approval = on_approval or self._deny_approval
 
     def plan(
         self,
@@ -179,3 +181,8 @@ class PrismExecutorAgent:
             message = str(result.get("message", ""))
             return ExecutionResult(success, result, status, elapsed_ms, message)
         return ExecutionResult(True, {"result": result}, "executed", elapsed_ms)
+
+    @staticmethod
+    def _deny_approval(plan: ExecutionPlan) -> bool:
+        del plan
+        return False

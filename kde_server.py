@@ -153,7 +153,7 @@ class KDEHandler(BaseHTTPRequestHandler):
             elif path == "/policy":
                 user = qs.get("user", "")
                 if not user:
-                    self._error("user is required", 400)
+                    self._error('Query parameter "user" is required', 400)
                     return
                 self._json_response(_safe_dict(self.policy_engine.get_policy(user)))
 

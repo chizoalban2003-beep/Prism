@@ -7,6 +7,8 @@ from decision_spectrum import DecisionBeam, DecisionPlank, Factor
 
 logger = logging.getLogger(__name__)
 
+MAX_FAST_EXECUTION_TIME = 3.0
+
 
 @dataclass
 class ExecutionOption:
@@ -253,7 +255,7 @@ class ToolFinder:
                 "assisted": 0.12 * prefers_auto,
                 "full": 0.20 * prefers_auto,
             }.get(option.automation_level, 0.0)
-            urgency_bonus = max(0.0, (3.0 - option.time_to_execute)) * urgency * 0.20
+            urgency_bonus = max(0.0, (MAX_FAST_EXECUTION_TIME - option.time_to_execute)) * urgency * 0.20
             time_penalty = option.time_to_execute * max(0.0, 0.6 - urgency) * 0.04
             cost_penalty = option.estimated_cost * max(0.2, 1.0 - cost_tolerance) * (1.2 - min(budget_left, 1.0)) * 0.12
             free_bonus = 0.35 if budget_left <= 0.0 and option.estimated_cost <= 0.0 else 0.0

@@ -210,7 +210,8 @@ class PolicyEngine:
                 end = datetime.strptime(end_text, "%H:%M").time()
             except ValueError as exc:
                 raise ValueError(
-                    f"Invalid time window '{window}'. Expected HH:MM-HH:MM format."
+                    f"Invalid time window '{window}'. Expected HH:MM-HH:MM format "
+                    f"(e.g., '09:00-17:00')."
                 ) from exc
             current = now.time()
             if start <= end:
