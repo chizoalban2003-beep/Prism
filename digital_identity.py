@@ -202,7 +202,7 @@ class CrystallisationEngine:
             row = self._get_domain_row(conn, domain)
             if row is None:
                 previous_fixed = fulcrum
-                previous_variance = 0.5
+                previous_variance = 0.0
                 previous_count = 0
             else:
                 previous_fixed = float(row["fixed_fulcrum"])
