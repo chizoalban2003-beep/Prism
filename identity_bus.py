@@ -50,7 +50,9 @@ class IdentityBus:
         legacy_path = requested_path.with_name("identity_bus.db")
         self.db_path = (
             legacy_path
-            if db_path == "~/.prism/bus.db" and not requested_path.exists() and legacy_path.exists()
+            if requested_path == Path("~/.prism/bus.db").expanduser()
+            and not requested_path.exists()
+            and legacy_path.exists()
             else requested_path
         )
         self.db_path.parent.mkdir(parents=True, exist_ok=True)

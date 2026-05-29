@@ -75,4 +75,5 @@ def test_reset_domain_clears(tmp_path):
     engine.observe("sport", 0.6, 0.8)
     engine.reset_domain("sport")
     identity = engine.get_identity()
-    assert identity is None or "sport" not in identity.domains
+    assert identity is not None
+    assert "sport" not in identity.domains
