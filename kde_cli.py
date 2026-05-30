@@ -43,7 +43,7 @@ from pathlib import Path
 # Ensure the package directory is on the path when run as a script
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from kde_agent import KDEAgent, KDEConfig
+from kde_agent import KDEAgent
 from kde_server import KDEServer, DEFAULT_PORT
 from kde_config import load_config, build_agent_from_config
 from kde_profiles import UserProfile, UserRole, setup_wizard, write_toml

@@ -20,7 +20,6 @@ import uuid as _uuid_mod
 from dataclasses import dataclass
 from typing import Optional
 
-from decision_spectrum import DecisionBeam, Factor, SpectrumFulcrum
 from sport_spectrum import ALL_SPORTS, SportDecisionModel, DuelModel
 
 BOX_ZONE_START = 100.0 / 120.0

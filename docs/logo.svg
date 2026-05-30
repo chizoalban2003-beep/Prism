@@ -1,25 +1,64 @@
-<svg viewBox="0 0 640 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
-  <title id="title">PRISM — Decision Intelligence</title>
-  <desc id="desc">A prism mark refracting a decision spectrum into PRISM wordmark.</desc>
+<svg viewBox="0 0 480 120" xmlns="http://www.w3.org/2000/svg" role="img"
+     aria-label="PRISM — Decision Intelligence">
+  <title>PRISM</title>
+  <style>
+    .bg-fill { fill: transparent; }
+    .diamond  { fill: #1a1f2e; }
+    .d-inner  { fill: #ffffff; opacity: .22; }
+    .spec-bg  { fill: #e5e7eb; }
+    .act-main { fill: #1a1f2e; }
+    .act-side { fill: #9ca3af; }
+    .word     { fill: #1a1f2e; font-family: system-ui,-apple-system,sans-serif;
+                font-size: 44px; font-weight: 500; letter-spacing: -2px; }
+    .sub      { fill: #6b7280; font-family: system-ui,-apple-system,sans-serif;
+                font-size: 12px; font-weight: 400; letter-spacing: .06em; }
+    .rule     { stroke: #e5e7eb; stroke-width: .5; }
+    @media (prefers-color-scheme: dark) {
+      .diamond  { fill: #e8eaf0; }
+      .d-inner  { fill: #0f1117; opacity: .25; }
+      .spec-bg  { fill: #374151; }
+      .act-main { fill: #e8eaf0; }
+      .act-side { fill: #6b7280; }
+      .word     { fill: #e8eaf0; }
+      .sub      { fill: #9ca3af; }
+      .rule     { stroke: #374151; }
+    }
+  </style>
+
+  <!-- Spectrum bar -->
+  <rect x="14" y="60" width="76" height="3.5" rx="1.75" class="spec-bg"/>
+  <rect x="14" y="60" width="76" height="3.5" rx="1.75"
+        fill="url(#sg)" opacity=".85"/>
+
+  <!-- Activation bumps above bar -->
+  <ellipse cx="52" cy="50" rx="14" ry="6" fill="#5DCAA5" opacity=".2"/>
+  <ellipse cx="52" cy="50" rx="7"  ry="3.5" fill="#5DCAA5" opacity=".4"/>
+
+  <!-- Fulcrum diamond -->
+  <polygon points="52,28 65,52 52,76 39,52" class="diamond"/>
+  <polygon points="52,34 61,52 52,70 43,52" class="d-inner"/>
+
+  <!-- Activation dot -->
+  <circle cx="52" cy="34" r="2.5" class="act-main"/>
+  <circle cx="70" cy="38" r="1.5" class="act-side"/>
+  <circle cx="34" cy="38" r="1.5" class="act-side"/>
+
+  <!-- Vertical rule -->
+  <line x1="108" y1="22" x2="108" y2="98" class="rule"/>
+
+  <!-- Wordmark -->
+  <text x="126" y="82" class="word">PRISM</text>
+
+  <!-- Tagline -->
+  <text x="127" y="100" class="sub">DECISION INTELLIGENCE</text>
+
+  <!-- Gradient def -->
   <defs>
-    <linearGradient id="beam" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#3B82F6"/>
-      <stop offset="35%" stop-color="#22C55E"/>
-      <stop offset="68%" stop-color="#F59E0B"/>
-      <stop offset="100%" stop-color="#EF4444"/>
+    <linearGradient id="sg" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%"   stop-color="#3B8BD4"/>
+      <stop offset="40%"  stop-color="#5DCAA5"/>
+      <stop offset="70%"  stop-color="#EF9F27"/>
+      <stop offset="100%" stop-color="#E24B4A"/>
     </linearGradient>
   </defs>
-  <rect width="640" height="220" rx="24" fill="#ffffff"/>
-  <rect x="40" y="100" width="150" height="14" rx="7" fill="#CBD5E1" opacity="0.55"/>
-  <polygon points="220,72 268,110 220,148" fill="#0F172A" opacity="0.92"/>
-  <rect x="70" y="100" width="120" height="14" rx="7" fill="#94A3B8" opacity="0.65"/>
-  <line x1="270" y1="108" x2="425" y2="70" stroke="#3B82F6" stroke-width="10" stroke-linecap="round" opacity="0.95"/>
-  <line x1="270" y1="110" x2="435" y2="110" stroke="#22C55E" stroke-width="10" stroke-linecap="round" opacity="0.95"/>
-  <line x1="270" y1="112" x2="425" y2="150" stroke="#F59E0B" stroke-width="10" stroke-linecap="round" opacity="0.95"/>
-  <line x1="270" y1="109" x2="448" y2="178" stroke="#EF4444" stroke-width="10" stroke-linecap="round" opacity="0.92"/>
-  <circle cx="448" cy="178" r="6" fill="#EF4444" opacity="0.85"/>
-  <text x="470" y="106" font-family="system-ui,-apple-system,BlinkMacSystemFont,sans-serif" font-size="54" font-weight="800" fill="#0F172A" letter-spacing="-2">PRISM</text>
-  <text x="472" y="130" font-family="system-ui,sans-serif" font-size="13" fill="#475569" letter-spacing="0.8">DECISION INTELLIGENCE</text>
-  <text x="472" y="168" font-family="system-ui,sans-serif" font-size="10" fill="#94A3B8" letter-spacing="1.4">CRYSTALLISED INTO YOU</text>
-  <rect x="40" y="180" width="190" height="6" rx="3" fill="url(#beam)" opacity="0.9"/>
 </svg>

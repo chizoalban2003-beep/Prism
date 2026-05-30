@@ -1,18 +1,29 @@
 <p align="center">
-  <img src="docs/logo.svg" width="480" alt="PRISM — Decision Intelligence"/>
+  <img src="docs/logo.svg" width="420" alt="PRISM — Decision Intelligence"/>
 </p>
 
-<h1>PRISM — Decision Intelligence</h1>
-<p><strong>Crystallised into You.</strong></p>
-<p>
-  A unified local decision intelligence platform with a PRISM chat interface for sport, software work, and any domain where decisions are bounded, high-stakes, and need to be explained.
+<h1 align="center">PRISM — Decision Intelligence</h1>
+<p align="center"><strong>Crystallised into you.</strong></p>
+
+<p align="center">
+  A local-first platform that decides, explains, and executes — for any user, in any domain.<br>
+  Not a chatbot. Not a rules engine. Not an LLM wrapper.<br>
+  A physics-inspired decision model that learns from your outcomes,<br>
+  runs on your hardware, and belongs entirely to you.
 </p>
 
-<p>
-  <img src="https://github.com/chizoalban2003-beep/KSA/actions/workflows/ci.yml/badge.svg" alt="CI status">
-  <img src="https://img.shields.io/badge/python-3.11%2B-blue">
-  <img src="https://img.shields.io/badge/license-MIT-lightgrey">
-  <img src="https://img.shields.io/badge/cloud-none-orange">
+<p align="center">
+  <img src="https://github.com/chizoalban2003-beep/Prism/actions/workflows/ci.yml/badge.svg" alt="CI"/>
+  <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="Python"/>
+  <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="MIT"/>
+  <img src="https://img.shields.io/badge/cloud-none-orange" alt="no cloud"/>
+  <img src="https://img.shields.io/badge/runs-locally-orange" alt="local"/>
+</p>
+
+<p align="center">
+  <strong>Domains:</strong>
+  sport &nbsp;·&nbsp; medical &nbsp;·&nbsp; legal &nbsp;·&nbsp; financial &nbsp;·&nbsp;
+  HR &nbsp;·&nbsp; supply chain &nbsp;·&nbsp; climate &nbsp;·&nbsp; developer tools
 </p>
 
 ---
@@ -31,7 +42,7 @@ The engine underneath both is identical: a spectrum of options, a fulcrum whose 
 
 ## Who it is for
 
-| Role | What KDE does |
+| Role | What PRISM does |
 |---|---|
 | **Developer** | Routes tasks, manages system resources, learns your workflow via KSA |
 | **Professional athlete** | Plans daily training load, manages recovery, analyzes session footage |
@@ -64,8 +75,8 @@ configurations that produced the best real outcomes.
 ## Quick start
 
 ```bash
-git clone https://github.com/chizoalban2003-beep/KSA.git
-cd KSA
+git clone https://github.com/chizoalban2003-beep/Prism.git
+cd Prism
 pip install -r requirements.txt
 # Optional: ffmpeg (video), Ollama (local LLM fallback)
 ```
@@ -228,7 +239,7 @@ Key endpoints:
 ## Project structure
 
 ```
-KDE/
+PRISM/
 │
 ├── Core engine
 │   ├── decision_spectrum.py    DecisionBeam, Factor, AdaptiveFulcrum
@@ -251,7 +262,7 @@ KDE/
 │   ├── kde_cli.py              CLI entry point
 │   ├── kde_config.py           Config loader
 │   ├── kde_profiles.py         Profile catalogue and role defaults
-│   └── kde_ui.py               PRISM terminal and HTML UI helpers
+│   └── kde_ui.py               SPA served at localhost:8742
 │
 ├── Sport intelligence
 │   ├── sport_spectrum.py       SportConfig, DuelModel, ALL_SPORTS
@@ -275,7 +286,14 @@ KDE/
 │   ├── prism_chat.py           Local chat interface and UI payloads
 │   ├── prism_responses.py      Response formatting helpers
 │   ├── digital_identity.py     User identity state and profile signals
-│   └── identity_bus.py         Cross-module identity event bus
+│   ├── identity_bus.py         Cross-module identity event bus
+│   └── artifact_store.py       Artifact collection with identity tagging
+│
+├── Execution intelligence
+│   ├── prism_policy.py         Resource allocation + policy engine (CEO→Manager)
+│   ├── prism_tool_finder.py    Alternative execution path discovery
+│   ├── prism_collaborator.py   Claude/Ollama research + tool synthesis
+│   └── prism_executor_agent.py Agentic execution with tool registry + sandboxing
 │
 ├── Sport task executors
 │   ├── sport_executor.py       Video analysis, highlight reel, reports
@@ -293,6 +311,25 @@ KDE/
 
 ---
 
+## How it flows
+
+1. A user calls `prism`, `kde`, or `ksa` CLI (or the REST API, or Python API directly)
+2. The relevant agent (`prism_agent.py`, `kde_agent.py`, or `ksa_agent.py`) receives natural-language input
+3. Intent routing (`ksa_router.py` / KDE routing) maps the input to a registered executor or sport/domain module
+4. The appropriate executor or domain model calls into the Gaussian kernel engine (`decision_spectrum.py`)
+5. Results are returned as an inspectable decision distribution with named causes — nothing is a black box
+6. The policy engine checks the recommended action against the user's
+   resource allocation — budget, spending limits, preferred providers,
+   blacklist, time window
+7. If approved: the tool finder identifies how to execute (built-in tool,
+   app, website, aggregator, phone, or synthesised integration)
+8. The executor agent runs the action and logs it with a full audit trail
+9. The artifact store saves the result, tagged to the current identity version
+10. Outcomes are fed back via `AdaptiveFulcrum.observe()` to shift factor
+    weights — the system gets more accurate for this specific user over time
+
+---
+
 ## Validation — La Liga 10 seasons (2004–2018)
 
 | Metric | Result |
@@ -304,6 +341,19 @@ KDE/
 | Data source | StatsBomb Open Data |
 
 Next milestone: 200 expert-labeled decisions → measured accuracy on optimal/suboptimal binary classification (target: >60%).
+
+---
+
+## Docker
+
+Run the full platform in one command — no local Python setup needed:
+
+```
+docker build -t prism .
+docker run -p 8742:8742 prism
+```
+
+Then open http://localhost:8742 for the PRISM chat interface.
 
 ---
 
