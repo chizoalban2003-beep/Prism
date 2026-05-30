@@ -1,18 +1,29 @@
 <p align="center">
-  <img src="docs/logo.svg" width="480" alt="PRISM — Decision Intelligence"/>
+  <img src="docs/logo.svg" width="420" alt="PRISM — Decision Intelligence"/>
 </p>
 
-<h1>PRISM — Decision Intelligence</h1>
-<p><strong>Crystallised into You.</strong></p>
-<p>
-  A unified local decision intelligence platform with a PRISM chat interface for sport, software work, and any domain where decisions are bounded, high-stakes, and need to be explained.
+<h1 align="center">PRISM — Decision Intelligence</h1>
+<p align="center"><strong>Crystallised into you.</strong></p>
+
+<p align="center">
+  A local-first platform that decides, explains, and executes — for any user, in any domain.<br>
+  Not a chatbot. Not a rules engine. Not an LLM wrapper.<br>
+  A physics-inspired decision model that learns from your outcomes,<br>
+  runs on your hardware, and belongs entirely to you.
 </p>
 
-<p>
-  <img src="https://github.com/chizoalban2003-beep/Prism/actions/workflows/ci.yml/badge.svg" alt="CI status">
-  <img src="https://img.shields.io/badge/python-3.11%2B-blue">
-  <img src="https://img.shields.io/badge/license-MIT-lightgrey">
-  <img src="https://img.shields.io/badge/cloud-none-orange">
+<p align="center">
+  <img src="https://github.com/chizoalban2003-beep/Prism/actions/workflows/ci.yml/badge.svg" alt="CI"/>
+  <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="Python"/>
+  <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="MIT"/>
+  <img src="https://img.shields.io/badge/cloud-none-orange" alt="no cloud"/>
+  <img src="https://img.shields.io/badge/runs-locally-orange" alt="local"/>
+</p>
+
+<p align="center">
+  <strong>Domains:</strong>
+  sport &nbsp;·&nbsp; medical &nbsp;·&nbsp; legal &nbsp;·&nbsp; financial &nbsp;·&nbsp;
+  HR &nbsp;·&nbsp; supply chain &nbsp;·&nbsp; climate &nbsp;·&nbsp; developer tools
 </p>
 
 ---
