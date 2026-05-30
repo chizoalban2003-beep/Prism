@@ -251,7 +251,7 @@ PRISM/
 │   ├── kde_cli.py              CLI entry point
 │   ├── kde_config.py           Config loader
 │   ├── kde_profiles.py         Profile catalogue and role defaults
-│   └── kde_ui.py               PRISM terminal and HTML UI helpers
+│   └── kde_ui.py               SPA served at localhost:8742
 │
 ├── Sport intelligence
 │   ├── sport_spectrum.py       SportConfig, DuelModel, ALL_SPORTS
@@ -297,6 +297,25 @@ PRISM/
 │
 └── tests/                      Pytest suite covering the shipped modules
 ```
+
+---
+
+## How it flows
+
+1. A user calls `prism`, `kde`, or `ksa` CLI (or the REST API, or Python API directly)
+2. The relevant agent (`prism_agent.py`, `kde_agent.py`, or `ksa_agent.py`) receives natural-language input
+3. Intent routing (`ksa_router.py` / KDE routing) maps the input to a registered executor or sport/domain module
+4. The appropriate executor or domain model calls into the Gaussian kernel engine (`decision_spectrum.py`)
+5. Results are returned as an inspectable decision distribution with named causes — nothing is a black box
+6. The policy engine checks the recommended action against the user's
+   resource allocation — budget, spending limits, preferred providers,
+   blacklist, time window
+7. If approved: the tool finder identifies how to execute (built-in tool,
+   app, website, aggregator, phone, or synthesised integration)
+8. The executor agent runs the action and logs it with a full audit trail
+9. The artifact store saves the result, tagged to the current identity version
+10. Outcomes are fed back via `AdaptiveFulcrum.observe()` to shift factor
+    weights — the system gets more accurate for this specific user over time
 
 ---
 
