@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = ["psutil>=5.9", "Pillow>=10.0"]
-urls = { Homepage = "https://github.com/chizoalban2003-beep/KSA", Repository = "https://github.com/chizoalban2003-beep/KSA" }
+urls = { Homepage = "https://github.com/chizoalban2003-beep/Prism", Repository = "https://github.com/chizoalban2003-beep/Prism" }
 
 [project.optional-dependencies]
 video = ["ffmpeg-python"]
