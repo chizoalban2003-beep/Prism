@@ -9,7 +9,7 @@
 </p>
 
 <p>
-  <img src="https://github.com/chizoalban2003-beep/KSA/actions/workflows/ci.yml/badge.svg" alt="CI status">
+  <img src="https://github.com/chizoalban2003-beep/Prism/actions/workflows/ci.yml/badge.svg" alt="CI status">
   <img src="https://img.shields.io/badge/python-3.11%2B-blue">
   <img src="https://img.shields.io/badge/license-MIT-lightgrey">
   <img src="https://img.shields.io/badge/cloud-none-orange">
@@ -31,7 +31,7 @@ The engine underneath both is identical: a spectrum of options, a fulcrum whose 
 
 ## Who it is for
 
-| Role | What KDE does |
+| Role | What PRISM does |
 |---|---|
 | **Developer** | Routes tasks, manages system resources, learns your workflow via KSA |
 | **Professional athlete** | Plans daily training load, manages recovery, analyzes session footage |
@@ -64,8 +64,8 @@ configurations that produced the best real outcomes.
 ## Quick start
 
 ```bash
-git clone https://github.com/chizoalban2003-beep/KSA.git
-cd KSA
+git clone https://github.com/chizoalban2003-beep/Prism.git
+cd Prism
 pip install -r requirements.txt
 # Optional: ffmpeg (video), Ollama (local LLM fallback)
 ```
@@ -228,7 +228,7 @@ Key endpoints:
 ## Project structure
 
 ```
-KDE/
+PRISM/
 │
 ├── Core engine
 │   ├── decision_spectrum.py    DecisionBeam, Factor, AdaptiveFulcrum
@@ -275,7 +275,14 @@ KDE/
 │   ├── prism_chat.py           Local chat interface and UI payloads
 │   ├── prism_responses.py      Response formatting helpers
 │   ├── digital_identity.py     User identity state and profile signals
-│   └── identity_bus.py         Cross-module identity event bus
+│   ├── identity_bus.py         Cross-module identity event bus
+│   └── artifact_store.py       Artifact collection with identity tagging
+│
+├── Execution intelligence
+│   ├── prism_policy.py         Resource allocation + policy engine (CEO→Manager)
+│   ├── prism_tool_finder.py    Alternative execution path discovery
+│   ├── prism_collaborator.py   Claude/Ollama research + tool synthesis
+│   └── prism_executor_agent.py Agentic execution with tool registry + sandboxing
 │
 ├── Sport task executors
 │   ├── sport_executor.py       Video analysis, highlight reel, reports
@@ -304,6 +311,19 @@ KDE/
 | Data source | StatsBomb Open Data |
 
 Next milestone: 200 expert-labeled decisions → measured accuracy on optimal/suboptimal binary classification (target: >60%).
+
+---
+
+## Docker
+
+Run the full platform in one command — no local Python setup needed:
+
+```
+docker build -t prism .
+docker run -p 8742:8742 prism
+```
+
+Then open http://localhost:8742 for the PRISM chat interface.
 
 ---
 
