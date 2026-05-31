@@ -554,6 +554,21 @@ class KDEHandler(BaseHTTPRequestHandler):
         body   = self._read_body()
 
         try:
+            if path == '/plan':
+                from prism_planner import PrismPlanner
+                planner = getattr(self.server, 'prism_planner', None)
+                if not planner:
+                    planner = PrismPlanner()
+                    self.server.prism_planner = planner
+                plan = planner.plan(
+                    task_description = body.get('task', ''),
+                    user_context     = body.get('context', {}),
+                    n_plans          = body.get('n_plans', 4),
+                )
+                from prism_responses import plan_of_action_card
+                self._json_response(plan_of_action_card(plan).to_json())
+                return
+
             if path == '/chat':
                 from prism_agent import PrismAgent
 

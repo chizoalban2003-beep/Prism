@@ -444,3 +444,51 @@ def test_call_llm_routes_to_ollama_when_no_key():
     planner._call_ollama = fake_ollama  # type: ignore[method-assign]
     planner._call_llm("any prompt")
     assert called_with == ["ollama"]
+
+
+# ---------------------------------------------------------------------------
+# plan_of_action_card integration
+# ---------------------------------------------------------------------------
+
+def test_plan_of_action_card_structure():
+    from prism_responses import plan_of_action_card, PrismCard
+
+    strategies = [
+        StrategyPlan(
+            name="Structured plan", position=0.4, activation=0.55,
+            expected_value=60.0, risk_score=20, steps=[], timeline="6 months",
+            resources=["shoes"], expected_outcome="finish marathon",
+            risks=["injury"], why_recommended="best fit",
+        ),
+        StrategyPlan(
+            name="Walk only", position=0.1, activation=0.25,
+            expected_value=27.0, risk_score=5, steps=[], timeline="6 months",
+            resources=[], expected_outcome="", risks=[], why_recommended="safer",
+        ),
+    ]
+    plan = PlanOfAction(
+        task="run a marathon", domain="fitness", entity="individual",
+        timeline="6 months", fulcrum_position=0.38,
+        recommended=strategies[0], all_strategies=strategies,
+        context_summary="Low fitness; moderate plan optimal.",
+    )
+    card = plan_of_action_card(plan)
+    assert isinstance(card, PrismCard)
+    assert "strategies" in card.card_data
+    assert len(card.card_data["strategies"]) == 2
+    assert card.card_data["strategies"][0]["rank"] == 1
+    assert card.card_data["strategies"][1]["rank"] == 2
+    assert card.card_data["domain"] == "fitness"
+    assert card.card_data["timeline"] == "6 months"
+    assert "fulcrum" in card.card_data
+
+
+def test_to_chat_response_non_empty():
+    strategies = [_make_strategy(name="Plan A", activation=0.6, why="fits budget")]
+    plan = PlanOfAction(
+        task="run a marathon", domain="fitness", entity="individual",
+        timeline="6 months", fulcrum_position=0.4,
+        recommended=strategies[0], all_strategies=strategies,
+        context_summary="Low fitness but motivated.",
+    )
+    assert plan.to_chat_response() != ""

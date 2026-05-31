@@ -139,3 +139,67 @@ def moment_card(result) -> PrismCard:
 
 def identity_card(identity_data: dict) -> PrismCard:
     return PrismCard(CardType.IDENTITY, "Your Decision Profile", "", identity_data)
+
+
+def plan_of_action_card(plan: "PlanOfAction") -> PrismCard:
+    """
+    Renders a PlanOfAction as a PRISM chat card.
+
+    card_data structure:
+    {
+      "task": str,
+      "domain": str,
+      "timeline": str,
+      "fulcrum": float,
+      "context_summary": str,
+      "strategies": [
+        {
+          "name": str,
+          "rank": int,
+          "activation": float,        # 0-1 confidence
+          "expected_value": float,
+          "risk_score": float,
+          "why": str,
+          "steps": [{"order":int,"action":str,"timeline":str},...],
+          "resources": [str,...],
+          "outcome": str,
+          "risks": [str,...],
+          "has_full_plan": bool       # False for alternatives without plans
+        }
+      ]
+    }
+    """
+    strategies = []
+    for i, s in enumerate(plan.all_strategies):
+        strategies.append({
+            "name":           s.name,
+            "rank":           i + 1,
+            "activation":     round(s.activation, 3),
+            "expected_value": round(s.expected_value, 1),
+            "risk_score":     s.risk_score,
+            "why":            s.why_recommended,
+            "steps":          [{"order": st.order, "action": st.action,
+                                 "timeline": st.timeline} for st in s.steps],
+            "resources":      s.resources,
+            "outcome":        s.expected_outcome,
+            "risks":          s.risks,
+            "has_full_plan":  len(s.steps) > 0,
+        })
+    return PrismCard(
+        card_type = CardType.PLAN,
+        title     = f"Plan of action — {plan.domain}",
+        body      = plan.context_summary,
+        card_data = {
+            "task":            plan.task,
+            "domain":          plan.domain,
+            "timeline":        plan.timeline,
+            "fulcrum":         round(plan.fulcrum_position, 3),
+            "context_summary": plan.context_summary,
+            "strategies":      strategies,
+        },
+        actions = [
+            f"Full plan for {plan.all_strategies[1].name}" if len(plan.all_strategies) > 1 else "",
+            "Explain the ranking",
+            "Execute optimal strategy",
+        ]
+    )

@@ -7,6 +7,7 @@ import urllib.request
 from typing import Optional
 
 from domain_configs import ALL_DOMAINS, DomainDecisionModel
+from prism_planner import PrismPlanner, PlanOfAction
 from prism_responses import (
     PrismCard,
     domain_card,
@@ -30,6 +31,8 @@ class PrismAgent:
 
     INTENTS = [
         (r"plan|morning|daily|today|schedule", "plan"),
+        (r"how (?:do|can|should) i|plan (?:for|to)|strategy for|help me (?:with|plan)|"
+         r"what(?:'s| is) the best way|i want to|i need to|my goal is", "universal_plan"),
         (r"predict|match|fixture|vs|versus", "predict_match"),
         (r"injury|risk|squad|fitness|medical|available", "squad_risk"),
         (r"moment|1v1|keeper|shot|attack", "moment"),
@@ -59,6 +62,11 @@ class PrismAgent:
         self._ksa = ksa_agent
         self._ollama_host = ollama_host.rstrip('/')
         self._text_model = text_model
+        self._planner = PrismPlanner(
+            ollama_host    = ollama_host,
+            ollama_model   = text_model,
+            claude_api_key = getattr(self, '_claude_key', None),
+        )
 
     @classmethod
     def setup(
@@ -135,6 +143,15 @@ class PrismAgent:
             return None
 
     def _execute(self, intent: str, message: str, ctx: dict) -> PrismCard:
+        if intent == "universal_plan":
+            from prism_responses import plan_of_action_card
+            plan = self._planner.plan(
+                task_description = message,
+                user_context     = ctx.get("user_factors", {}),
+                n_plans          = 4,
+            )
+            return plan_of_action_card(plan)
+
         if intent.startswith("domain_"):
             domain_key = {
                 "domain_medical": "Medical",
