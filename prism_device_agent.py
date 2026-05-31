@@ -312,6 +312,36 @@ def _classify_task(message: str) -> tuple[str, dict]:
 
 
 # ---------------------------------------------------------------------------
+# Path safety
+# ---------------------------------------------------------------------------
+
+_PROTECTED_WRITE_DIRS = frozenset({
+    "/etc", "/sys", "/proc", "/dev", "/boot",
+    "/lib", "/lib64", "/usr", "/sbin", "/bin",
+    "C:\\Windows", "C:\\Program Files", "C:\\Program Files (x86)",
+})
+
+
+def _validate_path(path_str: str, writable: bool = False) -> tuple[Path, str]:
+    """
+    Resolve and validate a user-provided path.
+    Returns (resolved_path, error_string). error_string is empty if path is safe.
+    """
+    try:
+        p = Path(path_str.strip()).expanduser().resolve()
+    except Exception as exc:
+        return Path("."), f"Invalid path: {exc}"
+
+    if writable:
+        p_str = str(p)
+        for protected in _PROTECTED_WRITE_DIRS:
+            if p_str == protected or p_str.startswith(protected + os.sep):
+                return p, f"Write access denied to protected directory: {p}"
+
+    return p, ""
+
+
+# ---------------------------------------------------------------------------
 # Execution helpers (stdlib)
 # ---------------------------------------------------------------------------
 
@@ -324,18 +354,15 @@ def _ensure_trash() -> Path:
 
 
 def _exec_list_files(path_str: str) -> DeviceTaskResult:
-    p = Path(path_str.strip()).expanduser()
+    p, err = _validate_path(path_str)
+    if err:
+        return _fail(err)
     if not p.exists():
         return _fail(f"Path not found: {p}")
     if p.is_file():
-        return DeviceTaskResult(
-            success=True, output=str(p), tool_used="stdlib",
-        )
+        return DeviceTaskResult(success=True, output=str(p), tool_used="stdlib")
     entries = sorted(p.iterdir())
-    lines = []
-    for entry in entries:
-        kind = "D" if entry.is_dir() else "F"
-        lines.append(f"[{kind}] {entry.name}")
+    lines = [f"[{'D' if entry.is_dir() else 'F'}] {entry.name}" for entry in entries]
     return DeviceTaskResult(
         success=True, output="\n".join(lines) or "(empty)",
         tool_used="stdlib", command_run=f"listdir({p})",
@@ -343,7 +370,9 @@ def _exec_list_files(path_str: str) -> DeviceTaskResult:
 
 
 def _exec_read_file(path_str: str) -> DeviceTaskResult:
-    p = Path(path_str.strip()).expanduser()
+    p, err = _validate_path(path_str)
+    if err:
+        return _fail(err)
     if not p.exists():
         return _fail(f"File not found: {p}")
     try:
@@ -357,8 +386,12 @@ def _exec_read_file(path_str: str) -> DeviceTaskResult:
 
 
 def _exec_copy_file(src: str, dst: str) -> DeviceTaskResult:
-    sp = Path(src.strip()).expanduser()
-    dp = Path(dst.strip()).expanduser()
+    sp, err = _validate_path(src)
+    if err:
+        return _fail(err)
+    dp, err = _validate_path(dst, writable=True)
+    if err:
+        return _fail(err)
     if not sp.exists():
         return _fail(f"Source not found: {sp}")
     try:
@@ -374,8 +407,12 @@ def _exec_copy_file(src: str, dst: str) -> DeviceTaskResult:
 
 
 def _exec_move_file(src: str, dst: str) -> DeviceTaskResult:
-    sp = Path(src.strip()).expanduser()
-    dp = Path(dst.strip()).expanduser()
+    sp, err = _validate_path(src, writable=True)
+    if err:
+        return _fail(err)
+    dp, err = _validate_path(dst, writable=True)
+    if err:
+        return _fail(err)
     if not sp.exists():
         return _fail(f"Source not found: {sp}")
     try:
@@ -391,7 +428,9 @@ def _exec_move_file(src: str, dst: str) -> DeviceTaskResult:
 
 
 def _exec_delete_file(path_str: str) -> DeviceTaskResult:
-    p = Path(path_str.strip()).expanduser()
+    p, err = _validate_path(path_str, writable=True)
+    if err:
+        return _fail(err)
     if not p.exists():
         return _fail(f"File not found: {p}")
     trash = _ensure_trash()
@@ -417,9 +456,13 @@ def _exec_find_file(pattern: str) -> DeviceTaskResult:
     search_dir = Path.home()
     # If pattern contains a slash, treat the leading part as dir
     parts = pattern.rsplit("/", 1)
-    if len(parts) == 2 and Path(parts[0]).expanduser().exists():
-        search_dir = Path(parts[0]).expanduser()
-        pat = parts[1]
+    if len(parts) == 2:
+        candidate, err = _validate_path(parts[0])
+        if not err and candidate.exists():
+            search_dir = candidate
+            pat = parts[1]
+        else:
+            pat = pattern.strip()
     else:
         pat = pattern.strip()
 
@@ -440,16 +483,29 @@ def _exec_find_file(pattern: str) -> DeviceTaskResult:
 
 
 def _exec_search_in_files(query: str) -> DeviceTaskResult:
-    """Search for a string in files under the current directory."""
-    # Parse: "for <term> in <dir>" or "in <dir> for <term>"
-    dir_match = re.search(r"in\s+([\w./~-]+)", query)
-    term_match = re.search(r"(?:for\s+)?['\"]?([^'\"]+?)['\"]?\s*(?:in|$)", query)
+    """Search for a string in files under a directory."""
+    # Parse "for <term> in <dir>" using simple split rather than complex regex
+    search_dir = Path.cwd()
+    term = query.strip()
 
-    search_dir = Path(dir_match.group(1)).expanduser() if dir_match else Path.cwd()
-    term = term_match.group(1).strip() if term_match else query.strip()
+    # Check for "in <dir>" suffix
+    in_idx = query.rfind(" in ")
+    if in_idx != -1:
+        dir_candidate = query[in_idx + 4:].strip()
+        p, err = _validate_path(dir_candidate)
+        if not err and p.exists():
+            search_dir = p
+            term = query[:in_idx].strip()
 
-    if not search_dir.exists():
-        search_dir = Path.cwd()
+    # Strip leading "for " keyword
+    if term.lower().startswith("for "):
+        term = term[4:].strip()
+    # Strip surrounding quotes
+    if len(term) >= 2 and term[0] in ('"', "'") and term[-1] == term[0]:
+        term = term[1:-1]
+
+    if not term:
+        return _fail("No search term provided.")
 
     matches = []
     try:
@@ -480,10 +536,17 @@ def _exec_search_in_files(query: str) -> DeviceTaskResult:
 def _exec_compress_zip(path_str: str, dest_str: str = "") -> DeviceTaskResult:
     import zipfile
 
-    src = Path(path_str.strip()).expanduser()
+    src, err = _validate_path(path_str)
+    if err:
+        return _fail(err)
     if not src.exists():
         return _fail(f"Path not found: {src}")
-    out = Path(dest_str.strip()).expanduser() if dest_str else src.with_suffix(".zip")
+    if dest_str:
+        out, err = _validate_path(dest_str, writable=True)
+        if err:
+            return _fail(err)
+    else:
+        out = src.with_suffix(".zip")
     try:
         with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
             if src.is_dir():
@@ -503,13 +566,19 @@ def _exec_compress_zip(path_str: str, dest_str: str = "") -> DeviceTaskResult:
 
 
 def _exec_run_command(command: str) -> DeviceTaskResult:
-    """Run a shell command with safety checks."""
+    """Run a command with safety checks, avoiding shell injection."""
     if _is_dangerous(command):
-        return _fail(f"Command refused: dangerous pattern detected in '{command}'")
+        return _fail("Command refused: dangerous pattern detected.")
+    try:
+        args = shlex.split(command)
+    except ValueError as exc:
+        return _fail(f"Could not parse command: {exc}")
+    if not args:
+        return _fail("Empty command.")
     try:
         result = subprocess.run(
-            command,
-            shell=True,
+            args,
+            shell=False,
             capture_output=True,
             text=True,
             timeout=30,
@@ -529,18 +598,75 @@ def _exec_run_command(command: str) -> DeviceTaskResult:
 
 
 def _exec_git(sub: str, params: dict) -> DeviceTaskResult:
-    cmd = f"git {sub}"
+    """Run a git sub-command using a safe argument list."""
     if sub == "commit":
         msg = params.get("message", "auto commit by PRISM")
-        cmd = f'git add -A && git commit -m {shlex.quote(msg)}'
-    if _is_dangerous(cmd):
-        return _fail(f"Refused: {cmd}")
-    return _exec_run_command(cmd)
+        # Two sequential calls to avoid compound shell command
+        try:
+            r1 = subprocess.run(
+                ["git", "add", "-A"],
+                capture_output=True, text=True, timeout=30,
+            )
+            if r1.returncode != 0:
+                return _fail(f"git add failed: {r1.stderr[:200]}")
+            r2 = subprocess.run(
+                ["git", "commit", "-m", msg],
+                capture_output=True, text=True, timeout=30,
+            )
+            output = (r2.stdout + r2.stderr).strip()
+            return DeviceTaskResult(
+                success=r2.returncode == 0,
+                output=output or "(no output)",
+                tool_used="git",
+                command_run=f"git add -A && git commit -m {shlex.quote(msg)}",
+                error="" if r2.returncode == 0 else f"Exit {r2.returncode}: {r2.stderr[:200]}",
+            )
+        except Exception as exc:
+            return _fail(str(exc))
+
+    allowed_subs = {"push", "pull", "status", "log", "diff", "fetch"}
+    if sub not in allowed_subs:
+        return _fail(f"git sub-command '{sub}' is not permitted.")
+    try:
+        result = subprocess.run(
+            ["git", sub],
+            capture_output=True, text=True, timeout=30,
+        )
+        output = (result.stdout + result.stderr).strip()
+        return DeviceTaskResult(
+            success=result.returncode == 0,
+            output=output or "(no output)",
+            tool_used="git",
+            command_run=f"git {sub}",
+            error="" if result.returncode == 0 else f"Exit {result.returncode}: {result.stderr[:200]}",
+        )
+    except Exception as exc:
+        return _fail(str(exc))
 
 
 # ---------------------------------------------------------------------------
 # PrismDeviceAgent
 # ---------------------------------------------------------------------------
+
+
+def _split_src_dst(lowered: str, prefix_pattern: str) -> tuple[str, str]:
+    """
+    Extract src and dst from a string like '<prefix> <src> to <dst>'.
+    Uses a simple string split on ' to ' rather than backtracking regex.
+    Returns ('', '') if parsing fails.
+    """
+    m = re.search(prefix_pattern, lowered)
+    if not m:
+        return "", ""
+    remainder = lowered[m.end():]
+    # Split on the first literal " to "
+    parts = remainder.split(" to ", 1)
+    if len(parts) != 2:
+        return "", ""
+    src = parts[0].strip().split()[0] if parts[0].strip() else ""
+    dst = parts[1].strip().split()[0] if parts[1].strip() else ""
+    return src, dst
+
 
 class PrismDeviceAgent:
     """
@@ -631,21 +757,24 @@ class PrismDeviceAgent:
         lowered = task.lower().strip()
 
         if task_type == "list_files":
-            m = re.search(r"(?:list\s+files?\s+(?:in\s+)?|what(?:'s| is)\s+(?:on|in)\s+my\s+)([\w./~-]+)", lowered)
+            m = re.search(
+                r"(?:list\s+files?\s+(?:in\s+)?|what(?:'s| is)\s+(?:on|in)\s+my\s+)([\w./~-]+)",
+                lowered,
+            )
             path_str = m.group(1) if m else params.get("path", str(Path.home()))
             return _exec_list_files(path_str)
 
         if task_type == "read_file":
-            m = re.search(r"read\s+file\s+([\S]+)", lowered)
+            m = re.search(r"read\s+file\s+(\S+)", lowered)
             path_str = m.group(1) if m else params.get("path", "")
             if not path_str:
                 return _fail("No file path provided.")
             return _exec_read_file(path_str)
 
         if task_type == "copy_file":
-            m = re.search(r"copy\s+([\S]+)\s+to\s+([\S]+)", lowered)
-            if m:
-                return _exec_copy_file(m.group(1), m.group(2))
+            src, dst = _split_src_dst(lowered, r"copy\s+")
+            if src and dst:
+                return _exec_copy_file(src, dst)
             src = params.get("src", "")
             dst = params.get("dst", "")
             if src and dst:
@@ -653,9 +782,9 @@ class PrismDeviceAgent:
             return _fail("Could not parse copy source/destination.")
 
         if task_type == "move_file":
-            m = re.search(r"(?:move|rename)\s+([\S]+)\s+to\s+([\S]+)", lowered)
-            if m:
-                return _exec_move_file(m.group(1), m.group(2))
+            src, dst = _split_src_dst(lowered, r"(?:move|rename)\s+")
+            if src and dst:
+                return _exec_move_file(src, dst)
             src = params.get("src", "")
             dst = params.get("dst", "")
             if src and dst:
@@ -663,26 +792,32 @@ class PrismDeviceAgent:
             return _fail("Could not parse move source/destination.")
 
         if task_type == "delete_file":
-            m = re.search(r"(?:delete|remove)\s+(?:file\s+)?([\S]+)", lowered)
+            m = re.search(r"(?:delete|remove)\s+(?:file\s+)?(\S+)", lowered)
             path_str = m.group(1) if m else params.get("path", "")
             if not path_str:
                 return _fail("No file path provided.")
             return _exec_delete_file(path_str)
 
         if task_type == "find_file":
-            m = re.search(r"find\s+files?\s+(?:named\s+)?([\S]+)", lowered)
+            m = re.search(r"find\s+files?\s+(?:named\s+)?(\S+)", lowered)
             pattern = m.group(1) if m else params.get("pattern", "*")
             return _exec_find_file(pattern)
 
         if task_type == "search_in_files":
             # strip the leading keyword
-            rest = re.sub(r"^(search\s+(?:for\s+|in\s+)?|grep\s+)", "", lowered)
+            rest = re.sub(r"^(?:search\s+(?:for\s+|in\s+)?|grep\s+)", "", lowered)
             return _exec_search_in_files(rest or task)
 
         if task_type == "compress_zip":
-            m = re.search(r"(?:compress|zip)\s+([\S]+)(?:\s+to\s+([\S]+))?", lowered)
+            # "compress/zip <src> to <dst>" or "compress/zip <src>"
+            m = re.search(r"(?:compress|zip)\s+(\S+)", lowered)
             if m:
-                return _exec_compress_zip(m.group(1), m.group(2) or "")
+                src_part = m.group(1)
+                dst_part = ""
+                to_idx = lowered.find(" to ", m.start(1))
+                if to_idx != -1:
+                    dst_part = lowered[to_idx + 4:].strip().split()[0] if lowered[to_idx + 4:].strip() else ""
+                return _exec_compress_zip(src_part, dst_part)
             return _fail("Could not parse compress/zip path.")
 
         if task_type in ("git_commit", "git_push", "git_pull", "git_status"):
@@ -700,18 +835,49 @@ class PrismDeviceAgent:
                 else "xdg-open" if sys.platform.startswith("linux")
                 else "start"
             )
-            m = re.search(r"open\s+(?:app(?:lication)?\s+)?([\S]+)", lowered)
+            m = re.search(r"open\s+(?:app(?:lication)?\s+)?(\S+)", lowered)
             target = m.group(1) if m else params.get("target", "")
             if not target:
                 return _fail("No application specified.")
-            return _exec_run_command(f"{opener} {shlex.quote(target)}")
+            try:
+                result = subprocess.run(
+                    [opener, target],
+                    capture_output=True, text=True, timeout=30,
+                )
+                output = (result.stdout + result.stderr).strip()
+                return DeviceTaskResult(
+                    success=result.returncode == 0,
+                    output=output or "(launched)",
+                    tool_used=opener,
+                    command_run=f"{opener} {target}",
+                    error="" if result.returncode == 0 else result.stderr[:200],
+                )
+            except Exception as exc:
+                return _fail(str(exc))
 
         if task_type == "install_package":
-            m = re.search(r"install\s+(?:package|app)\s+([\S]+)", lowered)
+            m = re.search(r"install\s+(?:package|app)\s+(\S+)", lowered)
             pkg = m.group(1) if m else params.get("package", "")
             if not pkg:
                 return _fail("No package name specified.")
-            return _exec_run_command(f"pip install {shlex.quote(pkg)}")
+            # Validate package name: only alphanum, dash, underscore, dot, brackets
+            if not re.fullmatch(r"[\w.\-\[\]]+", pkg):
+                return _fail(f"Invalid package name: {pkg!r}")
+            try:
+                result = subprocess.run(
+                    [sys.executable, "-m", "pip", "install", pkg],
+                    capture_output=True, text=True, timeout=120,
+                )
+                output = (result.stdout + result.stderr).strip()
+                return DeviceTaskResult(
+                    success=result.returncode == 0,
+                    output=output or "(installed)",
+                    tool_used="pip",
+                    command_run=f"pip install {pkg}",
+                    error="" if result.returncode == 0 else result.stderr[:200],
+                )
+            except Exception as exc:
+                return _fail(str(exc))
 
         # show files fallback
         if "show" in lowered and "file" in lowered:
