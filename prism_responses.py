@@ -141,6 +141,38 @@ def identity_card(identity_data: dict) -> PrismCard:
     return PrismCard(CardType.IDENTITY, "Your Decision Profile", "", identity_data)
 
 
+def device_result_card(result: "DeviceTaskResult", task: str) -> PrismCard:
+    """Card for device task execution results."""
+    data = {
+        "success":        result.success,
+        "tool_used":      result.tool_used,
+        "output":         result.output[:1000],
+        "files_created":  result.files_created,
+        "files_modified": result.files_modified,
+        "elapsed_ms":     round(result.elapsed_ms, 1),
+        "error":          result.error,
+        "undo_available": bool(result.undo_command),
+        "undo_command":   result.undo_command,
+    }
+    body = (
+        f"✓ Done in {result.elapsed_ms:.0f}ms using {result.tool_used}"
+        if result.success
+        else f"✗ {result.error[:200]}"
+    )
+    actions = []
+    if result.undo_command:
+        actions.append("Undo this action")
+    if not result.success and result.error:
+        actions.append("Try a different approach")
+    return PrismCard(
+        card_type = CardType.TEXT,
+        title     = f"Device task: {task[:50]}",
+        body      = body,
+        card_data = data,
+        actions   = actions,
+    )
+
+
 def plan_of_action_card(plan: "PlanOfAction") -> PrismCard:
     """
     Renders a PlanOfAction as a PRISM chat card.

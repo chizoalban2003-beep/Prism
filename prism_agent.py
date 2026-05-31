@@ -7,6 +7,7 @@ import urllib.request
 from typing import Optional
 
 from domain_configs import ALL_DOMAINS, DomainDecisionModel
+from prism_device_agent import PrismDeviceAgent, DeviceTaskResult
 from prism_planner import PrismPlanner, PlanOfAction
 from prism_responses import (
     PrismCard,
@@ -48,6 +49,11 @@ class PrismAgent:
         (r"artifact|history|past\.decision|what\.have\.i", "artifacts"),
         (r"status|connected|device|sync", "status"),
         (r"index|scan\.files|search\.code|grep|find\.file", "ksa_task"),
+        (r"resize|convert|compress|rename|move|copy|delete|create file|"
+         r"find file|search (?:in|for)|read file|list files|"
+         r"run (?:command|script)|execute|open (?:app|file)|"
+         r"install (?:package|app)|git (?:commit|push|pull|status)|"
+         r"what(?:'s| is) (?:on|in) my|show me (?:my )?files", "device_task"),
         (r"help|what\.can|commands|options", "help"),
     ]
 
@@ -68,6 +74,12 @@ class PrismAgent:
             ollama_host    = ollama_host,
             ollama_model   = text_model,
             claude_api_key = claude_api_key,
+        )
+        self._device = PrismDeviceAgent.setup(
+            policy_engine = getattr(self, '_policy', None),
+            on_approval   = self._request_approval,
+            collaborator  = getattr(self, '_collaborator', None),
+            user          = getattr(self, '_user', 'default'),
         )
 
     @classmethod
@@ -117,6 +129,16 @@ class PrismAgent:
             logging.exception("PrismAgent.chat error")
             return text_card(f"Something went wrong: {exc}", "Error")
 
+    def _request_approval(self, task: str, reason: str) -> bool:
+        """
+        Default approval handler — returns False (deny) when no UI is connected.
+        The chat UI overrides this to show an approval card to the user.
+        Store the pending approval and return False; the chat loop will
+        receive the approval response and retry execution.
+        """
+        self._pending_approval = {"task": task, "reason": reason}
+        return False
+
     def _route(self, message: str) -> str:
         lowered = message.lower()
         for pattern, intent in self.INTENTS:
@@ -145,6 +167,11 @@ class PrismAgent:
             return None
 
     def _execute(self, intent: str, message: str, ctx: dict) -> PrismCard:
+        if intent == "device_task":
+            from prism_responses import device_result_card
+            result = self._device.execute(message, params=ctx.get("params", {}))
+            return device_result_card(result, message)
+
         if intent == "universal_plan":
             from prism_responses import plan_of_action_card
             plan = self._planner.plan(

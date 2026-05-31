@@ -539,6 +539,18 @@ class KDEHandler(BaseHTTPRequestHandler):
                     "n_matchups":  len(network._edges),
                 })
 
+            elif path == '/device/capabilities':
+                from prism_device_agent import DeviceCapabilityScanner
+                caps = DeviceCapabilityScanner().scan()
+                self._json_response({
+                    "platform":     caps.platform,
+                    "has_browser":  caps.has_browser,
+                    "categories":   {k: v for k, v in caps.cli_tools.items()},
+                    "py_packages":  caps.py_packages,
+                    "summary":      caps.summary(),
+                })
+                return
+
             else:
                 self._error(f"Unknown route: {path}", 404)
 
@@ -782,6 +794,29 @@ class KDEHandler(BaseHTTPRequestHandler):
                 ]
                 result = DomainValidator(domain).validate(cases)
                 self._json_response(dataclasses.asdict(result))
+
+            elif path == '/device/execute':
+                agent  = getattr(self.server, 'device_agent', None)
+                if not agent:
+                    from prism_device_agent import PrismDeviceAgent
+                    agent = PrismDeviceAgent.setup()
+                    self.server.device_agent = agent
+                dry_run = body.get('dry_run', False)
+                result  = agent.execute(
+                    body.get('task', ''),
+                    params  = body.get('params', {}),
+                    dry_run = dry_run,
+                )
+                self._json_response({
+                    "success":        result.success,
+                    "output":         result.output[:2000],
+                    "tool_used":      result.tool_used,
+                    "elapsed_ms":     round(result.elapsed_ms, 1),
+                    "files_created":  result.files_created,
+                    "error":          result.error,
+                    "undo_available": bool(result.undo_command),
+                })
+                return
 
             else:
                 self._error(f"Unknown route: {path}", 404)
