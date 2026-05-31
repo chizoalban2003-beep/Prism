@@ -148,8 +148,9 @@ class TaskQueue:
         return out
 
     def _write(self, p: TaskProgress) -> None:
+        serializable = {k for k in TaskProgress.__dataclass_fields__}
         data = {k: (v.value if isinstance(v, TaskStatus) else v)
-                for k, v in p.__dict__.items() if k != "fn"}
+                for k, v in p.__dict__.items() if k in serializable}
         with sqlite3.connect(self._db) as c:
             c.execute("INSERT OR REPLACE INTO tasks VALUES(?,?,?)",
                       (p.task_id, p.status.value if hasattr(p.status,'value')
