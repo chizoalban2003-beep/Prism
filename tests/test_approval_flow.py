@@ -83,29 +83,19 @@ def test_check_policy_no_policy_engine_allows():
 
 
 def test_check_policy_policy_reject_returns_false_false():
+    try:
+        from prism_policy import PolicyEngine
+    except ImportError:
+        pytest.skip("prism_policy not available in this env")
+
     mock_policy = MagicMock()
-    mock_verdict = MagicMock()
-    mock_verdict.__eq__ = lambda self, other: str(other) == "Verdict.REJECT"
-
-    class FakeVerdict:
-        REJECT   = "Verdict.REJECT"
-        ESCALATE = "Verdict.ESCALATE"
-        ALLOW    = "Verdict.ALLOW"
-
-    mock_policy.evaluate.return_value = (FakeVerdict.REJECT, "Rejected")
+    mock_policy.evaluate.return_value = (PolicyEngine.Verdict.REJECT, "Rejected")
 
     caps = CapabilityMap(cli_tools={}, py_packages=[], platform=sys.platform, has_browser=False)
     agent = PrismDeviceAgent(capabilities=caps, policy_engine=mock_policy)
-
-    with patch("prism_device_agent.PolicyEngine", FakeVerdict, create=True):
-        try:
-            from prism_policy import PolicyEngine
-            mock_policy.evaluate.return_value = (PolicyEngine.Verdict.REJECT, "Rejected")
-            allowed, needs_approval = agent._check_policy("delete all files")
-            assert allowed is False
-            assert needs_approval is False
-        except ImportError:
-            pytest.skip("prism_policy not available in this env")
+    allowed, needs_approval = agent._check_policy("delete all files")
+    assert allowed is False
+    assert needs_approval is False
 
 
 def test_check_policy_policy_escalate_returns_false_true():
@@ -184,8 +174,8 @@ def _start_server_for_approval(port: int):
     try:
         cfg   = KDEConfig()
         agent = KDEAgent(cfg)
-    except Exception:
-        pytest.skip("KDEAgent could not be initialised")
+    except Exception as exc:
+        pytest.skip(f"KDEAgent could not be initialised: {exc}")
 
     server = KDEServer(agent=agent, port=port)
     server.start(blocking=False)
