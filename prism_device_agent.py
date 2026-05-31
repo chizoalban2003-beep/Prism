@@ -663,8 +663,10 @@ def _split_src_dst(lowered: str, prefix_pattern: str) -> tuple[str, str]:
     parts = remainder.split(" to ", 1)
     if len(parts) != 2:
         return "", ""
-    src = parts[0].strip().split()[0] if parts[0].strip() else ""
-    dst = parts[1].strip().split()[0] if parts[1].strip() else ""
+    src_part = parts[0].strip()
+    dst_part = parts[1].strip()
+    src = src_part.split()[0] if src_part else ""
+    dst = dst_part.split()[0] if dst_part else ""
     return src, dst
 
 

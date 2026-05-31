@@ -156,7 +156,8 @@ def test_dry_run_no_side_effects():
 
 def test_capability_map_has_platform():
     caps = DeviceCapabilityScanner().scan()
-    assert caps.platform in ("darwin", "linux", "win32", "cygwin") or caps.platform.startswith("linux")
+    # sys.platform is 'darwin', 'linux', 'linux2', 'win32', 'cygwin', etc.
+    assert caps.platform in ("darwin", "win32", "cygwin") or caps.platform.startswith("linux")
 
 
 def test_resolver_stdlib_solution():
