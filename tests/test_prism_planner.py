@@ -152,10 +152,10 @@ def test_rank_strategies_context_shifts_fulcrum():
     p = PrismPlanner()
     low  = p._rank_strategies(_MINIMAL_TASK_PROFILE, {"fitness_level": 0.0, "time_per_week": 0.0})
     high = p._rank_strategies(_MINIMAL_TASK_PROFILE, {"fitness_level": 1.0, "time_per_week": 1.0})
-    low_top  = low[0][1]["name"]
-    high_top = high[0][1]["name"]
-    # Higher context values push toward aggressive strategies
-    assert low_top != high_top or True   # positions shift, doesn't always flip but rankings differ
+    low_beam  = PrismPlanner()._build_beam(_MINIMAL_TASK_PROFILE, {"fitness_level": 0.0, "time_per_week": 0.0})
+    high_beam = PrismPlanner()._build_beam(_MINIMAL_TASK_PROFILE, {"fitness_level": 1.0, "time_per_week": 1.0})
+    # Higher context values push fulcrum toward aggressive end
+    assert high_beam.fulcrum.position() > low_beam.fulcrum.position()
 
 
 def test_rank_strategies_returns_all_strategies():

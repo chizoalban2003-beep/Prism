@@ -425,8 +425,8 @@ class PrismPlanner:
             method = "POST",
         )
         try:
-            resp = urllib.request.urlopen(req, timeout=30)
-            data = json.loads(resp.read())
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = json.loads(resp.read())
             return data["content"][0]["text"]
         except Exception as e:
             logger.warning("Claude call failed: %s", e)
@@ -444,8 +444,8 @@ class PrismPlanner:
             headers = {"Content-Type": "application/json"},
         )
         try:
-            resp = urllib.request.urlopen(req, timeout=30)
-            return json.loads(resp.read()).get("response", "")
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return json.loads(resp.read()).get("response", "")
         except Exception as e:
             logger.warning("Ollama call failed: %s", e)
             return ""
