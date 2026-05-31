@@ -16,6 +16,7 @@ class CardType(str, Enum):
     ARTIFACTS = "artifacts"
     ERROR = "error"
     THINKING = "thinking"
+    APPROVAL = "approval"
 
 
 @dataclass
@@ -38,6 +39,29 @@ class PrismCard:
 
 def text_card(body: str, title: str = "") -> PrismCard:
     return PrismCard(CardType.TEXT, title, body, {})
+
+
+def approval_card(task: str, reason: str, params: dict = None) -> PrismCard:
+    """
+    Card shown when a device task requires user confirmation before executing.
+    The chat UI renders two buttons: Approve and Deny.
+    card_data contains everything needed to re-execute on approval.
+    """
+    import uuid as _uuid
+    task_id = str(_uuid.uuid4())[:8]
+    return PrismCard(
+        card_type = CardType.APPROVAL,
+        title     = "Approval required",
+        body      = reason or f"Allow PRISM to: {task}",
+        card_data = {
+            "task_id": task_id,
+            "task":    task,
+            "params":  params or {},
+            "reason":  reason,
+        },
+        actions = ["Approve", "Deny"],
+    )
+
 
 
 def plan_card(plan) -> PrismCard:
@@ -143,6 +167,14 @@ def identity_card(identity_data: dict) -> PrismCard:
 
 def device_result_card(result: "DeviceTaskResult", task: str) -> PrismCard:
     """Card for device task execution results."""
+    if result.needs_approval:
+        params = {}
+        try:
+            import json as _j
+            params = _j.loads(result.undo_command or "{}").get("params", {})
+        except Exception:
+            pass
+        return approval_card(task, result.output, params)
     data = {
         "success":        result.success,
         "tool_used":      result.tool_used,

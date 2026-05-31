@@ -139,7 +139,20 @@ class KDEHandler(BaseHTTPRequestHandler):
                 return
 
             elif path == "/status":
-                self._json_response(self.agent.status())
+                import urllib.request as _ur, json as _j
+                ollama_ok = False; ollama_model = ""
+                try:
+                    r = _ur.urlopen("http://localhost:11434/api/tags", timeout=2)
+                    tags = _j.loads(r.read())
+                    ollama_ok    = True
+                    ollama_model = (tags.get("models", [{}])[0].get("name", "")
+                                    if tags.get("models") else "")
+                except Exception:
+                    pass
+                status = self.agent.status()
+                status["ollama"]       = ollama_ok
+                status["ollama_model"] = ollama_model
+                self._json_response(status)
 
             elif path == "/plan":
                 brief = self.agent.morning_briefing()
@@ -794,6 +807,24 @@ class KDEHandler(BaseHTTPRequestHandler):
                 ]
                 result = DomainValidator(domain).validate(cases)
                 self._json_response(dataclasses.asdict(result))
+
+            elif path == '/device/approve':
+                approved = body.get('approved', False)
+                task     = body.get('task', '')
+                params   = body.get('params', {})
+                if not approved:
+                    from prism_responses import text_card
+                    self._json_response(text_card("Action cancelled.").to_json())
+                    return
+                agent = getattr(self.server, 'device_agent', None)
+                if not agent:
+                    from prism_device_agent import PrismDeviceAgent
+                    agent = PrismDeviceAgent.setup()
+                    self.server.device_agent = agent
+                result = agent.execute(task, params=params, approval_override=True)
+                from prism_responses import device_result_card
+                self._json_response(device_result_card(result, task).to_json())
+                return
 
             elif path == '/device/execute':
                 agent  = getattr(self.server, 'device_agent', None)

@@ -16,6 +16,7 @@ class DeviceTaskResult:
     elapsed_ms:     float = 0.0
     error:          str = ""
     undo_command:   str = ""
+    needs_approval: bool = False   # True when policy requires user confirmation
 
 
 class BuiltinTasks:

@@ -241,6 +241,7 @@ class DeviceTaskResult:
     elapsed_ms:     float = 0.0
     error:          str = ""
     undo_command:   str = ""
+    needs_approval: bool = False   # True when policy requires user confirmation
 
 
 def _fail(error: str, elapsed_ms: float = 0.0) -> DeviceTaskResult:
@@ -717,11 +718,31 @@ class PrismDeviceAgent:
 
     # ------------------------------------------------------------------ #
 
+    def _check_policy(self, task: str) -> tuple:
+        """Returns (allowed: bool, needs_approval: bool)"""
+        if self._policy is None:
+            return True, False
+        try:
+            from prism_policy import PolicyEngine
+            verdict, reason = self._policy.evaluate(
+                user="default", category="device",
+                provider="local", estimated_cost=0.0, action=task)
+            if verdict == PolicyEngine.Verdict.REJECT:
+                return False, False
+            if verdict == PolicyEngine.Verdict.ESCALATE:
+                return False, True
+            return True, False
+        except Exception:
+            return True, False
+
+    # ------------------------------------------------------------------ #
+
     def execute(
         self,
         task:    str,
         params:  Optional[dict] = None,
         dry_run: bool = False,
+        approval_override: bool = False,
     ) -> DeviceTaskResult:
         params = params or {}
         t0 = time.monotonic()
@@ -748,6 +769,23 @@ class PrismDeviceAgent:
                 tool_used=resolution.method,
                 elapsed_ms=elapsed,
             )
+
+        if not approval_override:
+            allowed, needs_approval = self._check_policy(task)
+            if not allowed and not needs_approval:
+                return DeviceTaskResult(
+                    False, "", error=f"Policy denied: {task_type}",
+                    elapsed_ms=(time.monotonic() - t0) * 1000,
+                )
+            if needs_approval:
+                import json as _j
+                return DeviceTaskResult(
+                    False, f"Approval required for: {task}",
+                    tool_used="pending_approval",
+                    needs_approval=True,
+                    undo_command=_j.dumps({"task": task, "params": params}),
+                    elapsed_ms=(time.monotonic() - t0) * 1000,
+                )
 
         result = self._dispatch(task_type, task, params)
         result.elapsed_ms = (time.monotonic() - t0) * 1000
