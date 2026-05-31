@@ -57,15 +57,17 @@ class PrismAgent:
         ksa_agent=None,
         ollama_host: str = "http://localhost:11434",
         text_model: str = "mistral",
+        claude_api_key: str = None,
     ):
         self._kde = kde_agent
         self._ksa = ksa_agent
         self._ollama_host = ollama_host.rstrip('/')
         self._text_model = text_model
+        self._claude_key = claude_api_key
         self._planner = PrismPlanner(
             ollama_host    = ollama_host,
             ollama_model   = text_model,
-            claude_api_key = getattr(self, '_claude_key', None),
+            claude_api_key = claude_api_key,
         )
 
     @classmethod
