@@ -19,6 +19,8 @@ from prism_smart_home import PrismSmartHome
 from prism_email    import PrismEmail
 from prism_calendar import PrismCalendar, CalendarEvent
 from prism_browser_agent import PrismBrowserAgent, BrowserTaskResult
+from prism_instructions import PrismInstructions
+from prism_service_discovery import PrismServiceDiscovery
 from prism_responses import (
     PrismCard,
     domain_card,
@@ -83,6 +85,14 @@ class PrismAgent:
         (r"(?:go to|open|browse|visit|search (?:the )?web|find (?:on|online)|"
          r"look up|book|reserve|fill (?:in|out)|check (?:the )?(?:price|availability)|"
          r"what(?:'s| is) (?:on|the) website)",  "browser_task"),
+        (r"show (?:my )?(?:instructions?|rules?|standing orders?)|"
+         r"what (?:have you )?(?:remember|know) about my preferences",
+         "show_instructions"),
+        (r"(?:forget|remove|delete) (?:that |the )?(?:instruction|rule)|"
+         r"stop (?:always|never)", "remove_instruction"),
+        (r"(?:use|connect|integrate|set up|configure|add) (?:with )?(?!my )(?!the )"
+         r"(?:[A-Z][a-z]+(?:\s[A-Z][a-z]+)*|[a-z]+\.[a-z]+)|"
+         r"(?:can you|how do i) (?:use|access|connect to) ", "discover_service"),
         (r"help|what\.can|commands|options", "help"),
         (r"turn (?:on|off)|set (?:the )?(?:lights?|thermostat|temp)|"
          r"lock|unlock|what(?:'s| is) (?:on|off)|smart home|home assistant",
@@ -131,6 +141,13 @@ class PrismAgent:
             llm_router = getattr(self, '_router', None),
             headless   = True,
         )
+        self._instructions = PrismInstructions()
+        self._discovery    = PrismServiceDiscovery(
+            collaborator  = getattr(self, '_collaborator', None),
+            tool_registry = getattr(
+                getattr(self, '_device', None), '_registry', None),
+        )
+        self._chat_history: list[dict] = []
         try:
             cfg = {}
             self._perception = PrismPerception.setup(
@@ -205,20 +222,39 @@ class PrismAgent:
         return cls(kde_agent=kde, ksa_agent=ksa)
 
     def chat(self, message: str, context: dict | None = None) -> PrismCard:
+        context = context or {}
         try:
-            intent = self._route(message or "")
+            # 1. Check for standing instruction (store if detected)
+            stored_instruction = self._instructions.parse_from_chat(message or "")
+            if stored_instruction:
+                return text_card(
+                    f"✓ Remembered: {stored_instruction.text}",
+                    "Instruction stored")
+
+            # 2. Inject relevant instructions into context
+            instructions_str = self._instructions.to_context_string(message or "")
+            if instructions_str:
+                context["standing_instructions"] = instructions_str
+
+            # 3. Inject conversation history
+            context["history"] = self._chat_history[-10:]
+
+            # 4. Add to history
+            self._chat_history.append({"role": "user", "content": message or ""})
+            if len(self._chat_history) > 20:
+                self._chat_history = self._chat_history[-20:]
+
+            # 5. Perception context
             if self._perception:
                 percept_state = self._perception.current_context()
-                if not context:
-                    context = {}
                 context["perception"] = percept_state.to_factor_updates()
                 context["perception_summary"] = percept_state.summary
+
+            # 6. Memory context
             if self._memory and message:
                 try:
                     mem_results = self._memory.search(message, top_n=3)
                     if mem_results:
-                        if not context:
-                            context = {}
                         context["memory_context"] = [
                             {"title": r.entry.title, "excerpt": r.excerpt,
                              "source": r.entry.source, "score": round(r.score, 3)}
@@ -227,12 +263,23 @@ class PrismAgent:
                     self._memory.ingest_conversation("user", message)
                 except Exception:
                     pass
-            card = self._execute(intent, message or "", context or {})
+
+            # 7. Route intent and execute
+            intent = self._route(message or "")
+            card = self._execute(intent, message or "", context)
+
+            # 8. Store response in history
+            if hasattr(card, 'body') and card.body:
+                self._chat_history.append(
+                    {"role": "assistant", "content": card.body[:500]})
+
+            # 9. Memory ingestion for response
             if self._memory and card.body:
                 try:
                     self._memory.ingest_conversation("assistant", card.body)
                 except Exception:
                     pass
+
             self._tts.speak(card.body or "")
             return card
         except Exception as exc:
@@ -530,5 +577,67 @@ class PrismAgent:
                 result = self._browser.execute(message)
                 body   = result.extracted[:500] if result.success else result.error
                 return text_card(body, "Browser Result")
+
+        if intent == "show_instructions":
+            instrs = self._instructions.all_active()
+            if not instrs:
+                return text_card("No standing instructions set. "
+                                 "Tell me to 'always...' or 'never...' "
+                                 "to set one.", "Standing Instructions")
+            lines = "\n".join(f"• [{i.trigger}] {i.text}" for i in instrs)
+            return text_card(lines, f"Your instructions ({len(instrs)})")
+
+        if intent == "remove_instruction":
+            instrs = self._instructions.all_active()
+            if instrs:
+                for instr in reversed(instrs):
+                    if any(w in message.lower()
+                           for w in instr.text.lower().split()[:3]):
+                        self._instructions.remove(instr.instr_id)
+                        return text_card(f"Removed: {instr.text}",
+                                         "Instruction removed")
+            return text_card("Couldn't find a matching instruction to remove.",
+                             "Instructions")
+
+        if intent == "discover_service":
+            router = getattr(self, '_router', None)
+            if router:
+                name_prompt = (f"Extract the service/app/platform name from: "
+                               f"'{message}'. Return ONLY the name, nothing else.")
+                service_name, _ = router.call(name_prompt, min_capability=1,
+                                              max_tokens=20)
+                service_name = service_name.strip().strip('"\'')
+            else:
+                import re as _re
+                words = _re.findall(r'[A-Z][a-zA-Z]+', message)
+                service_name = words[0] if words else "unknown service"
+
+            if not service_name:
+                service_name = "unknown service"
+
+            if self._discovery.is_known(service_name):
+                existing = self._discovery.get(service_name)
+                if existing and existing.configured:
+                    return text_card(
+                        f"I already have {service_name} connected "
+                        f"via {existing.access_method}. "
+                        f"What would you like to do with it?",
+                        f"{service_name} — already integrated")
+
+            service, questions = self._discovery.discover(
+                service_name = service_name,
+                user_intent  = message,
+                constraints  = ctx.get("user_constraints", {}),
+            )
+            steps_text = "\n".join(f"{i+1}. {s}"
+                                   for i, s in enumerate(service.setup_steps))
+            q_text     = "\n".join(f"• {q}" for q in questions[:2])
+            body = (
+                f"I've researched **{service_name}** — {service.description}\n\n"
+                f"Best integration method: **{service.access_method}**\n\n"
+                f"To set this up:\n{steps_text}"
+                + (f"\n\nI also need a few answers:\n{q_text}" if q_text else "")
+            )
+            return text_card(body, f"Connecting: {service_name}")
 
         return text_card("I'm not sure how to help with that. Try: 'help'")

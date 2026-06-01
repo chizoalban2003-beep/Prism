@@ -39,7 +39,8 @@ It combines three things no existing tool does simultaneously:
 personalised recommendations with named causes — not black-box predictions.
 
 **A full execution layer** that carries out approved actions, finds tools
-when they don't exist, and learns new integrations on demand.
+when they don't exist, learns new integrations on demand, and follows
+standing instructions you teach it once in plain language.
 
 **A continuous learning identity** that crystallises from your actual
 decisions over time — becoming more accurate for you specifically,
@@ -230,6 +231,10 @@ Key endpoints:
 | POST | `/domain/validate` | Validate against expert labels |
 | GET | `/duel/network?match_id=…` | Match duel network |
 | GET | `/reflect` | Learned state for current user |
+| GET | `/instructions` | List all standing instructions |
+| POST | `/instructions` | Add a standing instruction `{"text":"…","trigger":"…"}` |
+| GET | `/discovery/services` | List all discovered service integrations |
+| POST | `/discovery/build` | Build an integration `{"service_id":"…","answers":{}}` |
 
 ---
 
@@ -315,7 +320,9 @@ PRISM/
 │   ├── prism_policy.py         Resource allocation + policy engine (CEO→Manager)
 │   ├── prism_tool_finder.py    Alternative execution path discovery
 │   ├── prism_collaborator.py   Claude/Ollama research + tool synthesis
-│   └── prism_executor_agent.py Agentic execution with tool registry + sandboxing
+│   ├── prism_executor_agent.py Agentic execution with tool registry + sandboxing
+│   ├── prism_instructions.py   Standing instructions — rules taught once, applied always
+│   └── prism_service_discovery.py Universal handler for unknown services + auto-integration
 │
 ├── Sport task executors
 │   ├── sport_executor.py       Video analysis, highlight reel, reports

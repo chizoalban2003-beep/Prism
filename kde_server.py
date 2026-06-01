@@ -770,6 +770,30 @@ class KDEHandler(BaseHTTPRequestHandler):
                 else:
                     self._json_response({"available": False})
 
+            elif path == '/instructions':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_instructions'):
+                    instrs = agent._instructions.all_active()
+                    self._json_response({"count": len(instrs),
+                        "instructions": [{"id": i.instr_id, "text": i.text,
+                                          "trigger": i.trigger,
+                                          "use_count": i.use_count}
+                                         for i in instrs]})
+                else:
+                    self._json_response({"count": 0, "instructions": []})
+
+            elif path == '/discovery/services':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_discovery'):
+                    services = agent._discovery.list_all()
+                    self._json_response({"count": len(services),
+                        "services": [{"name": s.name, "category": s.category,
+                                      "method": s.access_method,
+                                      "configured": s.configured}
+                                     for s in services]})
+                else:
+                    self._json_response({"count": 0, "services": []})
+
             else:
                 self._error(f"Unknown route: {path}", 404)
 
@@ -1169,6 +1193,29 @@ class KDEHandler(BaseHTTPRequestHandler):
                 ok = em.send(to=to, subject=subject, body=text,
                              reply_to=body.get("reply_to", ""))
                 self._json_response({"ok": ok})
+
+            elif path == '/instructions':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_instructions'):
+                    instr = agent._instructions.add(
+                        body.get('text', ''), body.get('trigger', 'always'))
+                    self._json_response({"id": instr.instr_id, "text": instr.text})
+                else:
+                    self._error("Instructions not initialised", 503)
+
+            elif path == '/discovery/build':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_discovery'):
+                    service = agent._discovery.get(body.get('service_id', ''))
+                    if service:
+                        ok  = agent._discovery.build_integration(
+                            service, body.get('answers', {}))
+                        msg = agent._discovery.confirmation_message(service)
+                        self._json_response({"success": ok, "message": msg})
+                    else:
+                        self._error("Service not found", 404)
+                else:
+                    self._error("Discovery not initialised", 503)
 
             else:
                 self._error(f"Unknown route: {path}", 404)

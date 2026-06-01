@@ -147,14 +147,17 @@ class LLMRouter:
 
     def call(
         self,
-        prompt:          str,
-        min_capability:  int = 1,
-        max_tokens:      int = 1500,
-        system:          str = "",
-        json_mode:       bool = False,
+        prompt:               str,
+        min_capability:       int = 1,
+        max_tokens:           int = 1500,
+        system:               str = "",
+        json_mode:            bool = False,
+        conversation_history: list[dict] = None,
+        # list of {"role":"user"|"assistant","content":str}
     ) -> tuple[str, str]:
         """
         Call the best available LLM.
+        conversation_history: pass recent turns so LLM has session context.
         Returns (response_text, model_used).
         Falls back through the chain automatically.
         """
@@ -162,7 +165,9 @@ class LLMRouter:
             if not opt.available or opt.capability < min_capability:
                 continue
             try:
-                text = self._call_option(opt, prompt, max_tokens, system, json_mode)
+                text = self._call_option(
+                    opt, prompt, max_tokens, system,
+                    json_mode, conversation_history or [])
                 if text:
                     logger.debug("LLM call via %s/%s", opt.provider, opt.model)
                     return text, f"{opt.provider}/{opt.model}"
@@ -238,20 +243,23 @@ class LLMRouter:
 
     def _call_option(self, opt: LLMOption, prompt: str,
                      max_tokens: int, system: str,
-                     json_mode: bool) -> str:
+                     json_mode: bool, history: list = None) -> str:
         if opt.provider == "claude":
-            return self._call_claude(opt, prompt, max_tokens, system, json_mode)
+            return self._call_claude(opt, prompt, max_tokens, system, json_mode, history)
         if opt.provider == "ollama":
-            return self._call_ollama(opt, prompt, max_tokens, system, json_mode)
+            return self._call_ollama(opt, prompt, max_tokens, system, json_mode, history)
         if opt.provider == "openai_compat":
-            return self._call_openai(opt, prompt, max_tokens, system, json_mode)
+            return self._call_openai(opt, prompt, max_tokens, system, json_mode, history)
         return ""
 
     def _call_claude(self, opt: LLMOption, prompt: str,
-                     max_tokens: int, system: str, json_mode: bool) -> str:
+                     max_tokens: int, system: str,
+                     json_mode: bool, history: list = None) -> str:
         api_key = (self._config.get("claude_api_key")
                    or os.environ.get("ANTHROPIC_API_KEY",""))
-        msgs = [{"role":"user","content":prompt}]
+        # Build messages: history + current prompt
+        msgs = list(history or [])
+        msgs.append({"role": "user", "content": prompt})
         body: dict = {"model":opt.model,"max_tokens":max_tokens,"messages":msgs}
         if system: body["system"] = system
         payload = json.dumps(body).encode()
@@ -264,8 +272,17 @@ class LLMRouter:
         return json.loads(resp.read())["content"][0]["text"]
 
     def _call_ollama(self, opt: LLMOption, prompt: str,
-                     max_tokens: int, system: str, json_mode: bool) -> str:
-        body: dict = {"model":opt.model,"prompt":prompt,"stream":False}
+                     max_tokens: int, system: str,
+                     json_mode: bool, history: list = None) -> str:
+        # Prepend history as conversation context in the prompt
+        if history:
+            ctx = "\n".join(
+                f"{'User' if m['role']=='user' else 'Assistant'}: {m['content']}"
+                for m in history[-6:])  # last 3 turns
+            full_prompt = f"Previous conversation:\n{ctx}\n\nUser: {prompt}"
+        else:
+            full_prompt = prompt
+        body: dict = {"model":opt.model,"prompt":full_prompt,"stream":False}
         if json_mode: body["format"] = "json"
         payload = json.dumps(body).encode()
         req = urllib.request.Request(f"{opt.endpoint}/api/generate",
@@ -274,11 +291,13 @@ class LLMRouter:
         return json.loads(resp.read()).get("response","")
 
     def _call_openai(self, opt: LLMOption, prompt: str,
-                     max_tokens: int, system: str, json_mode: bool) -> str:
+                     max_tokens: int, system: str,
+                     json_mode: bool, history: list = None) -> str:
         api_key = (self._config.get("openai_api_key")
                    or os.environ.get("OPENAI_API_KEY",""))
         msgs = []
         if system: msgs.append({"role":"system","content":system})
+        msgs.extend(history or [])
         msgs.append({"role":"user","content":prompt})
         body: dict = {"model":"gpt-4o-mini","max_tokens":max_tokens,"messages":msgs}
         if json_mode: body["response_format"] = {"type":"json_object"}
