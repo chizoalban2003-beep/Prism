@@ -6,6 +6,8 @@ import re
 import urllib.request
 from typing import Optional
 
+from prism_llm_router import LLMRouter
+from prism_task_queue import TaskQueue
 from domain_configs import ALL_DOMAINS, DomainDecisionModel
 from prism_device_agent import PrismDeviceAgent, DeviceTaskResult
 from prism_planner import PrismPlanner, PlanOfAction
@@ -54,6 +56,12 @@ class PrismAgent:
          r"run (?:command|script)|execute|open (?:app|file)|"
          r"install (?:package|app)|git (?:commit|push|pull|status)|"
          r"what(?:'s| is) (?:on|in) my|show me (?:my )?files", "device_task"),
+        (r"show (?:my )?polic|what(?:'s| are) my (?:budget|polic|limit)|"
+         r"current (?:polic|budget|limit)", "show_policies"),
+        (r"set (?:my )?(\w+) (?:budget|limit)|auto.?approv|never use|"
+         r"require approval|reset (?:all )?polic", "update_policy"),
+        (r"(?:running|active|pending|recent) tasks?|task (?:status|progress)|"
+         r"what(?:'s| is) (?:running|happening)", "task_status"),
         (r"help|what\.can|commands|options", "help"),
     ]
 
@@ -70,6 +78,8 @@ class PrismAgent:
         self._ollama_host = ollama_host.rstrip('/')
         self._text_model = text_model
         self._claude_key = claude_api_key
+        self._router = LLMRouter.from_config()
+        self._queue  = TaskQueue()
         self._planner = PrismPlanner(
             ollama_host    = ollama_host,
             ollama_model   = text_model,
@@ -258,4 +268,25 @@ class PrismAgent:
                 f"KSA: {'active' if self._ksa else 'offline'}.",
                 "Status",
             )
+        if intent == "show_policies":
+            from prism_responses import policy_view_card
+            if hasattr(self, '_policy') and self._policy:
+                data = self._policy.show_policies(self._user)
+            else:
+                data = {"allocations": {}, "note": "No policies set yet. "
+                        "Try: 'set my food budget to £80'"}
+            return policy_view_card(data)
+
+        if intent == "update_policy":
+            if hasattr(self, '_policy') and self._policy:
+                result = self._policy.parse_policy_update(message, self._user)
+                if result:
+                    return text_card(result, "Policy updated")
+            return text_card("Policy engine not configured.", "Policy")
+
+        if intent == "task_status":
+            from prism_responses import task_list_card
+            tasks = self._queue.list_recent(5)
+            return task_list_card(tasks)
+
         return text_card("I'm not sure how to help with that. Try: 'help'")

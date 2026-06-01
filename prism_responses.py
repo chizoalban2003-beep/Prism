@@ -267,3 +267,42 @@ def plan_of_action_card(plan: "PlanOfAction") -> PrismCard:
             "Execute optimal strategy",
         ]
     )
+
+
+def policy_view_card(data: dict) -> PrismCard:
+    return PrismCard(CardType.TEXT, "Your operating policies",
+        f"Global limit: {data.get('global_limit','—')} · "
+        f"Escalate at: {data.get('escalate_at','—')}",
+        data, actions=["Set a budget","Reset all policies"])
+
+
+def task_list_card(tasks: list) -> PrismCard:
+    items = [{"id":t.task_id,"title":t.title,"status":t.status
+              if isinstance(t.status,str) else t.status.value,
+              "progress":t.progress,"current_step":t.current_step,
+              "error":t.error} for t in tasks]
+    running = sum(1 for t in tasks
+                  if (t.status if isinstance(t.status,str)
+                      else t.status.value) == "running")
+    return PrismCard(CardType.TEXT,"Task queue",
+        f"{running} running · {len(tasks)} recent",
+        {"tasks":items},
+        actions=["Cancel running task"] if running else [])
+
+
+def task_progress_card(progress) -> PrismCard:
+    status = (progress.status if isinstance(progress.status,str)
+              else progress.status.value)
+    pct    = int(progress.progress * 100)
+    body   = (f"{progress.current_step}" if status == "running"
+              else f"Completed" if status == "completed"
+              else f"Failed: {progress.error[:100]}" if status == "failed"
+              else status.title())
+    return PrismCard(CardType.TEXT,
+        f"{progress.title} — {pct}%", body,
+        {"task_id":progress.task_id,"status":status,
+         "progress":progress.progress,
+         "steps_done":progress.steps_done,
+         "steps_total":progress.steps_total,
+         "result":progress.result},
+        actions=["Cancel"] if status == "running" else [])

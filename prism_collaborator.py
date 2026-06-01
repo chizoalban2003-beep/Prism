@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 from urllib.parse import quote_plus
 
+from prism_llm_router import LLMRouter
+
 logger = logging.getLogger(__name__)
 
 
@@ -100,15 +102,23 @@ Return ONLY the Python class code, no explanation."""
 
     def __init__(
         self,
+        router: LLMRouter = None,
         claude_api_key: Optional[str] = None,
         ollama_host: str = "http://localhost:11434",
         ollama_model: str = "mistral",
         use_web_search: bool = False,
+        **legacy_kwargs,
     ):
         self.claude_api_key = claude_api_key
         self.ollama_host = ollama_host.rstrip("/")
         self.ollama_model = ollama_model
         self.use_web_search = use_web_search
+        if router is not None:
+            self._router = router
+        elif claude_api_key:
+            self._router = LLMRouter(config={"claude_api_key": claude_api_key})
+        else:
+            self._router = LLMRouter()
 
     def research(
         self,
@@ -272,34 +282,13 @@ Return ONLY the Python class code, no explanation."""
             logger.warning("Claude call failed: %s", exc)
             return self._call_ollama(query, prompt, purpose)
 
-    def _call_claude_raw(self, prompt: str) -> str:
-        if not self.claude_api_key:
-            raise ValueError("claude_api_key is required")
+    def _call_llm(self, prompt: str) -> str:
+        text, model = self._router.call(prompt, min_capability=1)
+        return text
 
-        payload = json.dumps(
-            {
-                "model": "claude-sonnet-4-20250514",
-                "max_tokens": 1000,
-                "messages": [{"role": "user", "content": prompt}],
-            }
-        ).encode()
-        req = urllib.request.Request(
-            "https://api.anthropic.com/v1/messages",
-            data=payload,
-            headers={
-                "Content-Type": "application/json",
-                "anthropic-version": "2023-06-01",
-                "x-api-key": self.claude_api_key,
-            },
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            data = json.loads(resp.read().decode())
-        content = data.get("content", [])
-        for block in content:
-            if isinstance(block, dict) and block.get("type") == "text":
-                return str(block.get("text", ""))
-        return ""
+    def _call_claude_raw(self, prompt: str) -> str:
+        text, _ = self._router.call(prompt, min_capability=2)
+        return text
 
     def _call_ollama(
         self,
