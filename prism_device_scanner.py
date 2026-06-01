@@ -1,3 +1,4 @@
+"""Installed-app and system capability scanner for the local device."""
 from __future__ import annotations
 import shutil, sys, time
 from dataclasses import dataclass, field

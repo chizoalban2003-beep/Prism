@@ -2,7 +2,6 @@ from __future__ import annotations
 import hashlib, json, math, sqlite3, time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 @dataclass
 class MemoryEntry:

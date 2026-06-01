@@ -6,7 +6,6 @@ import os
 import re
 import subprocess
 import tempfile
-import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -130,10 +129,25 @@ Return ONLY the Python class code, no explanation."""
             query=query,
             factor_names=json.dumps(factor_names or []),
         )
-
-        if self.claude_api_key and not prefer_local:
-            return self._call_claude(query, prompt, "research")
-        return self._call_ollama(query, prompt, "research", factor_names or [])
+        min_cap = 2 if (self.claude_api_key and not prefer_local) else 1
+        try:
+            raw, source_model = self._router.call(prompt, min_capability=min_cap)
+            data = self._extract_json_object(raw)
+            source = "claude_api" if "claude" in source_model else "ollama"
+            return ResearchResult(
+                query=query,
+                findings=dict(data.get("findings", {})),
+                raw_response=raw,
+                source=source,
+                confidence=self._coerce_confidence(
+                    data.get("confidence", 0.7 if min_cap >= 2 else 0.5)
+                ),
+            )
+        except Exception as exc:
+            logger.warning("LLM research failed: %s", exc)
+            if self.use_web_search:
+                return self._call_web_search(query)
+            return self._heuristic_research(query, factor_names or [])
 
     def study(
         self,
@@ -146,16 +160,9 @@ Return ONLY the Python class code, no explanation."""
             "Be factual, current, and concise."
         )
 
-        if self.claude_api_key:
-            try:
-                return self._call_claude_raw(prompt)
-            except Exception as exc:
-                logger.warning("Claude study failed: %s", exc)
-
-        try:
-            return self._call_ollama_raw(prompt)
-        except Exception as exc:
-            logger.warning("Ollama study failed: %s", exc)
+        text, _ = self._router.call(prompt, min_capability=1)
+        if text:
+            return text
 
         if self.use_web_search:
             web = self._call_web_search(topic)
@@ -185,7 +192,7 @@ Return ONLY the Python class code, no explanation."""
         )
 
         try:
-            code = self._call_claude_raw(prompt)
+            code, _ = self._router.call(prompt, min_capability=2)
         except Exception as exc:
             return False, f"Generation failed: {exc}"
 
@@ -267,69 +274,9 @@ Return ONLY the Python class code, no explanation."""
             return True, ""
         return False, (stderr or stdout or "sandbox execution failed")[:500]
 
-    def _call_claude(self, query: str, prompt: str, purpose: str) -> ResearchResult:
-        try:
-            raw = self._call_claude_raw(prompt)
-            data = self._extract_json_object(raw)
-            return ResearchResult(
-                query=query,
-                findings=dict(data.get("findings", {})),
-                raw_response=raw,
-                source="claude_api",
-                confidence=self._coerce_confidence(data.get("confidence", 0.7)),
-            )
-        except Exception as exc:
-            logger.warning("Claude call failed: %s", exc)
-            return self._call_ollama(query, prompt, purpose)
-
     def _call_llm(self, prompt: str) -> str:
         text, model = self._router.call(prompt, min_capability=1)
         return text
-
-    def _call_claude_raw(self, prompt: str) -> str:
-        text, _ = self._router.call(prompt, min_capability=2)
-        return text
-
-    def _call_ollama(
-        self,
-        query: str,
-        prompt: str,
-        purpose: str,
-        factor_names: Optional[list[str]] = None,
-    ) -> ResearchResult:
-        del purpose
-        try:
-            raw = self._call_ollama_raw(prompt)
-            data = self._extract_json_object(raw)
-            return ResearchResult(
-                query=query,
-                findings=dict(data.get("findings", {})),
-                raw_response=raw,
-                source="ollama",
-                confidence=self._coerce_confidence(data.get("confidence", 0.5)),
-            )
-        except Exception as exc:
-            logger.warning("Ollama call failed: %s", exc)
-            if self.use_web_search:
-                return self._call_web_search(query)
-            return self._heuristic_research(query, factor_names or [])
-
-    def _call_ollama_raw(self, prompt: str) -> str:
-        payload = json.dumps(
-            {
-                "model": self.ollama_model,
-                "prompt": prompt,
-                "stream": False,
-            }
-        ).encode()
-        req = urllib.request.Request(
-            f"{self.ollama_host}/api/generate",
-            data=payload,
-            headers={"Content-Type": "application/json"},
-            method="POST",
-        )
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            return json.loads(resp.read().decode()).get("response", "")
 
     def _call_web_search(self, query: str) -> ResearchResult:
         url = f"https://duckduckgo.com/html/?q={quote_plus(query)}"

@@ -131,7 +131,8 @@ class PrismAgent:
         )
         try:
             self._memory = PrismMemory(ollama_host=ollama_host)
-        except Exception:
+        except Exception as e:
+            logger.warning("PrismMemory not available: %s", e)
             self._memory = None
         self._tts = PrismTTS.setup()
         self._smarthome = PrismSmartHome.from_config({})
@@ -159,7 +160,8 @@ class PrismAgent:
                 on_voice_command = self.chat,
             )
             self._perception.start()
-        except Exception:
+        except Exception as e:
+            logger.warning("PrismPerception not available: %s", e)
             self._perception = None
         try:
             self._proactive = PrismProactive(
@@ -172,7 +174,8 @@ class PrismAgent:
             for t in triggers:
                 self._proactive.register(t)
             self._proactive.start()
-        except Exception:
+        except Exception as e:
+            logger.warning("PrismProactive not available: %s", e)
             self._proactive = None
 
     def _handle_proactive_event(self, event) -> None:
@@ -280,7 +283,8 @@ class PrismAgent:
                 except Exception:
                     pass
 
-            self._tts.speak(card.body or "")
+            if self._tts:
+                self._tts.speak(card.body or "")
             return card
         except Exception as exc:
             logging.exception("PrismAgent.chat error")

@@ -1,5 +1,6 @@
+"""Standing instruction store — persistent rules taught once, applied to every relevant request."""
 from __future__ import annotations
-import json, sqlite3, time
+import sqlite3, time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional

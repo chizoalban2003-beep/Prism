@@ -1,5 +1,5 @@
 from __future__ import annotations
-import json, logging, sqlite3, threading, time
+import logging, sqlite3, threading, time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional

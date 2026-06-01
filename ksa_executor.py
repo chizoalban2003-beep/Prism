@@ -136,12 +136,16 @@ class TaskExecutor:
     ) -> tuple[int, str, str]:
         """
         Run a shell command, return (return_code, stdout, stderr).
-        Never raises on non-zero exit codes.
+        Uses shlex.split() and shell=False for safety. Never raises on non-zero exit.
         """
         try:
+            args = shlex.split(cmd)
+        except ValueError as exc:
+            return 1, "", f"Command parse error: {exc}"
+        try:
             completed = subprocess.run(
-                cmd,
-                shell=True,
+                args,
+                shell=False,
                 capture_output=True,
                 text=True,
                 cwd=working_dir,
@@ -150,6 +154,8 @@ class TaskExecutor:
             return completed.returncode, completed.stdout, completed.stderr
         except subprocess.TimeoutExpired:
             return 124, "", "Command timed out"
+        except FileNotFoundError:
+            return 1, "", f"Command not found: {args[0] if args else cmd}"
         except Exception as exc:
             return 1, "", str(exc)
 
@@ -309,11 +315,16 @@ class FileIndexExecutor(TaskExecutor):
         if ctx.dry_run:
             rc, out, err = 0, "[dry-run] would run nice find", ""
         else:
-            cmd = (
-                f"nice -n 19 find {shlex.quote(ctx.working_dir)} -type f "
-                f"> {self.INDEX_FILE}"
-            )
+            cmd = f"nice -n 19 find {shlex.quote(ctx.working_dir)} -type f"
             rc, out, err = self._run_shell(cmd, ctx.working_dir)
+            if rc == 0:
+                index_path = os.path.join(ctx.working_dir, self.INDEX_FILE)
+                try:
+                    with open(index_path, "w", encoding="utf-8") as fh:
+                        fh.write(out)
+                except OSError as exc:
+                    err = str(exc)
+                    rc  = 1
 
         elapsed = (time.perf_counter() - t0) * 1000
         sampler.stop()
@@ -327,8 +338,17 @@ class FileIndexExecutor(TaskExecutor):
         if ctx.dry_run:
             rc, out, err = 0, "[dry-run] would run shallow find", ""
         else:
-            cmd = f"find . -maxdepth 1 -type f > {self.INDEX_FILE}"
-            rc, out, err = self._run_shell(cmd, ctx.working_dir)
+            rc, out, err = self._run_shell(
+                "find . -maxdepth 1 -type f", ctx.working_dir
+            )
+            if rc == 0:
+                index_path = os.path.join(ctx.working_dir, self.INDEX_FILE)
+                try:
+                    with open(index_path, "w", encoding="utf-8") as fh:
+                        fh.write(out)
+                except OSError as exc:
+                    err = str(exc)
+                    rc  = 1
 
         elapsed = (time.perf_counter() - t0) * 1000
         sampler.stop()

@@ -1,8 +1,11 @@
+"""Universal service integrator — researches, characterises, and builds integrations for any unknown service."""
 from __future__ import annotations
 import json, logging, sqlite3, time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+
+from prism_llm_router import parse_llm_json
 
 logger = logging.getLogger(__name__)
 
@@ -224,14 +227,12 @@ class PrismServiceDiscovery:
         )
         raw, _ = self._collab._router.call(
             prompt, min_capability=1, max_tokens=300, json_mode=True)
-        try:
-            clean = raw.strip().lstrip("```json").rstrip("```").strip()
-            data  = json.loads(clean)
+        data = parse_llm_json(raw)
+        if data and isinstance(data, dict):
             data["name"] = name
             return data
-        except Exception:
-            return {"name":name,"description":intent,"category":"other",
-                    "has_api":False,"api_url":"","needs_auth":True}
+        return {"name":name,"description":intent,"category":"other",
+                "has_api":False,"api_url":"","needs_auth":True}
 
     def _choose_method(self, profile: dict, constraints: dict) -> str:
         """Pick the best integration method given what's available."""
