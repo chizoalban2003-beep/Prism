@@ -680,6 +680,24 @@ class KDEHandler(BaseHTTPRequestHandler):
                     "count": len(events),
                 })
 
+            elif path == '/proactive/pending':
+                agent  = getattr(self.server, 'prism_agent', None)
+                events = getattr(agent, '_proactive_buffer', []) if agent else []
+                self._json_response({"events": [
+                    {"trigger_id": e.trigger_id, "message": e.message,
+                     "timestamp": e.timestamp}
+                    for e in events[-5:]
+                ]})
+                if agent:
+                    agent._proactive_buffer = []
+
+            elif path == '/smarthome/status':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_smarthome'):
+                    self._json_response(agent._smarthome.status_summary())
+                else:
+                    self._json_response({"configured": False})
+
             else:
                 self._error(f"Unknown route: {path}", 404)
 
@@ -1008,6 +1026,14 @@ class KDEHandler(BaseHTTPRequestHandler):
                     self._json_response({"ok": True})
                 else:
                     self._error(f"Unknown TTS action: {action}", 400)
+
+            elif path == '/tts/speak':
+                agent = getattr(self.server, 'prism_agent', None)
+                tts   = agent._tts if agent and hasattr(agent, '_tts') else None
+                text  = body.get("text", "")
+                if tts and text:
+                    tts.speak(text)
+                self._json_response({"ok": True})
 
             elif path == '/smarthome':
                 from prism_smart_home import PrismSmartHome

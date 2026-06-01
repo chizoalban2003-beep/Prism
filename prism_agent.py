@@ -14,6 +14,8 @@ from prism_planner import PrismPlanner, PlanOfAction
 from prism_perception import PrismPerception, ContextState
 from prism_memory import PrismMemory
 from prism_tts import PrismTTS
+from prism_proactive import PrismProactive, build_default_triggers
+from prism_smart_home import PrismSmartHome
 from prism_responses import (
     PrismCard,
     domain_card,
@@ -66,6 +68,9 @@ class PrismAgent:
         (r"(?:running|active|pending|recent) tasks?|task (?:status|progress)|"
          r"what(?:'s| is) (?:running|happening)", "task_status"),
         (r"help|what\.can|commands|options", "help"),
+        (r"turn (?:on|off)|set (?:the )?(?:lights?|thermostat|temp)|"
+         r"lock|unlock|what(?:'s| is) (?:on|off)|smart home|home assistant",
+         "smart_home"),
     ]
 
     def __init__(
@@ -99,6 +104,7 @@ class PrismAgent:
         except Exception:
             self._memory = None
         self._tts = PrismTTS.setup()
+        self._smarthome = PrismSmartHome.from_config({})
         try:
             cfg = {}
             self._perception = PrismPerception.setup(
@@ -112,6 +118,26 @@ class PrismAgent:
             self._perception.start()
         except Exception:
             self._perception = None
+        try:
+            self._proactive = PrismProactive(
+                on_event=self._handle_proactive_event)
+            triggers = build_default_triggers(
+                perception    = getattr(self, '_perception', None),
+                policy_engine = getattr(self, '_policy', None),
+                task_queue    = getattr(self, '_queue', None),
+            )
+            for t in triggers:
+                self._proactive.register(t)
+            self._proactive.start()
+        except Exception:
+            self._proactive = None
+
+    def _handle_proactive_event(self, event) -> None:
+        """Store proactive notification for chat UI polling."""
+        if hasattr(self, '_proactive_buffer'):
+            self._proactive_buffer.append(event)
+        else:
+            self._proactive_buffer = [event]
 
     @classmethod
     def setup(
@@ -340,5 +366,35 @@ class PrismAgent:
             from prism_responses import task_list_card
             tasks = self._queue.list_recent(5)
             return task_list_card(tasks)
+
+        if intent == "smart_home":
+            if not self._smarthome.configured:
+                return text_card(
+                    "Smart home not configured. "
+                    "Add ha_url and ha_token to prism_config.toml.",
+                    "Smart Home")
+            msg_lower = message.lower()
+            entity = None
+            for word in message.split():
+                found = self._smarthome.find_entity(word)
+                if found:
+                    entity = found
+                    break
+            if "turn on" in msg_lower and entity:
+                ok = self._smarthome.turn_on(entity.entity_id)
+                return text_card(
+                    f"{'Done' if ok else 'Failed'}: {entity.friendly_name} on",
+                    "Smart Home")
+            if "turn off" in msg_lower and entity:
+                ok = self._smarthome.turn_off(entity.entity_id)
+                return text_card(
+                    f"{'Done' if ok else 'Failed'}: {entity.friendly_name} off",
+                    "Smart Home")
+            summary = self._smarthome.status_summary()
+            return text_card(
+                f"{summary['on_count']} devices on · "
+                f"{summary['total_entities']} total · "
+                f"domains: {', '.join(summary.get('domains', [])[:5])}",
+                "Smart Home Status")
 
         return text_card("I'm not sure how to help with that. Try: 'help'")
