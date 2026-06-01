@@ -328,6 +328,11 @@ def _validate_path(path_str: str, writable: bool = False) -> tuple[Path, str]:
     Resolve and validate a user-provided path.
     Returns (resolved_path, error_string). error_string is empty if path is safe.
     """
+    if not path_str or not path_str.strip():
+        return Path("."), "Empty path"
+    # Block path traversal before any resolution
+    if ".." in path_str:
+        return Path("."), "Path traversal not allowed"
     try:
         p = Path(path_str.strip()).expanduser().resolve()
     except Exception as exc:
