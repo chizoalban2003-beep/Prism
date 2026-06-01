@@ -718,6 +718,32 @@ class PrismDeviceAgent:
 
     # ------------------------------------------------------------------ #
 
+    @staticmethod
+    def _safe_path(raw: str, allowed_roots: list[str] = None) -> str:
+        """
+        Resolve and validate a path.
+        Raises ValueError if path traversal is detected or path is outside
+        allowed roots. Returns the resolved absolute path string.
+        """
+        if not raw:
+            raise ValueError("Empty path")
+        # Block obvious traversal attempts before any resolution
+        if ".." in raw:
+            raise ValueError("Path traversal not allowed")
+        resolved = os.path.realpath(os.path.expanduser(raw))
+        if allowed_roots:
+            if not any(
+                resolved.startswith(os.path.realpath(r) + os.sep)
+                or resolved == os.path.realpath(r)
+                for r in allowed_roots
+            ):
+                raise ValueError(
+                    f"Path '{resolved}' is outside allowed directories"
+                )
+        return resolved
+
+    # ------------------------------------------------------------------ #
+
     def _check_policy(self, task: str) -> tuple:
         """Returns (allowed: bool, needs_approval: bool)"""
         if self._policy is None:
@@ -796,46 +822,68 @@ class PrismDeviceAgent:
     def _dispatch(self, task_type: str, task: str, params: dict) -> DeviceTaskResult:
         lowered = task.lower().strip()
 
+        _home = str(Path.home())
+
         if task_type == "list_files":
             m = re.search(
                 r"(?:list\s+files?\s+(?:in\s+)?|what(?:'s| is)\s+(?:on|in)\s+my\s+)([\w./~-]+)",
                 lowered,
             )
-            path_str = m.group(1) if m else params.get("path", str(Path.home()))
+            raw_path = m.group(1) if m else params.get("path", _home)
+            try:
+                path_str = self._safe_path(raw_path)
+            except ValueError as exc:
+                return _fail(f"Invalid path: {exc}")
             return _exec_list_files(path_str)
 
         if task_type == "read_file":
             m = re.search(r"read\s+file\s+(\S+)", lowered)
-            path_str = m.group(1) if m else params.get("path", "")
-            if not path_str:
+            raw_path = m.group(1) if m else params.get("path", "")
+            if not raw_path:
                 return _fail("No file path provided.")
+            try:
+                path_str = self._safe_path(raw_path)
+            except ValueError as exc:
+                return _fail(f"Invalid path: {exc}")
             return _exec_read_file(path_str)
 
         if task_type == "copy_file":
-            src, dst = _split_src_dst(lowered, r"copy\s+")
-            if src and dst:
-                return _exec_copy_file(src, dst)
-            src = params.get("src", "")
-            dst = params.get("dst", "")
-            if src and dst:
+            src_raw, dst_raw = _split_src_dst(lowered, r"copy\s+")
+            if not (src_raw and dst_raw):
+                src_raw = params.get("src", "")
+                dst_raw = params.get("dst", "")
+            if src_raw and dst_raw:
+                try:
+                    src = self._safe_path(src_raw)
+                    dst = self._safe_path(dst_raw)
+                except ValueError as exc:
+                    return _fail(f"Invalid path: {exc}")
                 return _exec_copy_file(src, dst)
             return _fail("Could not parse copy source/destination.")
 
         if task_type == "move_file":
-            src, dst = _split_src_dst(lowered, r"(?:move|rename)\s+")
-            if src and dst:
-                return _exec_move_file(src, dst)
-            src = params.get("src", "")
-            dst = params.get("dst", "")
-            if src and dst:
+            src_raw, dst_raw = _split_src_dst(lowered, r"(?:move|rename)\s+")
+            if not (src_raw and dst_raw):
+                src_raw = params.get("src", "")
+                dst_raw = params.get("dst", "")
+            if src_raw and dst_raw:
+                try:
+                    src = self._safe_path(src_raw)
+                    dst = self._safe_path(dst_raw)
+                except ValueError as exc:
+                    return _fail(f"Invalid path: {exc}")
                 return _exec_move_file(src, dst)
             return _fail("Could not parse move source/destination.")
 
         if task_type == "delete_file":
             m = re.search(r"(?:delete|remove)\s+(?:file\s+)?(\S+)", lowered)
-            path_str = m.group(1) if m else params.get("path", "")
-            if not path_str:
+            raw_path = m.group(1) if m else params.get("path", "")
+            if not raw_path:
                 return _fail("No file path provided.")
+            try:
+                path_str = self._safe_path(raw_path)
+            except ValueError as exc:
+                return _fail(f"Invalid path: {exc}")
             return _exec_delete_file(path_str)
 
         if task_type == "find_file":
@@ -857,6 +905,12 @@ class PrismDeviceAgent:
                 to_idx = lowered.find(" to ", m.start(1))
                 if to_idx != -1:
                     dst_part = lowered[to_idx + 4:].strip().split()[0] if lowered[to_idx + 4:].strip() else ""
+                try:
+                    src_part = self._safe_path(src_part)
+                    if dst_part:
+                        dst_part = self._safe_path(dst_part)
+                except ValueError as exc:
+                    return _fail(f"Invalid path: {exc}")
                 return _exec_compress_zip(src_part, dst_part)
             return _fail("Could not parse compress/zip path.")
 
@@ -921,7 +975,12 @@ class PrismDeviceAgent:
 
         # show files fallback
         if "show" in lowered and "file" in lowered:
-            return _exec_list_files(params.get("path", str(Path.home())))
+            raw_path = params.get("path", _home)
+            try:
+                path_str = self._safe_path(raw_path)
+            except ValueError as exc:
+                return _fail(f"Invalid path: {exc}")
+            return _exec_list_files(path_str)
 
         return DeviceTaskResult(
             success=False,
