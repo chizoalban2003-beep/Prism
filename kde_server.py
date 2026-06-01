@@ -763,6 +763,13 @@ class KDEHandler(BaseHTTPRequestHandler):
                 else:
                     self._error("Calendar not configured", 503)
 
+            elif path == '/browser/status':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_browser'):
+                    self._json_response(agent._browser.status())
+                else:
+                    self._json_response({"available": False})
+
             else:
                 self._error(f"Unknown route: {path}", 404)
 

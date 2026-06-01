@@ -18,6 +18,7 @@ from prism_proactive import PrismProactive, build_default_triggers
 from prism_smart_home import PrismSmartHome
 from prism_email    import PrismEmail
 from prism_calendar import PrismCalendar, CalendarEvent
+from prism_browser_agent import PrismBrowserAgent, BrowserTaskResult
 from prism_responses import (
     PrismCard,
     domain_card,
@@ -79,6 +80,9 @@ class PrismAgent:
         (r"(?:schedule|book|create|add) (?:a )?(?:meeting|event|appointment)|"
          r"(?:find|when(?:'s| is) the next) (?:free|available) (?:slot|time)",
                                                                 "calendar_write"),
+        (r"(?:go to|open|browse|visit|search (?:the )?web|find (?:on|online)|"
+         r"look up|book|reserve|fill (?:in|out)|check (?:the )?(?:price|availability)|"
+         r"what(?:'s| is) (?:on|the) website)",  "browser_task"),
         (r"help|what\.can|commands|options", "help"),
         (r"turn (?:on|off)|set (?:the )?(?:lights?|thermostat|temp)|"
          r"lock|unlock|what(?:'s| is) (?:on|off)|smart home|home assistant",
@@ -123,6 +127,10 @@ class PrismAgent:
         self._smarthome = PrismSmartHome.from_config({})
         self._email    = PrismEmail.from_config({})
         self._calendar = PrismCalendar.from_config({})
+        self._browser  = PrismBrowserAgent.setup(
+            llm_router = getattr(self, '_router', None),
+            headless   = True,
+        )
         try:
             cfg = {}
             self._perception = PrismPerception.setup(
@@ -502,5 +510,25 @@ class PrismAgent:
                     return text_card(f"Created: {event}", "Calendar")
             return text_card("Could not parse event details. "
                              "Try: 'schedule a meeting with X on Friday at 2pm'", "Calendar")
+
+        if intent == "browser_task":
+            if not self._browser.available:
+                return text_card(
+                    "Browser agent not available. "
+                    "Install with: pip install playwright && playwright install chromium",
+                    "Browser")
+            queue = getattr(self, '_queue', None)
+            if queue:
+                def run_browser():
+                    return self._browser.execute(message)
+                task_id = queue.submit_single(f"Browser: {message[:40]}", run_browser)
+                return text_card(
+                    f"Browser task started. I'll let you know when done.\n"
+                    f"Task ID: {task_id}",
+                    "Browser Task")
+            else:
+                result = self._browser.execute(message)
+                body   = result.extracted[:500] if result.success else result.error
+                return text_card(body, "Browser Result")
 
         return text_card("I'm not sure how to help with that. Try: 'help'")
