@@ -627,6 +627,14 @@ class KDEHandler(BaseHTTPRequestHandler):
                     "completed_at": progress.completed_at,
                 })
 
+            elif path == '/perception/status':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_perception') and agent._perception:
+                    self._json_response(agent._perception.status())
+                else:
+                    self._json_response({"active_channels": [], "factor_count": 0,
+                                         "summary": "perception not initialised"})
+
             else:
                 self._error(f"Unknown route: {path}", 404)
 
@@ -911,6 +919,26 @@ class KDEHandler(BaseHTTPRequestHandler):
                     "undo_available": bool(result.undo_command),
                 })
                 return
+
+            elif path == '/perception/ingest':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_perception') and agent._perception:
+                    agent._perception.ingest_biometrics(**body)
+                    self._json_response({"ok": True})
+                else:
+                    self._error("Perception not initialised", 503)
+
+            elif path == '/perception/enable':
+                channel = body.get("channel", "")
+                enabled = body.get("enabled", True)
+                agent   = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_perception') and agent._perception:
+                    for ch in agent._perception._channels:
+                        if ch.NAME == channel:
+                            ch.resume() if enabled else ch.pause()
+                    self._json_response({"channel": channel, "enabled": enabled})
+                else:
+                    self._error("Perception not initialised", 503)
 
             else:
                 self._error(f"Unknown route: {path}", 404)

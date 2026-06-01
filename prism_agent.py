@@ -11,6 +11,7 @@ from prism_task_queue import TaskQueue
 from domain_configs import ALL_DOMAINS, DomainDecisionModel
 from prism_device_agent import PrismDeviceAgent, DeviceTaskResult
 from prism_planner import PrismPlanner, PlanOfAction
+from prism_perception import PrismPerception, ContextState
 from prism_responses import (
     PrismCard,
     domain_card,
@@ -91,6 +92,19 @@ class PrismAgent:
             collaborator  = getattr(self, '_collaborator', None),
             user          = getattr(self, '_user', 'default'),
         )
+        try:
+            cfg = {}
+            self._perception = PrismPerception.setup(
+                enable_voice     = cfg.get("enable_voice", False),
+                enable_screen    = cfg.get("enable_screen", False),
+                enable_typing    = cfg.get("enable_typing", True),
+                enable_system    = cfg.get("enable_system", True),
+                enable_biometric = cfg.get("enable_biometric", True),
+                on_voice_command = self.chat,
+            )
+            self._perception.start()
+        except Exception:
+            self._perception = None
 
     @classmethod
     def setup(
@@ -134,6 +148,12 @@ class PrismAgent:
     def chat(self, message: str, context: dict | None = None) -> PrismCard:
         try:
             intent = self._route(message or "")
+            if self._perception:
+                percept_state = self._perception.current_context()
+                if not context:
+                    context = {}
+                context["perception"] = percept_state.to_factor_updates()
+                context["perception_summary"] = percept_state.summary
             return self._execute(intent, message or "", context or {})
         except Exception as exc:
             logging.exception("PrismAgent.chat error")
@@ -184,9 +204,11 @@ class PrismAgent:
 
         if intent == "universal_plan":
             from prism_responses import plan_of_action_card
+            perception_factors = ctx.get("perception", {})
+            user_context = {**perception_factors, **(ctx.get("user_factors", {}))}
             plan = self._planner.plan(
                 task_description = message,
-                user_context     = ctx.get("user_factors", {}),
+                user_context     = user_context,
                 n_plans          = 4,
             )
             return plan_of_action_card(plan)
@@ -204,7 +226,9 @@ class PrismAgent:
             if config is None:
                 return text_card(f"Domain '{domain_key}' not configured.")
             profile = ctx.get("profile") or config.profiles[min(2, len(config.profiles) - 1)].name
-            factors = {factor.id: float(ctx.get(factor.id, 0.5)) for factor in config.factors}
+            perception_factors = ctx.get("perception", {})
+            user_context = {**perception_factors, **(ctx.get("user_factors", {}))}
+            factors = {factor.id: float(user_context.get(factor.id, ctx.get(factor.id, 0.5))) for factor in config.factors}
             diagnosis = DomainDecisionModel(config).evaluate(profile, factors)
             return domain_card(domain_key, diagnosis)
 
