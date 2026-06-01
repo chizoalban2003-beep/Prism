@@ -21,6 +21,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -334,9 +335,24 @@ def _validate_path(path_str: str, writable: bool = False) -> tuple[Path, str]:
     if ".." in path_str:
         return Path("."), "Path traversal not allowed"
     try:
-        p = Path(path_str.strip()).expanduser().resolve()
+        # Resolve to an absolute canonical path first
+        resolved = os.path.realpath(os.path.expanduser(path_str.strip()))
     except Exception as exc:
         return Path("."), f"Invalid path: {exc}"
+
+    # Restrict to allowed roots so the resolved path cannot escape safe directories
+    _safe_roots = (
+        os.path.realpath(str(Path.home())),
+        os.path.realpath(tempfile.gettempdir()),
+    )
+    if not any(
+        resolved == root or resolved.startswith(root + os.sep)
+        for root in _safe_roots
+    ):
+        return Path("."), f"Access denied: path outside safe directories: {resolved}"
+
+    # Construct Path from the validated resolved string (not from the raw user input)
+    p = Path(resolved)
 
     if writable:
         p_str = str(p)
