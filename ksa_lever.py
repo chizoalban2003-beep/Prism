@@ -340,14 +340,14 @@ class ThreeBarSystem:
         """
         return {
             "W": [
-                {"left": l.left_weight, "right": l.right_weight}
-                for l in self.levers
+                {"left": lev.left_weight, "right": lev.right_weight}
+                for lev in self.levers
             ],
-            "F": [l.fulcrum_bias for l in self.levers],
+            "F": [lev.fulcrum_bias for lev in self.levers],
             "L": copy.deepcopy(self.linkage_matrix),
             "arm_lengths": [
-                {"left": l.left_arm_length, "right": l.right_arm_length}
-                for l in self.levers
+                {"left": lev.left_arm_length, "right": lev.right_arm_length}
+                for lev in self.levers
             ],
             "balancer_threshold": self.balancer_threshold,
         }
@@ -382,8 +382,8 @@ class ThreeBarSystem:
 
     def __repr__(self) -> str:
         return (
-            f"ThreeBarSystem(\n"
-            + "\n".join(f"  {l}" for l in self.levers)
+            "ThreeBarSystem(\n"
+            + "\n".join(f"  {lev}" for lev in self.levers)
             + f"\n  linkage={self.linkage_matrix}\n)"
         )
 

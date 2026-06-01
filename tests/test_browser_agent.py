@@ -1,7 +1,7 @@
 """Tests for prism_browser_agent.py — Gap Prompt 10c."""
 from unittest.mock import MagicMock, patch
 
-from prism_browser_agent import BrowserStep, BrowserTaskResult, PrismBrowserAgent
+from prism_browser_agent import BrowserTaskResult, PrismBrowserAgent
 
 
 def test_available_property_is_bool():

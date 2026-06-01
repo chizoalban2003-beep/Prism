@@ -20,7 +20,6 @@ import logging
 import os
 import sqlite3
 import threading
-import time
 import urllib.request
 import uuid
 import xml.etree.ElementTree as ET

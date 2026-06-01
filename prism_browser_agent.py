@@ -114,7 +114,6 @@ class PrismBrowserAgent:
                     if action_json is None:
                         break
 
-                    action = action_json.get("action", "")
                     done   = action_json.get("done", False)
                     reason = action_json.get("reason", "")
 

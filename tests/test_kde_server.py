@@ -8,16 +8,12 @@ pytest. Mock KDEAgent and PredictionPlatform — no real HTTP calls to Ollama.
 from __future__ import annotations
 
 import json
-import threading
 import time
 import urllib.request
-from dataclasses import dataclass, field
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
 
-from kde_server import KDEServer, KDEHandler, DEFAULT_PORT
+from kde_server import KDEServer
 
 
 # ---------------------------------------------------------------------------
@@ -26,7 +22,6 @@ from kde_server import KDEServer, KDEHandler, DEFAULT_PORT
 
 def _make_agent() -> MagicMock:
     """Create a mock KDEAgent with minimal interface."""
-    from sports_pro import Role
     agent = MagicMock()
     agent.status.return_value = {
         "profile": "TestAthlete",
@@ -112,7 +107,7 @@ def _make_agent() -> MagicMock:
 
 
 def _make_platform() -> MagicMock:
-    from prediction_engine import PredictionPlatform, MatchPrediction, TacticalPrediction
+    from prediction_engine import PredictionPlatform
     platform = MagicMock(spec=PredictionPlatform)
 
     # match predictor

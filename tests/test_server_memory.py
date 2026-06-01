@@ -6,7 +6,6 @@ import time
 import urllib.request
 from unittest.mock import MagicMock
 
-import pytest
 
 from kde_server import KDEServer
 

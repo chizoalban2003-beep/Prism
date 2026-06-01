@@ -2,6 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from prism_device_agent import DeviceTaskResult
+    from prism_planner import PlanOfAction
 
 
 class CardType(str, Enum):
@@ -295,7 +300,7 @@ def task_progress_card(progress) -> PrismCard:
               else progress.status.value)
     pct    = int(progress.progress * 100)
     body   = (f"{progress.current_step}" if status == "running"
-              else f"Completed" if status == "completed"
+              else "Completed" if status == "completed"
               else f"Failed: {progress.error[:100]}" if status == "failed"
               else status.title())
     return PrismCard(CardType.TEXT,

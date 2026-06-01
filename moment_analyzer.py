@@ -30,7 +30,6 @@ from decision_spectrum import (
     DecisionBeam,
     DecisionPlank,
     Factor,
-    OutcomeDiagnosis,
 )
 
 

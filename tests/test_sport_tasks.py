@@ -19,11 +19,7 @@ from ksa_lever import EquilibriumResult, LeverState, TiltDirection
 from sport_tasks import (
     TrainingPlanTask,
     MatchReportTask,
-    ScoutingReportTask,
-    NutritionPlanTask,
     SocialMediaTask,
-    EmailDraftTask,
-    PerformanceDashboardTask,
     PredictionReportTask,
     _ollama_text,
     _save_artifact,
@@ -187,7 +183,7 @@ def test_match_report_contains_sections(tmp_path: Path):
     with patch("sport_tasks._ollama_text", return_value=MOCK_LLM_RESPONSE):
         outcome = task.primary(ctx)
     data = json.loads(outcome.stdout)
-    content = data.get("content", "") + data.get("path", "")
+    _content = data.get("content", "") + data.get("path", "")
     # Check saved file if path returned
     saved_files = list((tmp_path / "artifacts").glob("match_report_*.md"))
     if saved_files:

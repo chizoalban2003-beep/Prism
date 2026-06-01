@@ -6,7 +6,10 @@ import time
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from digital_identity import DigitalIdentity
 
 
 @dataclass

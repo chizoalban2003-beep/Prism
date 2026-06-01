@@ -49,7 +49,7 @@ def test_rate_updates(tmp_path):
 
 def test_best_by_domain(tmp_path):
     store = _artifact_store(tmp_path)
-    low_id = store.save(_artifact(domain="sport", rating=0.4))
+    _low_id = store.save(_artifact(domain="sport", rating=0.4))
     high_id = store.save(_artifact(domain="sport", rating=0.9))
     best = store.best_by_domain("sport")
     assert best

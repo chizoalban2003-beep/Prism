@@ -19,11 +19,10 @@ import logging
 import math
 import time
 import uuid
-from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Callable, Iterator, Optional
+from dataclasses import dataclass
+from typing import Callable, Optional
 
-from duel_analyzer import DuelAnalyzer, DuelExtractor
+from duel_analyzer import DuelExtractor
 from moment_analyzer import (
     ActionOutcome,
     Moment,

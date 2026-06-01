@@ -8,12 +8,10 @@ Uses a real in-process HTTP server (no external calls) with mocked agents.
 from __future__ import annotations
 
 import json
-import threading
 import time
 import urllib.request
 from unittest.mock import MagicMock
 
-import pytest
 
 from kde_server import KDEServer, DEFAULT_HOST
 from moment_analyzer import MomentAnalyzer

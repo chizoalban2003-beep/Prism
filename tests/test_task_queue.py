@@ -1,7 +1,6 @@
 from __future__ import annotations
 import time
 
-import pytest
 
 from prism_task_queue import TaskQueue, TaskProgress, TaskStatus
 

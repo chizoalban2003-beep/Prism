@@ -12,7 +12,7 @@ def test_call_accepts_history():
 
 
 def test_history_included_in_ollama_prompt():
-    router = LLMRouter()
+    _router = LLMRouter()
     history = [
         {"role": "user", "content": "Hello"},
         {"role": "assistant", "content": "Hi there"},

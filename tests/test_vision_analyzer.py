@@ -17,10 +17,7 @@ Covers:
 from __future__ import annotations
 
 import json
-import socket
 import urllib.error
-from io import BytesIO
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -103,7 +100,7 @@ class TestAnalyzeFrame:
 
     def test_analyze_frame_returns_frame_analysis(self):
         va  = _make_analyzer()
-        env = _ollama_response(self._FRAME_JSON)
+        _env = _ollama_response(self._FRAME_JSON)
         with patch.object(va, "_call_ollama", return_value=json.loads(self._FRAME_JSON)):
             result = va.analyze_frame("base64img", "football", "athlete")
         assert isinstance(result, FrameAnalysis)

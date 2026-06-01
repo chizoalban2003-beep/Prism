@@ -36,7 +36,6 @@ import subprocess
 import threading
 import time
 from dataclasses import dataclass, field
-from typing import Optional
 
 import psutil
 
@@ -509,7 +508,6 @@ if __name__ == "__main__":
 
     print("=== KSA Executor Demo ===\n")
 
-    from ksa_lever import ThreeBarSystem
     from ksa_registry import SnapshotRegistry
     from ksa_router import MasterFulcrum
 

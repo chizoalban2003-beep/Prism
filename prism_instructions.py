@@ -1,6 +1,7 @@
 """Standing instruction store — persistent rules taught once, applied to every relevant request."""
 from __future__ import annotations
-import sqlite3, time
+import sqlite3
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -47,7 +48,7 @@ class PrismInstructions:
 
     def add(self, text: str, trigger: str = "always") -> Instruction:
         """Store a new standing instruction."""
-        import hashlib, uuid
+        import hashlib
         instr_id = hashlib.sha256(text.encode()).hexdigest()[:10]
         instr = Instruction(instr_id=instr_id, text=text,
                              trigger=trigger)

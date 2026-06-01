@@ -11,7 +11,6 @@ Designed to run as a background service or be called directly.
 
 from __future__ import annotations
 
-import json
 import logging
 import threading
 import time
@@ -23,22 +22,13 @@ from typing import Callable, Optional
 
 from sports_pro import (
     SportsProAssistant,
-    SportsProProfile,
-    DailyContext,
     DailyPlan,
     WearableReading,
     WearableReader,
-    Role,
 )
 from device_hub import DeviceHub, DeviceType, MediaType
 from media_processor import MediaProcessor
 from vision_analyzer import VisionAnalyzer
-from sport_executor import (
-    VideoAnalysisExecutor,
-    HighlightReelExecutor,
-    PerformanceReportExecutor,
-    WearableSyncExecutor,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -145,7 +135,7 @@ class DailyWorkflow:
             plan = self._assistant.plan_day(self._name, reading=reading)
         except KeyError as exc:
             logger.error("Profile not found: %s", exc)
-            from sports_pro import DailyTask, DailyPlan
+            from sports_pro import DailyPlan
             plan = DailyPlan(
                 primary_focus = "Profile not registered",
                 activation    = 0.5,
@@ -169,7 +159,6 @@ class DailyWorkflow:
         # --- Step 7: match intelligence (when match is close) ---
         match_intelligence: Optional[dict] = None
         try:
-            ctx = plan.tasks[0] if plan.tasks else None
             # Retrieve days_to_match from reading-derived context if available
             _days_to_match: float = 99.0
             if reading is not None:
@@ -389,13 +378,13 @@ class DailyWorkflow:
         reflect = self._assistant.reflect(self._name)
 
         lines = [
-            f"# Weekly Performance Report",
+            "# Weekly Performance Report",
             f"\nProfile: **{self._name}**  |  Generated: {_now_iso()}",
-            f"\n## Learning State",
+            "\n## Learning State",
             f"- Fixed fulcrum: {reflect.get('fixed_fulcrum', 'N/A')}",
             f"- Trend: {reflect.get('fulcrum_trend', 'N/A')}",
             f"- Avg day rating: {reflect.get('avg_day_rating', 'N/A')}",
-            f"\n## Sessions This Week",
+            "\n## Sessions This Week",
         ]
 
         if self._sessions:
@@ -408,7 +397,7 @@ class DailyWorkflow:
             lines.append("_No sessions logged this week._")
 
         lines += [
-            f"\n## Day Ratings",
+            "\n## Day Ratings",
         ]
         ratings = [h for h in history if h.get("type") == "rating"]
         if ratings:
@@ -418,9 +407,9 @@ class DailyWorkflow:
             lines.append("_No ratings logged this week._")
 
         lines += [
-            f"\n## Recommendations",
+            "\n## Recommendations",
             f"- Keep sleep above {reflect.get('fulcrum_trend', 'balanced')} targets",
-            f"- Maintain session log consistency",
+            "- Maintain session log consistency",
         ]
 
         report = "\n".join(lines) + "\n"
@@ -494,7 +483,6 @@ class DailyWorkflow:
 
     def _persist_session(self, session: SessionLog) -> None:
         try:
-            import json as _json
             self._assistant.log_metric(
                 self._name, "session_rpe", float(session.rpe), "rpe"
             )

@@ -5,7 +5,6 @@ import urllib.error
 import urllib.request
 from unittest.mock import patch
 
-import pytest
 
 from prism_planner import (
     ActionStep,
@@ -147,8 +146,8 @@ def test_rank_strategies_sorted_descending():
 
 def test_rank_strategies_context_shifts_fulcrum():
     p = PrismPlanner()
-    low  = p._rank_strategies(_MINIMAL_TASK_PROFILE, {"fitness_level": 0.0, "time_per_week": 0.0})
-    high = p._rank_strategies(_MINIMAL_TASK_PROFILE, {"fitness_level": 1.0, "time_per_week": 1.0})
+    _low  = p._rank_strategies(_MINIMAL_TASK_PROFILE, {"fitness_level": 0.0, "time_per_week": 0.0})
+    _high = p._rank_strategies(_MINIMAL_TASK_PROFILE, {"fitness_level": 1.0, "time_per_week": 1.0})
     low_beam  = PrismPlanner()._build_beam(_MINIMAL_TASK_PROFILE, {"fitness_level": 0.0, "time_per_week": 0.0})
     high_beam = PrismPlanner()._build_beam(_MINIMAL_TASK_PROFILE, {"fitness_level": 1.0, "time_per_week": 1.0})
     # Higher context values push fulcrum toward aggressive end

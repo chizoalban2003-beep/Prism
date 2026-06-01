@@ -127,7 +127,7 @@ def test_disabled_trigger_not_fired(tmp_path):
         cooldown=0,
     )
     p.register(t)
-    now = time.time()
+    _now = time.time()
     for trigger in p._triggers:
         if not trigger.enabled:
             continue

@@ -1,6 +1,9 @@
 """Universal service integrator — researches, characterises, and builds integrations for any unknown service."""
 from __future__ import annotations
-import json, logging, sqlite3, time
+import json
+import logging
+import sqlite3
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional

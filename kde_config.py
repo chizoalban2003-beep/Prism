@@ -203,9 +203,7 @@ def _simple_toml_parse(text: str) -> dict:
     """
     result: dict = {}
     current_section: dict = result
-    current_key: str = ""
     array_key: str = ""
-    is_array_section = False
 
     for raw_line in text.splitlines():
         line = raw_line.strip()
@@ -221,8 +219,6 @@ def _simple_toml_parse(text: str) -> dict:
             new_item: dict = {}
             result[array_key].append(new_item)
             current_section = new_item
-            is_array_section = True
-            current_key = array_key
             continue
 
         # Regular section header [key]
@@ -231,8 +227,6 @@ def _simple_toml_parse(text: str) -> dict:
             if section_name not in result:
                 result[section_name] = {}
             current_section = result[section_name]
-            is_array_section = False
-            current_key = section_name
             continue
 
         # Key = value

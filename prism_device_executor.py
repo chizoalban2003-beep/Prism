@@ -1,6 +1,11 @@
 """Safe device task executor — file operations via stdlib and subprocess via shlex, never shell=True."""
 from __future__ import annotations
-import os, shlex, subprocess, sys, tempfile, time
+import os
+import shlex
+import subprocess
+import sys
+import tempfile
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional

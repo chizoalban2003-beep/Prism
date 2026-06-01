@@ -23,8 +23,9 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install ruff
-      - run: ruff check . --select E,W,F --ignore E501,W503
-        # E501 = line length (not enforced), W503 = line break style
+      - run: ruff check . --select E,W,F --ignore E501,E701,E702
+        # E501 = line length (not enforced)
+        # E701/E702 = single-line compound statements (intentional style in this codebase)
         # F = pyflakes (unused imports, undefined names)
         # E,W = pycodestyle errors and warnings
 

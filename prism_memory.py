@@ -1,5 +1,9 @@
 from __future__ import annotations
-import hashlib, json, math, sqlite3, time
+import hashlib
+import json
+import math
+import sqlite3
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -49,14 +53,6 @@ class PrismMemory:
         entry_id  = hashlib.sha256(
             f"{content[:100]}{time.time()}".encode()).hexdigest()[:12]
         embedding = self._embed(content[:2000])
-        entry     = MemoryEntry(
-            entry_id  = entry_id,
-            content   = content,
-            source    = source,
-            title     = title or content[:60],
-            tags      = tags or [],
-            embedding = embedding,
-        )
         with sqlite3.connect(self._db) as c:
             c.execute(
                 "INSERT OR REPLACE INTO memory VALUES(?,?,?,?,?,?,?)",

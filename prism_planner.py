@@ -92,10 +92,10 @@ class PlanOfAction:
         lines = [
             f"**Task:** {self.task}",
             f"**Context:** {self.context_summary}",
-            f"",
+            "",
             f"**Optimal strategy → {self.recommended.name}** "
             f"({self.recommended.activation:.0%} confidence)",
-            f"",
+            "",
         ]
         for i, s in enumerate(self.all_strategies[:4]):
             label = "★ Optimal" if i == 0 else f"Alt {i}"
@@ -293,7 +293,6 @@ class PrismPlanner:
                 why_recommended  = "Alternative option — full plan available on request.",
             ))
 
-        from decision_spectrum import DecisionBeam, DecisionPlank, Factor
         # Recompute fulcrum for reporting
         beam = self._build_beam(task_profile, context)
         diag = beam.evaluate()

@@ -7,19 +7,15 @@ pytest + tmp_path. Mocks device hub, media processor, and vision analyzer.
 """
 from __future__ import annotations
 
-import json
-import uuid
 from datetime import date
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from sports_pro import (
-    SportsProAssistant, SportsProProfile, Role, DailyContext, WearableReading,
-    WearableReader, DailyPlan, DailyTask,
+    SportsProAssistant, SportsProProfile, Role, DailyContext, WearableReader, DailyPlan, DailyTask,
 )
-from device_hub import DeviceHub, Device, DeviceType, MediaType, IngestedFile
+from device_hub import DeviceHub, MediaType
 from media_processor import MediaProcessor, VideoRecord, Frame, MediaMetrics
 from vision_analyzer import VisionAnalyzer, FrameAnalysis, SessionSummary
 from daily_workflow import DailyWorkflow, MorningBrief, SessionLog, EveningReview
@@ -116,7 +112,7 @@ class TestMorningBriefing:
 
     def test_alerts_from_plan_warnings(self, workflow):
         # High soreness should trigger warnings
-        ctx = DailyContext(muscle_soreness=9.0, recovery_score=20.0)
+        _ctx = DailyContext(muscle_soreness=9.0, recovery_score=20.0)
         with patch.object(workflow._assistant, "plan_day") as mock_plan:
             mock_plan.return_value = DailyPlan(
                 primary_focus="Recovery",

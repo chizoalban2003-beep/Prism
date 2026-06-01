@@ -7,16 +7,14 @@ pytest + tmp_path. Mocks device hub, media processor, vision analyzer, ffmpeg.
 """
 from __future__ import annotations
 
-import json
-import os
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
-from sports_pro import Role, SportsProProfile, DailyPlan, DailyTask
+from sports_pro import Role
 from kde_agent import KDEAgent, KDEConfig, TaskResult
-from device_hub import DeviceHub, DeviceType, MediaType
+from device_hub import DeviceHub, DeviceType
 from media_processor import MediaProcessor, VideoRecord, Frame, MediaMetrics
 from vision_analyzer import VisionAnalyzer
 from daily_workflow import MorningBrief, SessionLog, EveningReview
