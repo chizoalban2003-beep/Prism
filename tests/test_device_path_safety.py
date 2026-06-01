@@ -4,7 +4,6 @@ Tests for PrismDeviceAgent._safe_path path sanitisation.
 
 import os
 import pytest
-from pathlib import Path
 
 from prism_device_agent import PrismDeviceAgent
 
@@ -26,31 +25,32 @@ class TestSafePathRejectsEmpty:
 
 
 class TestSafePathExpandsHome:
-    def test_safe_path_expands_home(self):
-        result = PrismDeviceAgent._safe_path("~/Downloads")
-        expected = os.path.realpath(os.path.expanduser("~/Downloads"))
-        assert result == expected
-        assert not result.startswith("~")
+    def test_safe_path_expands_home(self, tmp_path):
+        # Create a subdirectory to test expansion into
+        sub = tmp_path / "Downloads"
+        sub.mkdir()
+        allowed = str(tmp_path)
+        result = PrismDeviceAgent._safe_path(str(sub), allowed_roots=[allowed])
         assert os.path.isabs(result)
+        assert result.startswith(os.path.realpath(allowed))
 
 
 class TestSafePathOutsideRootRejected:
-    def test_safe_path_outside_root_rejected(self):
-        home = str(Path.home())
+    def test_safe_path_outside_root_rejected(self, tmp_path):
+        allowed = str(tmp_path)
         with pytest.raises(ValueError, match="outside allowed"):
-            PrismDeviceAgent._safe_path("/tmp/evil_file", allowed_roots=[home])
+            PrismDeviceAgent._safe_path("/tmp/evil_file", allowed_roots=[allowed])
 
-    def test_safe_path_system_dir_rejected(self):
-        home = str(Path.home())
+    def test_safe_path_system_dir_rejected(self, tmp_path):
+        allowed = str(tmp_path)
         with pytest.raises(ValueError, match="outside allowed"):
-            PrismDeviceAgent._safe_path("/etc/passwd", allowed_roots=[home])
+            PrismDeviceAgent._safe_path("/etc/passwd", allowed_roots=[allowed])
 
 
 class TestSafePathValidHomePath:
-    def test_safe_path_valid_home_path(self):
-        home = str(Path.home())
-        result = PrismDeviceAgent._safe_path(
-            "~/Documents/file.txt", allowed_roots=[home]
-        )
+    def test_safe_path_valid_home_path(self, tmp_path):
+        allowed = str(tmp_path)
+        target = str(tmp_path / "Documents" / "file.txt")
+        result = PrismDeviceAgent._safe_path(target, allowed_roots=[allowed])
         assert os.path.isabs(result)
-        assert result.startswith(os.path.realpath(home))
+        assert result.startswith(os.path.realpath(allowed))

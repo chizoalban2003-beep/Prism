@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: ["**"]
+    branches: ["main"]
   pull_request:
-    branches: ["**"]
+    branches: ["main"]
   workflow_dispatch:
 
 permissions:
@@ -15,9 +15,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install ruff
+      - run: ruff check . --select E,W,F --ignore E501,W503
+        # E501 = line length (not enforced), W503 = line break style
+        # F = pyflakes (unused imports, undefined names)
+        # E,W = pycodestyle errors and warnings
+
   test:
     name: Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    needs: lint
 
     strategy:
       fail-fast: false
@@ -46,7 +60,14 @@ jobs:
           python -m pip install .
 
       - name: Run tests
-        run: pytest tests/ -v --tb=short
+        run: pytest tests/ -q --tb=short
+
+      - name: Smoke test
+        run: |
+          timeout 10 python kde_cli.py server --port 8743 &
+          sleep 4
+          curl -f http://localhost:8743/status || exit 1
+          kill %1 || true
 
       - name: Smoke test installed CLIs
         run: |

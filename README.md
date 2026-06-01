@@ -195,7 +195,7 @@ The repository includes `prism_config.toml` as a ready-to-edit sample.
 
 ```toml
 [user]
-role  = "athlete"          # developer | athlete | coach | analyst | universal
+role  = "universal"        # developer | athlete | coach | analyst | universal
 name  = "Marcus"
 sport = "Football"
 team  = "City FC"
