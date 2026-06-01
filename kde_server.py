@@ -583,7 +583,7 @@ class KDEHandler(BaseHTTPRequestHandler):
                 try:
                     n = int(raw_n)
                 except (ValueError, TypeError):
-                    self._error(f"Invalid n parameter: must be an integer", 400)
+                    self._error(f"Invalid n parameter: '{raw_n}' must be an integer", 400)
                     return
                 tasks = self.task_queue.list_recent(n)
                 items = [

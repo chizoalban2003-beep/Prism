@@ -135,6 +135,8 @@ class TaskQueue:
 
     def list_recent(self, n: int = 10) -> list[TaskProgress]:
         with sqlite3.connect(self._db) as c:
+            # started_at is stored inside data_json, not a real column; rowid
+            # auto-increments on INSERT/REPLACE so highest rowid = most recent.
             rows = c.execute(
                 "SELECT data_json FROM tasks ORDER BY rowid DESC LIMIT ?",
                 (n,)).fetchall()
