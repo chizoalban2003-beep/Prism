@@ -278,6 +278,33 @@ class PolicyEngine:
                 ),
             )
 
+    def show_policies(self, user: str) -> dict:
+        """Return all current allocations in a display-friendly format."""
+        policy = self.get_policy(user)
+        display = {}
+        for name, alloc in policy.allocations.items():
+            display[name] = {
+                "monthly_limit":       f"£{alloc.monthly_limit:.2f}" if alloc.monthly_limit else "unlimited",
+                "per_action_limit":    f"£{alloc.per_action_limit:.2f}",
+                "auto_approve_below":  f"£{alloc.auto_approve_below:.2f}",
+                "preferred_providers": alloc.preferred_providers or ["any"],
+                "blacklisted":         alloc.blacklisted or [],
+                "time_window":         alloc.time_window,
+            }
+        return {
+            "user":           user,
+            "global_limit":   f"£{policy.global_limit:.2f}",
+            "escalate_at":    f"{policy.escalate_at:.0%}",
+            "monthly_spent":  {cat: f"£{self._monthly_spend(user,cat):.2f}"
+                               for cat in policy.allocations},
+            "allocations":    display,
+        }
+
+    def reset_all(self, user: str) -> None:
+        """Clear all policy allocations. Returns to safe defaults."""
+        with sqlite3.connect(self.db_path) as c:
+            c.execute("DELETE FROM policies WHERE user=?", (user,))
+
     def parse_policy_update(self, message: str, user: str) -> Optional[str]:
         """
         Parse policy updates from natural language chat messages.

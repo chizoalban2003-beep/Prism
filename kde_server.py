@@ -30,6 +30,9 @@ Routes:
   GET  /reflect                → learned state JSON
   GET  /devices                → connected devices list
   POST /device/sync            → trigger device sync
+  GET  /llm/status             → LLM router status (available models, best)
+  GET  /tasks                  → recent background tasks list (?n=10)
+  GET  /tasks/<id>             → single task progress by task_id
 
 All responses: Content-Type: application/json
 Error format:  {"error": "message", "status": 4xx}
@@ -84,6 +87,8 @@ class KDEHandler(BaseHTTPRequestHandler):
     live_pipeline:    object   # LiveMomentPipeline
     policy_engine:    object   # PolicyEngine
     tool_finder:      object   # ToolFinder
+    llm_router:       object   # LLMRouter
+    task_queue:       object   # TaskQueue
     _moment_history:  dict     # player → list[MomentResult]
 
     # ── common ────────────────────────────────────────────────────────────
@@ -139,7 +144,20 @@ class KDEHandler(BaseHTTPRequestHandler):
                 return
 
             elif path == "/status":
-                self._json_response(self.agent.status())
+                import urllib.request as _ur, json as _j
+                ollama_ok = False; ollama_model = ""
+                try:
+                    r = _ur.urlopen("http://localhost:11434/api/tags", timeout=2)
+                    tags = _j.loads(r.read())
+                    ollama_ok    = True
+                    ollama_model = (tags.get("models", [{}])[0].get("name", "")
+                                    if tags.get("models") else "")
+                except Exception:
+                    pass
+                status = self.agent.status()
+                status["ollama"]       = ollama_ok
+                status["ollama_model"] = ollama_model
+                self._json_response(status)
 
             elif path == "/plan":
                 brief = self.agent.morning_briefing()
@@ -539,6 +557,243 @@ class KDEHandler(BaseHTTPRequestHandler):
                     "n_matchups":  len(network._edges),
                 })
 
+            elif path == '/device/capabilities':
+                from prism_device_agent import DeviceCapabilityScanner
+                caps = DeviceCapabilityScanner().scan()
+                self._json_response({
+                    "platform":     caps.platform,
+                    "has_browser":  caps.has_browser,
+                    "categories":   {k: v for k, v in caps.cli_tools.items()},
+                    "py_packages":  caps.py_packages,
+                    "summary":      caps.summary(),
+                })
+                return
+
+            elif path == "/llm/status":
+                if self.llm_router is None:
+                    self._json_response({"available": False, "note": "LLM router not initialised"})
+                    return
+                self._json_response(self.llm_router.status_summary())
+
+            elif path == "/tasks":
+                if self.task_queue is None:
+                    self._json_response({"tasks": [], "count": 0, "note": "Task queue not initialised"})
+                    return
+                raw_n = qs.get("n", 10)
+                try:
+                    n = int(raw_n)
+                except (ValueError, TypeError):
+                    self._error(f"Invalid n parameter: '{raw_n}' must be an integer", 400)
+                    return
+                tasks = self.task_queue.list_recent(n)
+                items = [
+                    {
+                        "task_id":      t.task_id,
+                        "title":        t.title,
+                        "status":       t.status if isinstance(t.status, str) else t.status.value,
+                        "progress":     t.progress,
+                        "current_step": t.current_step,
+                        "steps_done":   t.steps_done,
+                        "steps_total":  t.steps_total,
+                        "error":        t.error,
+                    }
+                    for t in tasks
+                ]
+                self._json_response({"tasks": items, "count": len(items)})
+
+            elif path.startswith("/tasks/"):
+                if self.task_queue is None:
+                    self._error("Task queue not initialised", 503)
+                    return
+                task_id = path[len("/tasks/"):]
+                if not task_id:
+                    self._error("task_id is required", 400)
+                    return
+                progress = self.task_queue.get(task_id)
+                if progress is None:
+                    self._error(f"Task '{task_id}' not found", 404)
+                    return
+                self._json_response({
+                    "task_id":      progress.task_id,
+                    "title":        progress.title,
+                    "status":       progress.status if isinstance(progress.status, str) else progress.status.value,
+                    "progress":     progress.progress,
+                    "current_step": progress.current_step,
+                    "steps_done":   progress.steps_done,
+                    "steps_total":  progress.steps_total,
+                    "result":       progress.result,
+                    "error":        progress.error,
+                    "started_at":   progress.started_at,
+                    "completed_at": progress.completed_at,
+                })
+
+            elif path == '/perception/status':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_perception') and agent._perception:
+                    self._json_response(agent._perception.status())
+                else:
+                    self._json_response({"active_channels": [], "factor_count": 0,
+                                         "summary": "perception not initialised"})
+
+            elif path == '/memory/search':
+                agent = getattr(self.server, 'prism_agent', None)
+                mem   = agent._memory if agent and hasattr(agent, '_memory') else None
+                if mem is None:
+                    self._json_response({"results": [], "note": "memory not initialised"})
+                    return
+                query = qs.get("q", "")
+                if not query:
+                    self._error("Query parameter 'q' is required", 400)
+                    return
+                top_n  = int(qs.get("n", 5))
+                source = qs.get("source")
+                results = mem.search(query, top_n=top_n, source_filter=source)
+                self._json_response({
+                    "results": [
+                        {
+                            "entry_id": r.entry.entry_id,
+                            "title":    r.entry.title,
+                            "source":   r.entry.source,
+                            "score":    round(r.score, 4),
+                            "excerpt":  r.excerpt,
+                            "tags":     r.entry.tags,
+                            "timestamp": r.entry.timestamp,
+                        }
+                        for r in results
+                    ],
+                    "count": len(results),
+                })
+
+            elif path == '/proactive':
+                p = getattr(self.server, 'prism_proactive', None)
+                if p is None:
+                    self._json_response({"events": [], "note": "proactive not initialised"})
+                    return
+                n      = int(qs.get("n", 5))
+                events = p.pending_events(n)
+                self._json_response({
+                    "events": [
+                        {"trigger_id": e.trigger_id, "message": e.message,
+                         "timestamp": e.timestamp}
+                        for e in events
+                    ],
+                    "count": len(events),
+                })
+
+            elif path == '/proactive/pending':
+                agent  = getattr(self.server, 'prism_agent', None)
+                events = getattr(agent, '_proactive_buffer', []) if agent else []
+                self._json_response({"events": [
+                    {"trigger_id": e.trigger_id, "message": e.message,
+                     "timestamp": e.timestamp}
+                    for e in events[-5:]
+                ]})
+                if agent:
+                    agent._proactive_buffer = []
+
+            elif path == '/smarthome/status':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_smarthome'):
+                    self._json_response(agent._smarthome.status_summary())
+                else:
+                    self._json_response({"configured": False})
+
+            elif path == '/email/status':
+                from prism_email import PrismEmail
+                agent = getattr(self.server, 'prism_agent', None)
+                em = getattr(agent, '_email', None) if agent else None
+                if em is None:
+                    em = PrismEmail()
+                self._json_response(em.status_summary())
+
+            elif path == '/email/inbox':
+                from prism_email import PrismEmail
+                agent = getattr(self.server, 'prism_agent', None)
+                em = getattr(agent, '_email', None) if agent else None
+                if em is None:
+                    em = PrismEmail()
+                if not em.configured:
+                    self._error("Email not configured", 503)
+                    return
+                n = int(qs.get("n", 20))
+                folder = qs.get("folder", "INBOX")
+                unread_only = qs.get("unread", "true").lower() != "false"
+                msgs = em.fetch_unread(folder=folder, n=n) if unread_only else em.fetch_recent(n=n)
+                self._json_response({
+                    "count": len(msgs),
+                    "messages": [
+                        {
+                            "msg_id":  m.msg_id,
+                            "subject": m.subject,
+                            "sender":  m.sender,
+                            "date":    m.date,
+                            "unread":  m.unread,
+                            "snippet": m.body[:200],
+                        }
+                        for m in msgs
+                    ],
+                })
+
+            elif path == '/email/unread':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_email') and agent._email.configured:
+                    msgs = agent._email.fetch_unread(n=10)
+                    self._json_response({"count": len(msgs),
+                        "messages": [{"from": m.sender, "subject": m.subject,
+                                      "date": m.date, "body": m.body[:500]} for m in msgs]})
+                else:
+                    self._error("Email not configured", 503)
+
+            elif path == '/calendar/status':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_calendar'):
+                    self._json_response(agent._calendar.status_summary())
+                else:
+                    self._json_response({"configured": False})
+
+            elif path == '/calendar/today':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_calendar') and agent._calendar.configured:
+                    events = agent._calendar.today()
+                    self._json_response({"count": len(events),
+                        "events": [{"title": e.title,
+                                    "start": e.start.isoformat(),
+                                    "end": e.end.isoformat(),
+                                    "location": e.location} for e in events]})
+                else:
+                    self._error("Calendar not configured", 503)
+
+            elif path == '/browser/status':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_browser'):
+                    self._json_response(agent._browser.status())
+                else:
+                    self._json_response({"available": False})
+
+            elif path == '/instructions':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_instructions'):
+                    instrs = agent._instructions.all_active()
+                    self._json_response({"count": len(instrs),
+                        "instructions": [{"id": i.instr_id, "text": i.text,
+                                          "trigger": i.trigger,
+                                          "use_count": i.use_count}
+                                         for i in instrs]})
+                else:
+                    self._json_response({"count": 0, "instructions": []})
+
+            elif path == '/discovery/services':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_discovery'):
+                    services = agent._discovery.list_all()
+                    self._json_response({"count": len(services),
+                        "services": [{"name": s.name, "category": s.category,
+                                      "method": s.access_method,
+                                      "configured": s.configured}
+                                     for s in services]})
+                else:
+                    self._json_response({"count": 0, "services": []})
+
             else:
                 self._error(f"Unknown route: {path}", 404)
 
@@ -554,6 +809,21 @@ class KDEHandler(BaseHTTPRequestHandler):
         body   = self._read_body()
 
         try:
+            if path == '/plan':
+                from prism_planner import PrismPlanner
+                planner = getattr(self.server, 'prism_planner', None)
+                if not planner:
+                    planner = PrismPlanner()
+                    self.server.prism_planner = planner
+                plan = planner.plan(
+                    task_description = body.get('task', ''),
+                    user_context     = body.get('context', {}),
+                    n_plans          = body.get('n_plans', 4),
+                )
+                from prism_responses import plan_of_action_card
+                self._json_response(plan_of_action_card(plan).to_json())
+                return
+
             if path == '/chat':
                 from prism_agent import PrismAgent
 
@@ -768,6 +1038,185 @@ class KDEHandler(BaseHTTPRequestHandler):
                 result = DomainValidator(domain).validate(cases)
                 self._json_response(dataclasses.asdict(result))
 
+            elif path == '/device/approve':
+                approved = body.get('approved', False)
+                task     = body.get('task', '')
+                params   = body.get('params', {})
+                if not approved:
+                    from prism_responses import text_card
+                    self._json_response(text_card("Action cancelled.").to_json())
+                    return
+                agent = getattr(self.server, 'device_agent', None)
+                if not agent:
+                    from prism_device_agent import PrismDeviceAgent
+                    agent = PrismDeviceAgent.setup()
+                    self.server.device_agent = agent
+                result = agent.execute(task, params=params, approval_override=True)
+                from prism_responses import device_result_card
+                self._json_response(device_result_card(result, task).to_json())
+                return
+
+            elif path == '/device/execute':
+                agent  = getattr(self.server, 'device_agent', None)
+                if not agent:
+                    from prism_device_agent import PrismDeviceAgent
+                    agent = PrismDeviceAgent.setup()
+                    self.server.device_agent = agent
+                dry_run = body.get('dry_run', False)
+                result  = agent.execute(
+                    body.get('task', ''),
+                    params  = body.get('params', {}),
+                    dry_run = dry_run,
+                )
+                self._json_response({
+                    "success":        result.success,
+                    "output":         result.output[:2000],
+                    "tool_used":      result.tool_used,
+                    "elapsed_ms":     round(result.elapsed_ms, 1),
+                    "files_created":  result.files_created,
+                    "error":          result.error,
+                    "undo_available": bool(result.undo_command),
+                })
+                return
+
+            elif path == '/perception/ingest':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_perception') and agent._perception:
+                    agent._perception.ingest_biometrics(**body)
+                    self._json_response({"ok": True})
+                else:
+                    self._error("Perception not initialised", 503)
+
+            elif path == '/memory/ingest':
+                agent = getattr(self.server, 'prism_agent', None)
+                mem   = agent._memory if agent and hasattr(agent, '_memory') else None
+                if mem is None:
+                    self._error("Memory not initialised", 503)
+                    return
+                content = body.get("content", "")
+                if not content:
+                    self._error("'content' field required", 400)
+                    return
+                entry_id = mem.ingest(
+                    content = content,
+                    source  = body.get("source", "note"),
+                    title   = body.get("title", ""),
+                    tags    = body.get("tags"),
+                )
+                self._json_response({"ok": True, "entry_id": entry_id})
+
+            elif path == '/tts':
+                agent = getattr(self.server, 'prism_agent', None)
+                tts   = agent._tts if agent and hasattr(agent, '_tts') else None
+                action = body.get("action", "speak")
+                if action == "toggle":
+                    if tts:
+                        enabled = tts.toggle()
+                    else:
+                        enabled = False
+                    self._json_response({"enabled": enabled})
+                elif action == "speak":
+                    text = body.get("text", "")
+                    if tts and text:
+                        tts.speak(text)
+                    self._json_response({"ok": True})
+                else:
+                    self._error(f"Unknown TTS action: {action}", 400)
+
+            elif path == '/tts/speak':
+                agent = getattr(self.server, 'prism_agent', None)
+                tts   = agent._tts if agent and hasattr(agent, '_tts') else None
+                text  = body.get("text", "")
+                if tts and text:
+                    tts.speak(text)
+                self._json_response({"ok": True})
+
+            elif path == '/smarthome':
+                from prism_smart_home import PrismSmartHome
+                sh = getattr(self.server, 'prism_smart_home', None)
+                if sh is None:
+                    sh = PrismSmartHome(
+                        ha_url = body.get("ha_url", "http://homeassistant.local:8123"),
+                        token  = body.get("token", ""),
+                    )
+                    self.server.prism_smart_home = sh
+                action    = body.get("action", "")
+                entity_id = body.get("entity_id", "")
+                if action == "turn_on":
+                    result = sh.turn_on(entity_id)
+                    self._json_response({"ok": result.success, "error": result.error})
+                elif action == "turn_off":
+                    result = sh.turn_off(entity_id)
+                    self._json_response({"ok": result.success, "error": result.error})
+                elif action == "toggle":
+                    result = sh.toggle(entity_id)
+                    self._json_response({"ok": result.success, "error": result.error})
+                elif action == "list":
+                    devices = sh.list_devices(domain=body.get("domain", ""))
+                    self._json_response({
+                        "devices": [
+                            {"entity_id": d.entity_id, "state": d.state,
+                             "friendly_name": d.friendly_name}
+                            for d in devices
+                        ]
+                    })
+                else:
+                    self._error(f"Unknown smarthome action: {action}", 400)
+
+            elif path == '/perception/enable':
+                channel = body.get("channel", "")
+                enabled = body.get("enabled", True)
+                agent   = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_perception') and agent._perception:
+                    for ch in agent._perception._channels:
+                        if ch.NAME == channel:
+                            ch.resume() if enabled else ch.pause()
+                    self._json_response({"channel": channel, "enabled": enabled})
+                else:
+                    self._error("Perception not initialised", 503)
+
+            elif path == '/email/send':
+                from prism_email import PrismEmail
+                agent = getattr(self.server, 'prism_agent', None)
+                em = getattr(agent, '_email', None) if agent else None
+                if em is None:
+                    em = PrismEmail()
+                if not em.configured:
+                    self._error("Email not configured", 503)
+                    return
+                to      = body.get("to", "")
+                subject = body.get("subject", "")
+                text    = body.get("body", "")
+                if not to or not subject or not text:
+                    self._error("'to', 'subject' and 'body' fields required", 400)
+                    return
+                ok = em.send(to=to, subject=subject, body=text,
+                             reply_to=body.get("reply_to", ""))
+                self._json_response({"ok": ok})
+
+            elif path == '/instructions':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_instructions'):
+                    instr = agent._instructions.add(
+                        body.get('text', ''), body.get('trigger', 'always'))
+                    self._json_response({"id": instr.instr_id, "text": instr.text})
+                else:
+                    self._error("Instructions not initialised", 503)
+
+            elif path == '/discovery/build':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_discovery'):
+                    service = agent._discovery.get(body.get('service_id', ''))
+                    if service:
+                        ok  = agent._discovery.build_integration(
+                            service, body.get('answers', {}))
+                        msg = agent._discovery.confirmation_message(service)
+                        self._json_response({"success": ok, "message": msg})
+                    else:
+                        self._error("Service not found", 404)
+                else:
+                    self._error("Discovery not initialised", 503)
+
             else:
                 self._error(f"Unknown route: {path}", 404)
 
@@ -879,6 +1328,17 @@ class KDEServer:
             except Exception:
                 self._tool_finder = None
 
+        try:
+            from prism_llm_router import LLMRouter
+            self._llm_router = LLMRouter.from_config()
+        except Exception:
+            self._llm_router = None
+        try:
+            from prism_task_queue import TaskQueue
+            self._task_queue = TaskQueue()
+        except Exception:
+            self._task_queue = None
+
         self._server:  Optional[HTTPServer] = None
         self._thread:  Optional[threading.Thread] = None
 
@@ -899,6 +1359,8 @@ class KDEServer:
         domain_models   = self._domain_models
         policy_engine   = self._policy_engine
         tool_finder     = self._tool_finder
+        llm_router      = self._llm_router
+        task_queue      = self._task_queue
 
         # Build live pipeline from the moment analyzer
         live_pipeline = None
@@ -920,6 +1382,8 @@ class KDEServer:
         _Handler.live_pipeline   = live_pipeline
         _Handler.policy_engine   = policy_engine
         _Handler.tool_finder     = tool_finder
+        _Handler.llm_router      = llm_router
+        _Handler.task_queue      = task_queue
         _Handler._moment_history = {}  # player → list[MomentResult]
 
         self._server = HTTPServer((self._host, self._port), _Handler)

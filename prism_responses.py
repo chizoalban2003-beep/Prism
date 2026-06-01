@@ -16,6 +16,7 @@ class CardType(str, Enum):
     ARTIFACTS = "artifacts"
     ERROR = "error"
     THINKING = "thinking"
+    APPROVAL = "approval"
 
 
 @dataclass
@@ -38,6 +39,29 @@ class PrismCard:
 
 def text_card(body: str, title: str = "") -> PrismCard:
     return PrismCard(CardType.TEXT, title, body, {})
+
+
+def approval_card(task: str, reason: str, params: dict = None) -> PrismCard:
+    """
+    Card shown when a device task requires user confirmation before executing.
+    The chat UI renders two buttons: Approve and Deny.
+    card_data contains everything needed to re-execute on approval.
+    """
+    import uuid as _uuid
+    task_id = str(_uuid.uuid4())[:8]
+    return PrismCard(
+        card_type = CardType.APPROVAL,
+        title     = "Approval required",
+        body      = reason or f"Allow PRISM to: {task}",
+        card_data = {
+            "task_id": task_id,
+            "task":    task,
+            "params":  params or {},
+            "reason":  reason,
+        },
+        actions = ["Approve", "Deny"],
+    )
+
 
 
 def plan_card(plan) -> PrismCard:
@@ -139,3 +163,146 @@ def moment_card(result) -> PrismCard:
 
 def identity_card(identity_data: dict) -> PrismCard:
     return PrismCard(CardType.IDENTITY, "Your Decision Profile", "", identity_data)
+
+
+def device_result_card(result: "DeviceTaskResult", task: str) -> PrismCard:
+    """Card for device task execution results."""
+    if result.needs_approval:
+        params = {}
+        try:
+            import json as _j
+            params = _j.loads(result.undo_command or "{}").get("params", {})
+        except Exception:
+            pass
+        return approval_card(task, result.output, params)
+    data = {
+        "success":        result.success,
+        "tool_used":      result.tool_used,
+        "output":         result.output[:1000],
+        "files_created":  result.files_created,
+        "files_modified": result.files_modified,
+        "elapsed_ms":     round(result.elapsed_ms, 1),
+        "error":          result.error,
+        "undo_available": bool(result.undo_command),
+        "undo_command":   result.undo_command,
+    }
+    body = (
+        f"✓ Done in {result.elapsed_ms:.0f}ms using {result.tool_used}"
+        if result.success
+        else f"✗ {result.error[:200]}"
+    )
+    actions = []
+    if result.undo_command:
+        actions.append("Undo this action")
+    if not result.success and result.error:
+        actions.append("Try a different approach")
+    return PrismCard(
+        card_type = CardType.TEXT,
+        title     = f"Device task: {task[:50]}",
+        body      = body,
+        card_data = data,
+        actions   = actions,
+    )
+
+
+def plan_of_action_card(plan: "PlanOfAction") -> PrismCard:
+    """
+    Renders a PlanOfAction as a PRISM chat card.
+
+    card_data structure:
+    {
+      "task": str,
+      "domain": str,
+      "timeline": str,
+      "fulcrum": float,
+      "context_summary": str,
+      "strategies": [
+        {
+          "name": str,
+          "rank": int,
+          "activation": float,        # 0-1 confidence
+          "expected_value": float,
+          "risk_score": float,
+          "why": str,
+          "steps": [{"order":int,"action":str,"timeline":str},...],
+          "resources": [str,...],
+          "outcome": str,
+          "risks": [str,...],
+          "has_full_plan": bool       # False for alternatives without plans
+        }
+      ]
+    }
+    """
+    strategies = []
+    for i, s in enumerate(plan.all_strategies):
+        strategies.append({
+            "name":           s.name,
+            "rank":           i + 1,
+            "activation":     round(s.activation, 3),
+            "expected_value": round(s.expected_value, 1),
+            "risk_score":     s.risk_score,
+            "why":            s.why_recommended,
+            "steps":          [{"order": st.order, "action": st.action,
+                                 "timeline": st.timeline} for st in s.steps],
+            "resources":      s.resources,
+            "outcome":        s.expected_outcome,
+            "risks":          s.risks,
+            "has_full_plan":  len(s.steps) > 0,
+        })
+    return PrismCard(
+        card_type = CardType.PLAN,
+        title     = f"Plan of action — {plan.domain}",
+        body      = plan.context_summary,
+        card_data = {
+            "task":            plan.task,
+            "domain":          plan.domain,
+            "timeline":        plan.timeline,
+            "fulcrum":         round(plan.fulcrum_position, 3),
+            "context_summary": plan.context_summary,
+            "strategies":      strategies,
+        },
+        actions = [
+            f"Full plan for {plan.all_strategies[1].name}" if len(plan.all_strategies) > 1 else "",
+            "Explain the ranking",
+            "Execute optimal strategy",
+        ]
+    )
+
+
+def policy_view_card(data: dict) -> PrismCard:
+    return PrismCard(CardType.TEXT, "Your operating policies",
+        f"Global limit: {data.get('global_limit','—')} · "
+        f"Escalate at: {data.get('escalate_at','—')}",
+        data, actions=["Set a budget","Reset all policies"])
+
+
+def task_list_card(tasks: list) -> PrismCard:
+    items = [{"id":t.task_id,"title":t.title,"status":t.status
+              if isinstance(t.status,str) else t.status.value,
+              "progress":t.progress,"current_step":t.current_step,
+              "error":t.error} for t in tasks]
+    running = sum(1 for t in tasks
+                  if (t.status if isinstance(t.status,str)
+                      else t.status.value) == "running")
+    return PrismCard(CardType.TEXT,"Task queue",
+        f"{running} running · {len(tasks)} recent",
+        {"tasks":items},
+        actions=["Cancel running task"] if running else [])
+
+
+def task_progress_card(progress) -> PrismCard:
+    status = (progress.status if isinstance(progress.status,str)
+              else progress.status.value)
+    pct    = int(progress.progress * 100)
+    body   = (f"{progress.current_step}" if status == "running"
+              else f"Completed" if status == "completed"
+              else f"Failed: {progress.error[:100]}" if status == "failed"
+              else status.title())
+    return PrismCard(CardType.TEXT,
+        f"{progress.title} — {pct}%", body,
+        {"task_id":progress.task_id,"status":status,
+         "progress":progress.progress,
+         "steps_done":progress.steps_done,
+         "steps_total":progress.steps_total,
+         "result":progress.result},
+        actions=["Cancel"] if status == "running" else [])

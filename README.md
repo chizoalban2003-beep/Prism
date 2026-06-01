@@ -30,13 +30,27 @@
 
 ## What it is
 
-PRISM is the user-facing platform that unifies KSA and KDE behind one chat-first interface.
+PRISM is a local personal AI assistant that decides, plans, and acts
+for any user across any domain — all on your own hardware.
 
-**KSA — Kinetic State Agent** is a local AI agent for developers and knowledge workers. It routes natural-language tasks to hardware-aware executors, learns your working patterns without neural training, and stores every successful configuration as a versioned, rollback-able snapshot. No cloud. No API keys. No fine-tuning.
+It combines three things no existing tool does simultaneously:
 
-**KDE Platform** remains the internal sports intelligence and domain decision system for athletes, coaches, physiotherapists, analysts, and executives. It predicts decisions at match, player, duel, and moment level for any sport. It manages the daily life of sports practitioners. It generalises to any domain — medical triage, financial portfolio allocation, legal case strategy — without changing a line of engine code.
+**A physics-based decision engine** that produces interpretable,
+personalised recommendations with named causes — not black-box predictions.
 
-The engine underneath both is identical: a spectrum of options, a fulcrum whose position is set by named contextual factors, and a Gaussian kernel that produces a probability distribution over those options. Every recommendation has an inspectable, named cause. Nothing is a black box.
+**A full execution layer** that carries out approved actions, finds tools
+when they don't exist, learns new integrations on demand, and follows
+standing instructions you teach it once in plain language.
+
+**A continuous learning identity** that crystallises from your actual
+decisions over time — becoming more accurate for you specifically,
+not for a population average.
+
+It works for developers, athletes, coaches, clinicians, analysts,
+business owners, and anyone who makes consequential decisions regularly.
+The same engine that advises a striker on shot selection advises a doctor
+on triage urgency and a founder on go-to-market strategy — because all
+three are bounded decisions under uncertainty with named contextual factors.
 
 ---
 
@@ -217,10 +231,16 @@ Key endpoints:
 | POST | `/domain/validate` | Validate against expert labels |
 | GET | `/duel/network?match_id=…` | Match duel network |
 | GET | `/reflect` | Learned state for current user |
+| GET | `/instructions` | List all standing instructions |
+| POST | `/instructions` | Add a standing instruction `{"text":"…","trigger":"…"}` |
+| GET | `/discovery/services` | List all discovered service integrations |
+| POST | `/discovery/build` | Build an integration `{"service_id":"…","answers":{}}` |
 
 ---
 
-## Supported sports (moment analysis)
+## Validated domains
+
+**Sports** (validated against 10 La Liga seasons, StatsBomb open data):
 
 | Sport | Configured moments |
 |---|---|
@@ -233,6 +253,13 @@ Key endpoints:
 | Wrestling | Takedown attempt |
 | Cricket | Batting delivery |
 | *Any sport* | Add a `MomentSportConfig` — no engine changes needed |
+
+**Enterprise domains** (same engine, different configuration):
+Medical triage · Financial portfolio · Legal case strategy ·
+HR hiring · Supply chain · Climate policy
+
+**Daily life** (personal assistant mode):
+Task planning · Email · Calendar · Device tasks · Smart home · Web navigation
 
 ---
 
@@ -285,15 +312,34 @@ PRISM/
 │   ├── prism_agent.py          Unified PRISM orchestration layer
 │   ├── prism_chat.py           Local chat interface and UI payloads
 │   ├── prism_responses.py      Response formatting helpers
+│   ├── prism_perception.py     Perceptual context engine — time, location, device state
+│   ├── prism_memory.py         Short- and long-term memory store
+│   ├── prism_planner.py        Goal decomposition and multi-step planning
+│   ├── prism_llm_router.py     Local LLM routing via Ollama
+│   ├── prism_tts.py            Text-to-speech output layer
+│   ├── prism_proactive.py      Proactive trigger evaluation and scheduling
+│   ├── prism_smart_home.py     Smart-home device command layer
+│   ├── prism_task_queue.py     Async task queue for background execution
 │   ├── digital_identity.py     User identity state and profile signals
 │   ├── identity_bus.py         Cross-module identity event bus
 │   └── artifact_store.py       Artifact collection with identity tagging
+│
+├── Personal assistant
+│   ├── prism_email.py          IMAP/SMTP email reader and sender
+│   ├── prism_calendar.py       Calendar event management
+│   ├── prism_browser_agent.py  Headless web navigation and scraping
+│   ├── prism_device_agent.py   On-device task execution (files, shell, apps)
+│   ├── prism_device_executor.py Safe subprocess and file-system executor
+│   ├── prism_device_resolver.py App and tool resolver for installed software
+│   └── prism_device_scanner.py Installed-app and capability scanner
 │
 ├── Execution intelligence
 │   ├── prism_policy.py         Resource allocation + policy engine (CEO→Manager)
 │   ├── prism_tool_finder.py    Alternative execution path discovery
 │   ├── prism_collaborator.py   Claude/Ollama research + tool synthesis
-│   └── prism_executor_agent.py Agentic execution with tool registry + sandboxing
+│   ├── prism_executor_agent.py Agentic execution with tool registry + sandboxing
+│   ├── prism_instructions.py   Standing instructions — rules taught once, applied always
+│   └── prism_service_discovery.py Universal handler for unknown services + auto-integration
 │
 ├── Sport task executors
 │   ├── sport_executor.py       Video analysis, highlight reel, reports

@@ -24,3 +24,32 @@ name       = "GoPro Hero 12"
 type       = "gopro"
 watch_path = "~/GoPro/DCIM"
 api_url    = "http://10.5.5.9:8080"
+
+# ── Email (optional) ─────────────────────────────────────────────────────────
+# [email]
+# provider    = "gmail"            # "gmail" | "imap"
+# address     = "you@gmail.com"
+# imap_host   = "imap.gmail.com"
+# imap_port   = 993
+# smtp_host   = "smtp.gmail.com"
+# smtp_port   = 587
+# # For Gmail: generate an App Password at myaccount.google.com/apppasswords
+# password    = "your-app-password"
+# max_fetch   = 20
+
+[email]
+provider  = ""                  # set to "gmail" or "imap" to enable
+address   = "you@example.com"
+imap_host = "imap.gmail.com"
+imap_port = 993
+smtp_host = "smtp.gmail.com"
+smtp_port = 587
+password  = ""                  # Gmail: use App Password from myaccount.google.com
+max_fetch = 20
+
+[calendar]
+provider    = ""                # set to "ical_url" or "caldav" to enable
+ical_url    = ""                # paste a webcal:// or https:// .ics URL here
+caldav_url  = ""
+username    = ""
+password    = ""
