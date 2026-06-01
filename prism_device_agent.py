@@ -781,7 +781,7 @@ class PrismDeviceAgent:
         # Safety: check for dangerous patterns in raw task text
         if _is_dangerous(task):
             return _fail(
-                f"Task refused: dangerous pattern detected.",
+                "Task refused: dangerous pattern detected.",
                 elapsed_ms=(time.monotonic() - t0) * 1000,
             )
 

@@ -14,7 +14,6 @@ from ksa_lever import ThreeBarSystem, TiltDirection, EquilibriumResult, LeverSta
 from ksa_registry import SnapshotRegistry
 from ksa_executor import (
     ExecutionContext,
-    ExecutionOutcome,
     ExecutorRegistry,
     FileIndexExecutor,
     LocalSearchExecutor,

@@ -9,9 +9,7 @@ from __future__ import annotations
 import sys
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock
 
-import pytest
 
 from prism_device_agent import (
     CapabilityMap,
@@ -87,7 +85,7 @@ def test_search_in_files():
         fpath = f.name
     try:
         agent = _agent()
-        result = agent.execute(f"search for unique_prism_search_token_xyz in /tmp")
+        result = agent.execute("search for unique_prism_search_token_xyz in /tmp")
         assert result.success is True
         assert "unique_prism_search_token_xyz" in result.output
     finally:

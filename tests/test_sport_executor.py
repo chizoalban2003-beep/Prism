@@ -9,24 +9,19 @@ from __future__ import annotations
 
 import json
 import os
-import tempfile
 import uuid
-from dataclasses import dataclass
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
 
-from ksa_lever import ThreeBarSystem, TiltDirection
+from ksa_lever import TiltDirection
 from ksa_registry import SnapshotRegistry
-from device_hub import DeviceHub, Device, DeviceType, MediaType, IngestedFile
+from device_hub import DeviceHub, DeviceType, MediaType, IngestedFile
 from media_processor import MediaProcessor, VideoRecord, Frame, Clip, MediaMetrics
 from vision_analyzer import VisionAnalyzer, TechniqueReport, FrameAnalysis, TacticalContext, SessionSummary
 from sport_executor import (
     VideoAnalysisExecutor,
     HighlightReelExecutor,
     PerformanceReportExecutor,
-    FilmStudyExecutor,
     WearableSyncExecutor,
     SessionLogExecutor,
 )

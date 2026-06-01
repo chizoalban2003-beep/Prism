@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 import time
 import uuid
 from dataclasses import asdict
@@ -27,7 +26,7 @@ from typing import Optional
 from ksa_executor import ExecutionContext, ExecutionOutcome, TaskExecutor, _ResourceSampler
 from ksa_registry import PerformanceMetrics, SnapshotRegistry
 from device_hub import DeviceHub, MediaType
-from media_processor import MediaProcessor, VideoRecord
+from media_processor import MediaProcessor
 from vision_analyzer import VisionAnalyzer
 
 logger = logging.getLogger(__name__)

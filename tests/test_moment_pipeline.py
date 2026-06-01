@@ -9,9 +9,8 @@ from __future__ import annotations
 import math
 from typing import Optional
 
-import pytest
 
-from moment_analyzer import MomentAnalyzer, NearbyPlayer
+from moment_analyzer import MomentAnalyzer
 from moment_pipeline import (
     LiveMomentPipeline,
     StatsBombMomentPipeline,

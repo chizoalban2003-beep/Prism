@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -114,7 +114,6 @@ class PrismBrowserAgent:
                     if action_json is None:
                         break
 
-                    action = action_json.get("action", "")
                     done   = action_json.get("done", False)
                     reason = action_json.get("reason", "")
 

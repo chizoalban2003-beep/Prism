@@ -21,7 +21,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
-from ksa_lever import ThreeBarSystem, TiltDirection, EquilibriumResult
+from ksa_lever import ThreeBarSystem, EquilibriumResult
 from ksa_registry import SnapshotRegistry
 
 

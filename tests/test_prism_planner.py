@@ -5,7 +5,6 @@ import urllib.error
 import urllib.request
 from unittest.mock import patch
 
-import pytest
 
 from prism_planner import (
     ActionStep,
@@ -13,6 +12,7 @@ from prism_planner import (
     PrismPlanner,
     StrategyPlan,
 )
+from prism_llm_router import parse_llm_json
 
 
 # ---------------------------------------------------------------------------
@@ -89,39 +89,35 @@ def test_prefer_claude_true_when_key_provided():
 
 
 # ---------------------------------------------------------------------------
-# _parse_json
+# parse_llm_json (previously PrismPlanner._parse_json, now a shared utility)
 # ---------------------------------------------------------------------------
 
 def test_parse_json_plain():
-    p = PrismPlanner()
-    result = p._parse_json('{"a": 1}')
+    result = parse_llm_json('{"a": 1}')
     assert result == {"a": 1}
 
 
 def test_parse_json_fenced_json():
-    p = PrismPlanner()
-    result = p._parse_json('```json\n{"x": 2}\n```')
+    result = parse_llm_json('```json\n{"x": 2}\n```')
     assert result == {"x": 2}
 
 
 def test_parse_json_fenced_no_lang():
-    p = PrismPlanner()
-    result = p._parse_json('```\n{"y": 3}\n```')
+    result = parse_llm_json('```\n{"y": 3}\n```')
     assert result == {"y": 3}
 
 
 def test_parse_json_embedded():
-    p = PrismPlanner()
-    result = p._parse_json('Some preamble {"z": 4} trailing text')
+    result = parse_llm_json('Some preamble {"z": 4} trailing text')
     assert result == {"z": 4}
 
 
 def test_parse_json_empty_returns_none():
-    assert PrismPlanner()._parse_json("") is None
+    assert parse_llm_json("") is None
 
 
 def test_parse_json_invalid_returns_none():
-    assert PrismPlanner()._parse_json("not json at all") is None
+    assert parse_llm_json("not json at all") is None
 
 
 # ---------------------------------------------------------------------------
@@ -150,8 +146,8 @@ def test_rank_strategies_sorted_descending():
 
 def test_rank_strategies_context_shifts_fulcrum():
     p = PrismPlanner()
-    low  = p._rank_strategies(_MINIMAL_TASK_PROFILE, {"fitness_level": 0.0, "time_per_week": 0.0})
-    high = p._rank_strategies(_MINIMAL_TASK_PROFILE, {"fitness_level": 1.0, "time_per_week": 1.0})
+    _low  = p._rank_strategies(_MINIMAL_TASK_PROFILE, {"fitness_level": 0.0, "time_per_week": 0.0})
+    _high = p._rank_strategies(_MINIMAL_TASK_PROFILE, {"fitness_level": 1.0, "time_per_week": 1.0})
     low_beam  = PrismPlanner()._build_beam(_MINIMAL_TASK_PROFILE, {"fitness_level": 0.0, "time_per_week": 0.0})
     high_beam = PrismPlanner()._build_beam(_MINIMAL_TASK_PROFILE, {"fitness_level": 1.0, "time_per_week": 1.0})
     # Higher context values push fulcrum toward aggressive end

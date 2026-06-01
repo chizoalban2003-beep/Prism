@@ -15,11 +15,8 @@ import pytest
 
 from moment_analyzer import (
     ActionOutcome,
-    ALL_MOMENT_CONFIGS,
     Moment,
     MomentAnalyzer,
-    MomentSportConfig,
-    MomentOption,
     MomentResult,
 )
 from moment_validator import (
@@ -148,7 +145,7 @@ def test_slice_by_zone():
     # box (pitch_x > 0.83) and attacking_third
     for pitch_x in (0.90, 0.70):
         m  = _make_moment(pitch_x=pitch_x)
-        r  = analyzer.analyze(m)
+        _r = analyzer.analyze(m)
         oc = ActionOutcome(action_taken="shot", success=False, xg_delta=0.0)
         analyzer.calibrate(m, oc)
 
@@ -165,7 +162,7 @@ def test_slice_by_moment_type():
 
     for mtype in ("1v1_keeper", "penalty"):
         m  = _make_moment(moment_type=mtype)
-        r  = analyzer.analyze(m)
+        _r = analyzer.analyze(m)
         oc = ActionOutcome(action_taken="shot", success=True, xg_delta=0.5)
         analyzer.calibrate(m, oc)
 
@@ -257,7 +254,7 @@ def test_calibration_gap():
 
     for i, success in enumerate(outcomes):
         m  = _make_moment(xg_raw=0.30)
-        r  = analyzer.analyze(m)
+        _r = analyzer.analyze(m)
         oc = ActionOutcome(action_taken="shot", success=success, xg_delta=0.0)
         analyzer.calibrate(m, oc)
 

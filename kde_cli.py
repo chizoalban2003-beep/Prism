@@ -357,7 +357,7 @@ def cmd_evening(agent: KDEAgent, args) -> None:
     print(f"\n🌙  EVENING REVIEW — {review.date_str}")
     print(f"   Sessions today: {len(review.session_logs)}")
     print(f"\n   {review.day_rating_prompt}")
-    print(f"\n   Recovery protocol:")
+    print("\n   Recovery protocol:")
     for step in review.recovery_protocol:
         print(f"     • {step}")
     print(f"\n   Sleep target: {review.sleep_target_hrs}h")
@@ -444,7 +444,7 @@ def cmd_reflect(agent: KDEAgent, args) -> None:
 
 def cmd_status(agent: KDEAgent, args) -> None:
     data = agent.status()
-    print(f"\n── KDE Agent Status ─────────────────────")
+    print("\n── KDE Agent Status ─────────────────────")
     print(f"   Profile  : {data['profile']} ({data['role']}, {data['sport']})")
     print(f"   Ollama   : {'✓' if data['ollama_available'] else '✗'}")
     print(f"   ffmpeg   : {'✓' if data['ffmpeg_available'] else '✗'}")

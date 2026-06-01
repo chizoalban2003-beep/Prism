@@ -25,14 +25,12 @@ import logging
 import time
 import urllib.error
 import urllib.request
-from dataclasses import asdict
-from datetime import date, datetime, timezone
+from datetime import date
 from pathlib import Path
 from typing import Optional
 
 from ksa_executor import ExecutionContext, ExecutionOutcome, TaskExecutor, _ResourceSampler
 from ksa_registry import PerformanceMetrics, SnapshotRegistry
-from sports_pro import SportsProProfile, DailyPlan, Role
 
 logger = logging.getLogger(__name__)
 

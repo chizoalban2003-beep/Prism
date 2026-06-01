@@ -5,12 +5,10 @@ Tests for prism_device_executor.py
 """
 from __future__ import annotations
 
-import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 
 from prism_device_executor import BuiltinTasks, DeviceTaskResult, SafeSubprocess
 

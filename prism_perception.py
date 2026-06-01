@@ -23,15 +23,12 @@ Privacy principles (enforced in code):
 
 from __future__ import annotations
 
-import json
 import logging
 import math
-import os
 import queue
 import threading
 import time
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
@@ -287,7 +284,7 @@ class BiometricChannel(PerceptionChannel):
             self._emit("hrv_recovery", hrv_norm, 0.9,
                        f"HRV {hrv_ms:.0f}ms")
             self._emit("stress_level", 1.0 - hrv_norm, 0.85,
-                       f"stress from HRV")
+                       "stress from HRV")
 
         if heart_rate is not None:
             # Resting HR: <55 = athletic, >90 = stressed/unfit
@@ -300,7 +297,7 @@ class BiometricChannel(PerceptionChannel):
             self._emit("sleep_quality", sleep_norm, 0.95,
                        f"sleep {sleep_hrs:.1f}hrs")
             self._emit("cognitive_readiness", sleep_norm * 0.7 + 0.15,
-                       0.85, f"readiness from sleep")
+                       0.85, "readiness from sleep")
 
         if steps is not None:
             # Steps: 0 = sedentary, 10000+ = active
@@ -400,7 +397,8 @@ class VoiceChannel(PerceptionChannel):
         If wake word detected: trigger on_transcript callback.
         """
         try:
-            import pyaudio, numpy as np, whisper
+            import pyaudio
+            import numpy as np
         except ImportError:
             time.sleep(60.0)
             return
@@ -503,7 +501,8 @@ class ScreenContextChannel(PerceptionChannel):
             shot = ImageGrab.grab()
         except ImportError:
             try:
-                import mss, PIL.Image
+                import mss
+                import PIL.Image
                 with mss.mss() as sct:
                     raw  = sct.grab(sct.monitors[1])
                     shot = PIL.Image.frombytes("RGB", raw.size, raw.bgra, "raw","BGRX")
@@ -514,7 +513,8 @@ class ScreenContextChannel(PerceptionChannel):
         shot = shot.resize((640, 360))
 
         # Convert to base64 for LLaVA
-        import base64, io
+        import base64
+        import io
         buf = io.BytesIO()
         shot.save(buf, format="JPEG", quality=60)
         b64 = base64.b64encode(buf.getvalue()).decode()
@@ -527,7 +527,8 @@ class ScreenContextChannel(PerceptionChannel):
         )
 
         try:
-            import json, urllib.request
+            import json
+            import urllib.request
             payload = json.dumps({
                 "model":  "llava",
                 "prompt": prompt,

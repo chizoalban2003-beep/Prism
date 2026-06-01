@@ -46,7 +46,7 @@ import json
 import logging
 import threading
 import uuid
-from dataclasses import asdict, fields
+from dataclasses import asdict
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from typing import Optional
 from urllib.parse import parse_qs, urlparse
@@ -144,7 +144,8 @@ class KDEHandler(BaseHTTPRequestHandler):
                 return
 
             elif path == "/status":
-                import urllib.request as _ur, json as _j
+                import urllib.request as _ur
+                import json as _j
                 ollama_ok = False; ollama_model = ""
                 try:
                     r = _ur.urlopen("http://localhost:11434/api/tags", timeout=2)
@@ -1003,8 +1004,6 @@ class KDEHandler(BaseHTTPRequestHandler):
             elif path == "/duel/add_match":
                 match_id    = body.get("match_id", str(uuid.uuid4()))
                 events      = body.get("events", [])
-                freeze_frames = body.get("freeze_frames", {})
-                profile_map = body.get("profile_map", {})
 
                 records = self.duel_analyzer.process_match(events, match_id)
                 self._json_response({

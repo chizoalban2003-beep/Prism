@@ -9,16 +9,16 @@ from typing import Optional
 from prism_llm_router import LLMRouter
 from prism_task_queue import TaskQueue
 from domain_configs import ALL_DOMAINS, DomainDecisionModel
-from prism_device_agent import PrismDeviceAgent, DeviceTaskResult
-from prism_planner import PrismPlanner, PlanOfAction
-from prism_perception import PrismPerception, ContextState
+from prism_device_agent import PrismDeviceAgent
+from prism_planner import PrismPlanner
+from prism_perception import PrismPerception
 from prism_memory import PrismMemory
 from prism_tts import PrismTTS
 from prism_proactive import PrismProactive, build_default_triggers
 from prism_smart_home import PrismSmartHome
 from prism_email    import PrismEmail
-from prism_calendar import PrismCalendar, CalendarEvent
-from prism_browser_agent import PrismBrowserAgent, BrowserTaskResult
+from prism_calendar import PrismCalendar
+from prism_browser_agent import PrismBrowserAgent
 from prism_instructions import PrismInstructions
 from prism_service_discovery import PrismServiceDiscovery
 from prism_responses import (
@@ -131,7 +131,8 @@ class PrismAgent:
         )
         try:
             self._memory = PrismMemory(ollama_host=ollama_host)
-        except Exception:
+        except Exception as e:
+            logger.warning("PrismMemory not available: %s", e)
             self._memory = None
         self._tts = PrismTTS.setup()
         self._smarthome = PrismSmartHome.from_config({})
@@ -159,7 +160,8 @@ class PrismAgent:
                 on_voice_command = self.chat,
             )
             self._perception.start()
-        except Exception:
+        except Exception as e:
+            logger.warning("PrismPerception not available: %s", e)
             self._perception = None
         try:
             self._proactive = PrismProactive(
@@ -172,7 +174,8 @@ class PrismAgent:
             for t in triggers:
                 self._proactive.register(t)
             self._proactive.start()
-        except Exception:
+        except Exception as e:
+            logger.warning("PrismProactive not available: %s", e)
             self._proactive = None
 
     def _handle_proactive_event(self, event) -> None:
@@ -280,7 +283,8 @@ class PrismAgent:
                 except Exception:
                     pass
 
-            self._tts.speak(card.body or "")
+            if self._tts:
+                self._tts.speak(card.body or "")
             return card
         except Exception as exc:
             logging.exception("PrismAgent.chat error")

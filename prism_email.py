@@ -2,14 +2,11 @@ from __future__ import annotations
 
 import email as _email
 import imaplib
-import json
 import logging
 import smtplib
-import time
 from dataclasses import dataclass, field
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)

@@ -119,7 +119,6 @@ class KineticOptimizer:
             )
             return None
 
-        current_score = outcome.metrics.score()
         current_conf  = current_system.simulate().confidence
 
         # ── Perturb and evaluate ──────────────────────────────────────────────
@@ -255,7 +254,8 @@ class KineticOptimizer:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    import tempfile, os
+    import tempfile
+    import os
 
     print("=== KSA Kinetic Optimizer Demo ===\n")
 

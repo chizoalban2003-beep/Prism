@@ -33,6 +33,8 @@ import urllib.request
 from dataclasses import dataclass, field
 from typing import Optional
 
+from prism_llm_router import parse_llm_json
+
 logger = logging.getLogger(__name__)
 
 
@@ -90,10 +92,10 @@ class PlanOfAction:
         lines = [
             f"**Task:** {self.task}",
             f"**Context:** {self.context_summary}",
-            f"",
+            "",
             f"**Optimal strategy → {self.recommended.name}** "
             f"({self.recommended.activation:.0%} confidence)",
-            f"",
+            "",
         ]
         for i, s in enumerate(self.all_strategies[:4]):
             label = "★ Optimal" if i == 0 else f"Alt {i}"
@@ -291,7 +293,6 @@ class PrismPlanner:
                 why_recommended  = "Alternative option — full plan available on request.",
             ))
 
-        from decision_spectrum import DecisionBeam, DecisionPlank, Factor
         # Recompute fulcrum for reporting
         beam = self._build_beam(task_profile, context)
         diag = beam.evaluate()
@@ -356,7 +357,7 @@ class PrismPlanner:
             user_context     = json.dumps(context, indent=2) if context else "No additional context provided."
         )
         raw = self._call_llm(prompt)
-        return self._parse_json(raw)
+        return parse_llm_json(raw)
 
     def _generate_action_plan(
         self,
@@ -378,7 +379,7 @@ class PrismPlanner:
             entity           = entity,
         )
         raw  = self._call_llm(prompt)
-        data = self._parse_json(raw) or {}
+        data = parse_llm_json(raw) or {}
         steps = [
             ActionStep(
                 order    = s.get("order", i+1),
@@ -449,27 +450,6 @@ class PrismPlanner:
         except Exception as e:
             logger.warning("Ollama call failed: %s", e)
             return ""
-
-    def _parse_json(self, text: str) -> Optional[dict]:
-        if not text:
-            return None
-        try:
-            clean = text.strip()
-            # Strip markdown fences if present
-            if clean.startswith("```"):
-                clean = clean.split("```")[1]
-                if clean.startswith("json"):
-                    clean = clean[4:]
-            return json.loads(clean.strip())
-        except Exception:
-            # Try to find JSON object in the response
-            try:
-                start = text.index("{")
-                end   = text.rindex("}") + 1
-                return json.loads(text[start:end])
-            except Exception:
-                logger.warning("JSON parse failed for: %s", text[:200])
-                return None
 
     def _fallback_plan(self, task: str) -> PlanOfAction:
         """Return a minimal plan when LLM is unavailable."""

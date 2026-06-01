@@ -1,9 +1,31 @@
 from __future__ import annotations
-import json, logging, os, time, urllib.request
-from dataclasses import dataclass, field
+import json
+import logging
+import os
+import time
+import urllib.request
+from dataclasses import dataclass
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+def parse_llm_json(raw: str) -> Optional[dict]:
+    """Safely parse JSON from an LLM response that may have markdown fences."""
+    if not raw:
+        return None
+    try:
+        clean = raw.strip()
+        if clean.startswith("```"):
+            parts = clean.split("```")
+            clean = parts[1].lstrip("json").strip() if len(parts) > 1 else clean
+        return json.loads(clean.strip())
+    except Exception:
+        try:
+            start = clean.index("{"); end = clean.rindex("}") + 1
+            return json.loads(clean[start:end])
+        except Exception:
+            return None
 
 @dataclass
 class LLMOption:

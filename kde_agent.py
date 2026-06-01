@@ -25,11 +25,10 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from sports_pro import SportsProAssistant, SportsProProfile, Role, DailyContext
+from sports_pro import SportsProAssistant, SportsProProfile, Role
 from device_hub import DeviceHub, Device, DeviceType
 from media_processor import MediaProcessor
 from vision_analyzer import VisionAnalyzer
@@ -912,7 +911,7 @@ class KDEAgent:
             return {"error": f"No executor for task '{task_name}'"}
 
         # Build a minimal EquilibriumResult for the executor context
-        from ksa_lever import ThreeBarSystem, TiltDirection, EquilibriumResult, LeverState
+        from ksa_lever import ThreeBarSystem
         system = ThreeBarSystem.from_defaults()
         system.levers[0].set_weights(left=6.0, right=4.0)
         eq = system.simulate()

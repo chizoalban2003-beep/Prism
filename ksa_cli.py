@@ -43,7 +43,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from ksa_config import KSAConfig
 from ksa_executor import (
-    ExecutorRegistry,
     FileIndexExecutor,
     LocalSearchExecutor,
     ShellExecutor,

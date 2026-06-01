@@ -166,7 +166,7 @@ class TestRegistryMetrics:
 class TestRegistryVersionControl:
     def test_promote(self, registry, default_system):
         v1 = registry.save("task_a", default_system)
-        v2 = registry.save("task_a", default_system)  # now current
+        _v2 = registry.save("task_a", default_system)  # now current
         registry.promote("task_a", v1)
         tasks = {t["task_name"]: t for t in registry.list_tasks()}
         assert tasks["task_a"]["current_version"] == v1

@@ -1,6 +1,8 @@
 from __future__ import annotations
-import logging, platform, subprocess, threading
-from typing import Optional
+import logging
+import platform
+import subprocess
+import threading
 
 logger = logging.getLogger(__name__)
 

@@ -40,7 +40,7 @@ from typing import Callable, Optional
 
 sys.path.insert(0, os.path.dirname(__file__))
 from ksa_lever import ThreeBarSystem
-from ksa_registry import SnapshotRegistry, PerformanceMetrics
+from ksa_registry import SnapshotRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -417,7 +417,8 @@ class MasterFulcrum:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    import tempfile, os
+    import tempfile
+    import os
 
     print("=== KSA Master Fulcrum Demo ===\n")
 

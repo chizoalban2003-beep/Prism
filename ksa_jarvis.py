@@ -40,7 +40,6 @@ import json
 import logging
 import os
 import sqlite3
-import time
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -52,7 +51,7 @@ import psutil
 from ksa_executor import ExecutionContext, ExecutionOutcome, ExecutorRegistry, TaskExecutor
 from ksa_lever import ThreeBarSystem
 from ksa_optimizer import KineticOptimizer
-from ksa_registry import PerformanceMetrics, SnapshotRegistry
+from ksa_registry import SnapshotRegistry
 from ksa_router import MasterFulcrum, RouteResult
 
 logger = logging.getLogger(__name__)
@@ -104,7 +103,6 @@ def _now_iso() -> str:
 
 def _hardware_pressure() -> tuple[float, float]:
     """Return (cpu_pct, ram_pct) as 0-100 floats."""
-    proc = psutil.Process()
     cpu  = psutil.cpu_percent(interval=None)
     mem  = psutil.virtual_memory()
     ram  = mem.percent
@@ -248,10 +246,6 @@ class JarvisAgent:
         self._inject_hardware_weights(route.system)
 
         eq       = route.system.simulate()
-        decision = (
-            "safe"      if (eq.override_active or eq.final_tilt.value == "balanced")
-            else eq.final_tilt.value   # "left" → "primary", "right" → "secondary"
-        )
         # Map tilt values to action names
         decision_name = {"left": "primary", "right": "secondary", "balanced": "safe"}.get(
             eq.final_tilt.value, "safe"

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import urllib.error
 import urllib.request
 from unittest.mock import patch
@@ -24,11 +23,9 @@ class _MockResponse:
 
 def test_research_parses_fenced_json_from_ollama():
     collaborator = PrismCollaborator()
-    payload = {
-        "response": '```json\n{"findings":{"transport_cost":1.8},"confidence":0.9}\n```'
-    }
+    raw_text = '```json\n{"findings":{"transport_cost":1.8},"confidence":0.9}\n```'
 
-    with patch.object(urllib.request, "urlopen", return_value=_MockResponse(json.dumps(payload).encode())):
+    with patch.object(collaborator._router, "call", return_value=(raw_text, "ollama/llama3.2")):
         result = collaborator.research("uber surge price", ["transport_cost"], prefer_local=True)
 
     assert result.source == "ollama"
@@ -62,32 +59,22 @@ def test_research_uses_web_search_when_enabled_after_ollama_failure():
         confidence=0.35,
     )
 
-    with patch.object(collaborator, "_call_ollama_raw", side_effect=OSError("offline")):
+    with patch.object(collaborator._router, "call", side_effect=OSError("offline")):
         with patch.object(collaborator, "_call_web_search", return_value=expected):
             result = collaborator.research("topic", prefer_local=True)
 
     assert result is expected
 
 
-def test_call_claude_raw_sends_api_key_and_extracts_text():
+def test_research_returns_claude_api_source_when_router_uses_claude():
     collaborator = PrismCollaborator(claude_api_key="secret-key")
-    captured = {}
+    raw_text = '{"findings":{"eta_min":12},"confidence":0.8}'
 
-    def _fake_urlopen(request, timeout=0):
-        captured["headers"] = dict(request.header_items())
-        body = {
-            "content": [
-                {"type": "text", "text": '{"findings":{"eta_min":12},"confidence":0.8}'}
-            ]
-        }
-        return _MockResponse(json.dumps(body).encode())
+    with patch.object(collaborator._router, "call", return_value=(raw_text, "claude/claude-haiku")):
+        result = collaborator.research("ETA estimate", ["eta_min"])
 
-    with patch.object(urllib.request, "urlopen", side_effect=_fake_urlopen):
-        raw = collaborator._call_claude_raw("prompt")
-
-    assert json.loads(raw)["findings"]["eta_min"] == 12
-    lowered_headers = {key.lower(): value for key, value in captured["headers"].items()}
-    assert lowered_headers["x-api-key"] == "secret-key"
+    assert result.source == "claude_api"
+    assert result.findings["eta_min"] == 12
 
 
 def test_synthesise_tool_requires_sandbox_test_when_testing():
@@ -98,7 +85,7 @@ class DemoExecutor:
         return {"success": True}
 """
 
-    with patch.object(collaborator, "_call_claude_raw", return_value=generated):
+    with patch.object(collaborator._router, "call", return_value=(generated, "claude/claude-haiku")):
         ok, message = collaborator.synthesise_tool(
             {
                 "task_name": "demo",

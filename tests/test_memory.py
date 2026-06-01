@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-import tempfile
-import os
 import pytest
 
-from prism_memory import PrismMemory, MemoryEntry, MemoryResult
+from prism_memory import PrismMemory
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────

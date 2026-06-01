@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from ksa_lever import ThreeBarSystem
 from ksa_registry import SnapshotRegistry
-from ksa_router import MasterFulcrum, RouteResult
+from ksa_router import MasterFulcrum
 
 
 # ---------------------------------------------------------------------------

@@ -7,12 +7,9 @@ pytest + tmp_path. No Ollama calls.
 """
 from __future__ import annotations
 
-import io
-import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
 
 from kde_dashboard import HTMLReportGenerator, TerminalDashboard
 
@@ -178,7 +175,7 @@ def test_match_prediction_prints_bars(capsys):
 
 def test_squad_risk_prints_players(capsys):
     dash = TerminalDashboard(use_colour=False)
-    platform = _make_platform_mock()
+    _platform = _make_platform_mock()
     risks = [
         MagicMock(
             athlete_name    = "Player A",

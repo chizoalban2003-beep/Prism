@@ -16,9 +16,8 @@ from __future__ import annotations
 
 import json
 import logging
-import math
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 from moment_analyzer import MomentAnalyzer, MomentResult
@@ -378,19 +377,19 @@ class MomentValidator:
 
     def _to_markdown(self, report: SeasonValidationReport) -> str:
         lines = [
-            f"## Season Validation Report",
-            f"",
+            "## Season Validation Report",
+            "",
             f"- **Competition:** {report.competition}",
             f"- **Season:** {report.season}",
             f"- **Matches:** {report.n_matches}",
             f"- **Moments:** {report.n_moments}",
             f"- **Overall accuracy:** {report.overall_accuracy:.1%}",
             f"- **Overall Brier score:** {report.overall_brier:.4f}",
-            f"",
-            f"## By Moment Type",
-            f"",
-            f"| Moment Type | N | Accuracy | Brier | Cal Gap |",
-            f"|---|---|---|---|---|",
+            "",
+            "## By Moment Type",
+            "",
+            "| Moment Type | N | Accuracy | Brier | Cal Gap |",
+            "|---|---|---|---|---|",
         ]
         for r in report.by_moment_type:
             lines.append(
@@ -399,11 +398,11 @@ class MomentValidator:
                 f"| {r.calibration_gap:+.3f} |"
             )
         lines += [
-            f"",
-            f"## By Zone",
-            f"",
-            f"| Zone | N | Accuracy | Brier | Cal Gap |",
-            f"|---|---|---|---|---|",
+            "",
+            "## By Zone",
+            "",
+            "| Zone | N | Accuracy | Brier | Cal Gap |",
+            "|---|---|---|---|---|",
         ]
         for r in report.by_zone:
             lines.append(
@@ -412,11 +411,11 @@ class MomentValidator:
                 f"| {r.calibration_gap:+.3f} |"
             )
         lines += [
-            f"",
-            f"## By Player (top 20)",
-            f"",
-            f"| Player | N | Accuracy | Brier | Cal Gap |",
-            f"|---|---|---|---|---|",
+            "",
+            "## By Player (top 20)",
+            "",
+            "| Player | N | Accuracy | Brier | Cal Gap |",
+            "|---|---|---|---|---|",
         ]
         for r in sorted(report.by_player, key=lambda x: -x.n_moments)[:20]:
             lines.append(
@@ -425,11 +424,11 @@ class MomentValidator:
                 f"| {r.calibration_gap:+.3f} |"
             )
         lines += [
-            f"",
-            f"## Calibration",
-            f"",
+            "",
+            "## Calibration",
+            "",
             f"**Best calibrated:** {', '.join(report.best_calibrated) or 'N/A'}",
-            f"",
+            "",
             f"**Worst calibrated:** {', '.join(report.worst_calibrated) or 'N/A'}",
         ]
         return "\n".join(lines) + "\n"

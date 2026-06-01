@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+*.pyo
+.git/
+.github/
+tests/
+*.md
+docs/
+.env
+*.db
+~/.prism/

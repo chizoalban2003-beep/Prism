@@ -4,7 +4,6 @@ tests/test_jarvis.py
 Unit tests for ksa_jarvis.py — JarvisAgent, ThinkResult, ActResult, Artifact.
 """
 
-import json
 import pytest
 import sys
 import os
@@ -17,7 +16,6 @@ from ksa_jarvis import (
     JarvisAgent,
     ThinkResult,
     _infer_content_type,
-    _row_to_artifact,
 )
 from ksa_lever import ThreeBarSystem
 

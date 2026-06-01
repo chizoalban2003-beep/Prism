@@ -14,7 +14,7 @@ import json
 import sys
 import time
 import urllib.request
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 

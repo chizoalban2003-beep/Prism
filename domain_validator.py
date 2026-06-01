@@ -4,11 +4,10 @@ import csv
 import json
 import logging
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
-from decision_spectrum import OutcomeDiagnosis
-from domain_configs import ALL_DOMAINS, DomainConfig, DomainDecisionModel
+from domain_configs import ALL_DOMAINS, DomainDecisionModel
 
 logger = logging.getLogger(__name__)
 

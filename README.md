@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <img src="https://github.com/chizoalban2003-beep/Prism/actions/workflows/ci.yml/badge.svg" alt="CI"/>
+  <a href="https://github.com/chizoalban2003-beep/Prism/actions"><img src="https://github.com/chizoalban2003-beep/Prism/actions/workflows/ci.yml/badge.svg" alt="CI status"/></a>
   <img src="https://img.shields.io/badge/python-3.11%2B-blue" alt="Python"/>
   <img src="https://img.shields.io/badge/license-MIT-lightgrey" alt="MIT"/>
   <img src="https://img.shields.io/badge/cloud-none-orange" alt="no cloud"/>
@@ -58,12 +58,14 @@ three are bounded decisions under uncertainty with named contextual factors.
 
 | Role | What PRISM does |
 |---|---|
-| **Developer** | Routes tasks, manages system resources, learns your workflow via KSA |
-| **Professional athlete** | Plans daily training load, manages recovery, analyzes session footage |
+| **Anyone** | Decides, plans, and executes any task — in plain language, on your hardware |
+| **Developer** | Routes tasks, manages system resources, learns your workflow |
+| **Business owner / founder** | Strategy planning, decision ranking, task execution, email and calendar |
+| **Clinician** | Medical triage decisions with interpretable named causes and audit trail |
+| **Analyst** | Domain decision support — financial, legal, HR, supply chain, climate |
+| **Professional athlete** | Daily training load, recovery management, session footage analysis |
 | **Coach** | Tactical preparation, squad load management, opposition scouting |
 | **Sports analyst** | Duel network analysis, moment prediction, StatsBomb data pipeline |
-| **Performance director** | Squad risk overview, transfer value estimation, season forecasting |
-| **Enterprise (Medical / Financial / Legal)** | Domain-agnostic decision support with full audit trail |
 
 ---
 
@@ -103,6 +105,18 @@ prism --help
 kde --help
 ksa --help
 ```
+
+### As a personal assistant (PRISM chat)
+
+```bash
+python kde_cli.py server --port 8742
+```
+
+Then open **http://localhost:8742** — the PRISM chat interface.
+Type any request in plain language: plan my day, check my emails,
+list files in Downloads, what's on my calendar, help me plan a goal.
+
+---
 
 ### As a developer agent (KSA)
 
@@ -181,7 +195,7 @@ The repository includes `prism_config.toml` as a ready-to-edit sample.
 
 ```toml
 [user]
-role  = "athlete"          # developer | athlete | coach | analyst | universal
+role  = "universal"        # developer | athlete | coach | analyst | universal
 name  = "Marcus"
 sport = "Football"
 team  = "City FC"
@@ -427,7 +441,7 @@ All decision mathematics is pure Python arithmetic.
 
 ```bash
 python -m pytest tests/ -q
-# current suite passes locally in ~20 seconds
+# 726 tests pass in ~20 seconds
 ```
 
 ---
