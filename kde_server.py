@@ -734,6 +734,35 @@ class KDEHandler(BaseHTTPRequestHandler):
                     ],
                 })
 
+            elif path == '/email/unread':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_email') and agent._email.configured:
+                    msgs = agent._email.fetch_unread(n=10)
+                    self._json_response({"count": len(msgs),
+                        "messages": [{"from": m.sender, "subject": m.subject,
+                                      "date": m.date, "body": m.body[:500]} for m in msgs]})
+                else:
+                    self._error("Email not configured", 503)
+
+            elif path == '/calendar/status':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_calendar'):
+                    self._json_response(agent._calendar.status_summary())
+                else:
+                    self._json_response({"configured": False})
+
+            elif path == '/calendar/today':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_calendar') and agent._calendar.configured:
+                    events = agent._calendar.today()
+                    self._json_response({"count": len(events),
+                        "events": [{"title": e.title,
+                                    "start": e.start.isoformat(),
+                                    "end": e.end.isoformat(),
+                                    "location": e.location} for e in events]})
+                else:
+                    self._error("Calendar not configured", 503)
+
             else:
                 self._error(f"Unknown route: {path}", 404)
 

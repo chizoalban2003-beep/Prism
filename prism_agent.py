@@ -16,7 +16,8 @@ from prism_memory import PrismMemory
 from prism_tts import PrismTTS
 from prism_proactive import PrismProactive, build_default_triggers
 from prism_smart_home import PrismSmartHome
-from prism_email import PrismEmail
+from prism_email    import PrismEmail
+from prism_calendar import PrismCalendar, CalendarEvent
 from prism_responses import (
     PrismCard,
     domain_card,
@@ -68,6 +69,16 @@ class PrismAgent:
          r"require approval|reset (?:all )?polic", "update_policy"),
         (r"(?:running|active|pending|recent) tasks?|task (?:status|progress)|"
          r"what(?:'s| is) (?:running|happening)", "task_status"),
+        (r"(?:read|check|show|any|my) (?:new )?(?:emails?|inbox|messages?)|"
+         r"unread|what(?:'s| came) in",                        "email_read"),
+        (r"(?:send|reply|write|draft) (?:an? )?email|"
+         r"email (?:to|them|him|her)",                          "email_send"),
+        (r"(?:what(?:'s| is) on my|check my|show) (?:calendar|schedule|agenda)|"
+         r"(?:any|my) (?:meetings?|appointments?|events?) (?:today|tomorrow|this week)",
+                                                                "calendar_read"),
+        (r"(?:schedule|book|create|add) (?:a )?(?:meeting|event|appointment)|"
+         r"(?:find|when(?:'s| is) the next) (?:free|available) (?:slot|time)",
+                                                                "calendar_write"),
         (r"help|what\.can|commands|options", "help"),
         (r"turn (?:on|off)|set (?:the )?(?:lights?|thermostat|temp)|"
          r"lock|unlock|what(?:'s| is) (?:on|off)|smart home|home assistant",
@@ -110,7 +121,8 @@ class PrismAgent:
             self._memory = None
         self._tts = PrismTTS.setup()
         self._smarthome = PrismSmartHome.from_config({})
-        self._email = PrismEmail.from_config({})
+        self._email    = PrismEmail.from_config({})
+        self._calendar = PrismCalendar.from_config({})
         try:
             cfg = {}
             self._perception = PrismPerception.setup(
@@ -418,5 +430,77 @@ class PrismAgent:
             messages = self._email.fetch_unread()
             summary = self._email.summarise_inbox(messages, self._router)
             return text_card(summary, "Email Inbox")
+
+        if intent == "email_read":
+            if not self._email.configured:
+                return text_card("Email not configured. "
+                                 "Add email settings to prism_config.toml.", "Email")
+            messages = self._email.fetch_unread(n=10)
+            summary  = self._email.summarise_inbox(
+                messages, llm_router=getattr(self, '_router', None))
+            return text_card(summary, f"Inbox — {len(messages)} unread")
+
+        if intent == "email_send":
+            if not self._email.configured:
+                return text_card("Email not configured.", "Email")
+            router = getattr(self, '_router', None)
+            if router:
+                prompt = (f"Extract email details from: '{message}'\n"
+                          f"Return JSON: {{\"to\":\"...\",\"subject\":\"...\","
+                          f"\"body\":\"...\"}}")
+                raw, _ = router.call(prompt, min_capability=1, max_tokens=300,
+                                      json_mode=True)
+                try:
+                    import json as _j
+                    data = _j.loads(raw.strip().lstrip("```json").rstrip("```"))
+                    ok   = self._email.send(data["to"], data["subject"], data["body"])
+                    return text_card(
+                        f"{'Sent' if ok else 'Failed to send'} to {data.get('to','')}",
+                        "Email")
+                except Exception:
+                    pass
+            return text_card("Could not parse email details. "
+                             "Try: 'send email to name@example.com about...'", "Email")
+
+        if intent == "calendar_read":
+            if not self._calendar.configured:
+                return text_card("Calendar not configured. "
+                                 "Add calendar settings to prism_config.toml.", "Calendar")
+            today    = self._calendar.today()
+            next_ev  = self._calendar.next_event()
+            if not today:
+                msg = "Nothing scheduled today."
+            else:
+                msg = "\n".join(str(e) for e in today)
+            if next_ev and next_ev.starts_in_mins <= 30:
+                msg = f"⚠ {next_ev.title} starts in {next_ev.starts_in_mins} minutes\n\n" + msg
+            return text_card(msg, f"Today — {len(today)} events")
+
+        if intent == "calendar_write":
+            if not self._calendar.configured:
+                return text_card("Calendar not configured.", "Calendar")
+            router = getattr(self, '_router', None)
+            if "free slot" in message.lower() or "available" in message.lower():
+                slot = self._calendar.find_free_slot()
+                if slot:
+                    return text_card(
+                        f"Next free slot: {slot.strftime('%a %d %b at %H:%M')}",
+                        "Calendar")
+                return text_card("No free slots found in the next 48 hours.", "Calendar")
+            parsed = self._calendar.parse_event_from_text(message, router)
+            if parsed and parsed.get("start_iso"):
+                from datetime import datetime as _dt
+                start = _dt.fromisoformat(parsed["start_iso"])
+                event = self._calendar.create_event(
+                    title        = parsed.get("title", "New Event"),
+                    start        = start,
+                    duration_mins= parsed.get("duration_mins", 60),
+                    location     = parsed.get("location", ""),
+                    attendees    = parsed.get("attendees", []),
+                )
+                if event:
+                    return text_card(f"Created: {event}", "Calendar")
+            return text_card("Could not parse event details. "
+                             "Try: 'schedule a meeting with X on Friday at 2pm'", "Calendar")
 
         return text_card("I'm not sure how to help with that. Try: 'help'")
