@@ -134,7 +134,7 @@ class PrismSmartHome:
     def _headers(self) -> dict:
         headers = {"Content-Type": "application/json"}
         if self._token:
-            headers["Authorization"] = f"******"
+            headers["Authorization"] = f"Bearer {self._token}"
         return headers
 
     def _get(self, path: str):

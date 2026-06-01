@@ -97,7 +97,7 @@ class PrismTTS:
                     safe = text[:500].replace("'","")
                     subprocess.run(
                         ["powershell","-Command",
-                         f"Add-Type \u2013AssemblyName System.speech;"
+                         f"Add-Type -AssemblyName System.speech;"
                          f"(New-Object System.Speech.Synthesis.SpeechSynthesizer)"
                          f".Speak('{safe}')"],
                         timeout=30, check=False)
