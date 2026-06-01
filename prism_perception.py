@@ -539,8 +539,8 @@ class ScreenContextChannel(PerceptionChannel):
                 data=payload,
                 headers={"Content-Type":"application/json"})
             resp = urllib.request.urlopen(req, timeout=15)
-            data = json.loads(json.loads(resp.read())
-                              .get("response","{}").strip())
+            outer = json.loads(resp.read())
+            data = json.loads(outer.get("response","{}").strip())
 
             focus_map  = {"high": 0.9, "medium": 0.5, "low": 0.2}
             focus_val  = focus_map.get(data.get("focus","medium"), 0.5)

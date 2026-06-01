@@ -165,7 +165,9 @@ def test_system_channel_circadian_energy_in_range():
     q = queue.Queue()
     ch = SystemContextChannel(q)
     ch._emit_time_context()
-    signals = [q.get_nowait() for _ in range(q.qsize() + 2) if not q.empty()]
+    signals = []
+    while not q.empty():
+        signals.append(q.get_nowait())
     circadian = [s for s in signals if s.factor_id == "circadian_energy"]
     assert len(circadian) == 1
     assert 0.0 <= circadian[0].value <= 1.0
