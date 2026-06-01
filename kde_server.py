@@ -698,6 +698,42 @@ class KDEHandler(BaseHTTPRequestHandler):
                 else:
                     self._json_response({"configured": False})
 
+            elif path == '/email/status':
+                from prism_email import PrismEmail
+                agent = getattr(self.server, 'prism_agent', None)
+                em = getattr(agent, '_email', None) if agent else None
+                if em is None:
+                    em = PrismEmail()
+                self._json_response(em.status_summary())
+
+            elif path == '/email/inbox':
+                from prism_email import PrismEmail
+                agent = getattr(self.server, 'prism_agent', None)
+                em = getattr(agent, '_email', None) if agent else None
+                if em is None:
+                    em = PrismEmail()
+                if not em.configured:
+                    self._error("Email not configured", 503)
+                    return
+                n = int(qs.get("n", 20))
+                folder = qs.get("folder", "INBOX")
+                unread_only = qs.get("unread", "true").lower() != "false"
+                msgs = em.fetch_unread(folder=folder, n=n) if unread_only else em.fetch_recent(n=n)
+                self._json_response({
+                    "count": len(msgs),
+                    "messages": [
+                        {
+                            "msg_id":  m.msg_id,
+                            "subject": m.subject,
+                            "sender":  m.sender,
+                            "date":    m.date,
+                            "unread":  m.unread,
+                            "snippet": m.body[:200],
+                        }
+                        for m in msgs
+                    ],
+                })
+
             else:
                 self._error(f"Unknown route: {path}", 404)
 
@@ -1078,6 +1114,25 @@ class KDEHandler(BaseHTTPRequestHandler):
                     self._json_response({"channel": channel, "enabled": enabled})
                 else:
                     self._error("Perception not initialised", 503)
+
+            elif path == '/email/send':
+                from prism_email import PrismEmail
+                agent = getattr(self.server, 'prism_agent', None)
+                em = getattr(agent, '_email', None) if agent else None
+                if em is None:
+                    em = PrismEmail()
+                if not em.configured:
+                    self._error("Email not configured", 503)
+                    return
+                to      = body.get("to", "")
+                subject = body.get("subject", "")
+                text    = body.get("body", "")
+                if not to or not subject or not text:
+                    self._error("'to', 'subject' and 'body' fields required", 400)
+                    return
+                ok = em.send(to=to, subject=subject, body=text,
+                             reply_to=body.get("reply_to", ""))
+                self._json_response({"ok": ok})
 
             else:
                 self._error(f"Unknown route: {path}", 404)

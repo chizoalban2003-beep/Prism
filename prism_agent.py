@@ -16,6 +16,7 @@ from prism_memory import PrismMemory
 from prism_tts import PrismTTS
 from prism_proactive import PrismProactive, build_default_triggers
 from prism_smart_home import PrismSmartHome
+from prism_email import PrismEmail
 from prism_responses import (
     PrismCard,
     domain_card,
@@ -71,6 +72,10 @@ class PrismAgent:
         (r"turn (?:on|off)|set (?:the )?(?:lights?|thermostat|temp)|"
          r"lock|unlock|what(?:'s| is) (?:on|off)|smart home|home assistant",
          "smart_home"),
+        (r"(?:check|read|show|open|fetch|get|list).*(?:email|inbox|mail)|"
+         r"(?:email|mail).*(?:unread|new|recent)|send.*(?:email|mail)|"
+         r"draft.*(?:email|reply)|reply.*email|email.*summary",
+         "email"),
     ]
 
     def __init__(
@@ -105,6 +110,7 @@ class PrismAgent:
             self._memory = None
         self._tts = PrismTTS.setup()
         self._smarthome = PrismSmartHome.from_config({})
+        self._email = PrismEmail.from_config({})
         try:
             cfg = {}
             self._perception = PrismPerception.setup(
@@ -396,5 +402,21 @@ class PrismAgent:
                 f"{summary['total_entities']} total · "
                 f"domains: {', '.join(summary.get('domains', [])[:5])}",
                 "Smart Home Status")
+
+        if intent == "email":
+            if not self._email.configured:
+                return text_card(
+                    "Email not configured. "
+                    "Add email config to prism_config.toml.",
+                    "Email")
+            msg_lower = message.lower()
+            if any(w in msg_lower for w in ("send", "draft", "reply")):
+                return text_card(
+                    "Use the /email/send endpoint to send emails or "
+                    "ask me to draft a reply to a specific message.",
+                    "Email")
+            messages = self._email.fetch_unread()
+            summary = self._email.summarise_inbox(messages, self._router)
+            return text_card(summary, "Email Inbox")
 
         return text_card("I'm not sure how to help with that. Try: 'help'")
