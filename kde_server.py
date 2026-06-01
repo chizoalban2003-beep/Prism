@@ -570,10 +570,21 @@ class KDEHandler(BaseHTTPRequestHandler):
                 return
 
             elif path == "/llm/status":
+                if self.llm_router is None:
+                    self._json_response({"available": False, "note": "LLM router not initialised"})
+                    return
                 self._json_response(self.llm_router.status_summary())
 
             elif path == "/tasks":
-                n = int(qs.get("n", 10))
+                if self.task_queue is None:
+                    self._json_response({"tasks": [], "count": 0, "note": "Task queue not initialised"})
+                    return
+                raw_n = qs.get("n", 10)
+                try:
+                    n = int(raw_n)
+                except (ValueError, TypeError):
+                    self._error(f"Invalid n parameter: must be an integer", 400)
+                    return
                 tasks = self.task_queue.list_recent(n)
                 items = [
                     {
@@ -591,6 +602,9 @@ class KDEHandler(BaseHTTPRequestHandler):
                 self._json_response({"tasks": items, "count": len(items)})
 
             elif path.startswith("/tasks/"):
+                if self.task_queue is None:
+                    self._error("Task queue not initialised", 503)
+                    return
                 task_id = path[len("/tasks/"):]
                 if not task_id:
                     self._error("task_id is required", 400)
