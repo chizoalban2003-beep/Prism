@@ -312,9 +312,26 @@ PRISM/
 │   ├── prism_agent.py          Unified PRISM orchestration layer
 │   ├── prism_chat.py           Local chat interface and UI payloads
 │   ├── prism_responses.py      Response formatting helpers
+│   ├── prism_perception.py     Perceptual context engine — time, location, device state
+│   ├── prism_memory.py         Short- and long-term memory store
+│   ├── prism_planner.py        Goal decomposition and multi-step planning
+│   ├── prism_llm_router.py     Local LLM routing via Ollama
+│   ├── prism_tts.py            Text-to-speech output layer
+│   ├── prism_proactive.py      Proactive trigger evaluation and scheduling
+│   ├── prism_smart_home.py     Smart-home device command layer
+│   ├── prism_task_queue.py     Async task queue for background execution
 │   ├── digital_identity.py     User identity state and profile signals
 │   ├── identity_bus.py         Cross-module identity event bus
 │   └── artifact_store.py       Artifact collection with identity tagging
+│
+├── Personal assistant
+│   ├── prism_email.py          IMAP/SMTP email reader and sender
+│   ├── prism_calendar.py       Calendar event management
+│   ├── prism_browser_agent.py  Headless web navigation and scraping
+│   ├── prism_device_agent.py   On-device task execution (files, shell, apps)
+│   ├── prism_device_executor.py Safe subprocess and file-system executor
+│   ├── prism_device_resolver.py App and tool resolver for installed software
+│   └── prism_device_scanner.py Installed-app and capability scanner
 │
 ├── Execution intelligence
 │   ├── prism_policy.py         Resource allocation + policy engine (CEO→Manager)
