@@ -12,6 +12,8 @@ from domain_configs import ALL_DOMAINS, DomainDecisionModel
 from prism_device_agent import PrismDeviceAgent, DeviceTaskResult
 from prism_planner import PrismPlanner, PlanOfAction
 from prism_perception import PrismPerception, ContextState
+from prism_memory import PrismMemory
+from prism_tts import PrismTTS
 from prism_responses import (
     PrismCard,
     domain_card,
@@ -93,6 +95,11 @@ class PrismAgent:
             user          = getattr(self, '_user', 'default'),
         )
         try:
+            self._memory = PrismMemory(ollama_host=ollama_host)
+        except Exception:
+            self._memory = None
+        self._tts = PrismTTS.setup()
+        try:
             cfg = {}
             self._perception = PrismPerception.setup(
                 enable_voice     = cfg.get("enable_voice", False),
@@ -154,7 +161,28 @@ class PrismAgent:
                     context = {}
                 context["perception"] = percept_state.to_factor_updates()
                 context["perception_summary"] = percept_state.summary
-            return self._execute(intent, message or "", context or {})
+            if self._memory and message:
+                try:
+                    mem_results = self._memory.search(message, top_n=3)
+                    if mem_results:
+                        if not context:
+                            context = {}
+                        context["memory_context"] = [
+                            {"title": r.entry.title, "excerpt": r.excerpt,
+                             "source": r.entry.source, "score": round(r.score, 3)}
+                            for r in mem_results
+                        ]
+                    self._memory.ingest_conversation("user", message)
+                except Exception:
+                    pass
+            card = self._execute(intent, message or "", context or {})
+            if self._memory and card.body:
+                try:
+                    self._memory.ingest_conversation("assistant", card.body)
+                except Exception:
+                    pass
+            self._tts.speak(card.body or "")
+            return card
         except Exception as exc:
             logging.exception("PrismAgent.chat error")
             return text_card(f"Something went wrong: {exc}", "Error")

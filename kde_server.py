@@ -635,6 +635,51 @@ class KDEHandler(BaseHTTPRequestHandler):
                     self._json_response({"active_channels": [], "factor_count": 0,
                                          "summary": "perception not initialised"})
 
+            elif path == '/memory/search':
+                agent = getattr(self.server, 'prism_agent', None)
+                mem   = agent._memory if agent and hasattr(agent, '_memory') else None
+                if mem is None:
+                    self._json_response({"results": [], "note": "memory not initialised"})
+                    return
+                query = qs.get("q", "")
+                if not query:
+                    self._error("Query parameter 'q' is required", 400)
+                    return
+                top_n  = int(qs.get("n", 5))
+                source = qs.get("source")
+                results = mem.search(query, top_n=top_n, source_filter=source)
+                self._json_response({
+                    "results": [
+                        {
+                            "entry_id": r.entry.entry_id,
+                            "title":    r.entry.title,
+                            "source":   r.entry.source,
+                            "score":    round(r.score, 4),
+                            "excerpt":  r.excerpt,
+                            "tags":     r.entry.tags,
+                            "timestamp": r.entry.timestamp,
+                        }
+                        for r in results
+                    ],
+                    "count": len(results),
+                })
+
+            elif path == '/proactive':
+                p = getattr(self.server, 'prism_proactive', None)
+                if p is None:
+                    self._json_response({"events": [], "note": "proactive not initialised"})
+                    return
+                n      = int(qs.get("n", 5))
+                events = p.pending_events(n)
+                self._json_response({
+                    "events": [
+                        {"trigger_id": e.trigger_id, "message": e.message,
+                         "timestamp": e.timestamp}
+                        for e in events
+                    ],
+                    "count": len(events),
+                })
+
             else:
                 self._error(f"Unknown route: {path}", 404)
 
@@ -927,6 +972,74 @@ class KDEHandler(BaseHTTPRequestHandler):
                     self._json_response({"ok": True})
                 else:
                     self._error("Perception not initialised", 503)
+
+            elif path == '/memory/ingest':
+                agent = getattr(self.server, 'prism_agent', None)
+                mem   = agent._memory if agent and hasattr(agent, '_memory') else None
+                if mem is None:
+                    self._error("Memory not initialised", 503)
+                    return
+                content = body.get("content", "")
+                if not content:
+                    self._error("'content' field required", 400)
+                    return
+                entry_id = mem.ingest(
+                    content = content,
+                    source  = body.get("source", "note"),
+                    title   = body.get("title", ""),
+                    tags    = body.get("tags"),
+                )
+                self._json_response({"ok": True, "entry_id": entry_id})
+
+            elif path == '/tts':
+                agent = getattr(self.server, 'prism_agent', None)
+                tts   = agent._tts if agent and hasattr(agent, '_tts') else None
+                action = body.get("action", "speak")
+                if action == "toggle":
+                    if tts:
+                        enabled = tts.toggle()
+                    else:
+                        enabled = False
+                    self._json_response({"enabled": enabled})
+                elif action == "speak":
+                    text = body.get("text", "")
+                    if tts and text:
+                        tts.speak(text)
+                    self._json_response({"ok": True})
+                else:
+                    self._error(f"Unknown TTS action: {action}", 400)
+
+            elif path == '/smarthome':
+                from prism_smart_home import PrismSmartHome
+                sh = getattr(self.server, 'prism_smart_home', None)
+                if sh is None:
+                    sh = PrismSmartHome(
+                        ha_url = body.get("ha_url", "http://homeassistant.local:8123"),
+                        token  = body.get("token", ""),
+                    )
+                    self.server.prism_smart_home = sh
+                action    = body.get("action", "")
+                entity_id = body.get("entity_id", "")
+                if action == "turn_on":
+                    result = sh.turn_on(entity_id)
+                    self._json_response({"ok": result.success, "error": result.error})
+                elif action == "turn_off":
+                    result = sh.turn_off(entity_id)
+                    self._json_response({"ok": result.success, "error": result.error})
+                elif action == "toggle":
+                    result = sh.toggle(entity_id)
+                    self._json_response({"ok": result.success, "error": result.error})
+                elif action == "list":
+                    devices = sh.list_devices(domain=body.get("domain", ""))
+                    self._json_response({
+                        "devices": [
+                            {"entity_id": d.entity_id, "state": d.state,
+                             "friendly_name": d.friendly_name}
+                            for d in devices
+                        ]
+                    })
+                else:
+                    self._error(f"Unknown smarthome action: {action}", 400)
 
             elif path == '/perception/enable':
                 channel = body.get("channel", "")
