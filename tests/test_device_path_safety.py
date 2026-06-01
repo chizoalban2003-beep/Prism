@@ -34,6 +34,12 @@ class TestSafePathExpandsHome:
         assert os.path.isabs(result)
         assert result.startswith(os.path.realpath(allowed))
 
+    def test_safe_path_tilde_is_expanded(self):
+        """_safe_path always expands ~ to an absolute path."""
+        result = PrismDeviceAgent._safe_path("~/Downloads")
+        assert not result.startswith("~")
+        assert os.path.isabs(result)
+
 
 class TestSafePathOutsideRootRejected:
     def test_safe_path_outside_root_rejected(self, tmp_path):
