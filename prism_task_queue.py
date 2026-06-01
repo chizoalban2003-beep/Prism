@@ -136,7 +136,7 @@ class TaskQueue:
     def list_recent(self, n: int = 10) -> list[TaskProgress]:
         with sqlite3.connect(self._db) as c:
             rows = c.execute(
-                "SELECT data_json FROM tasks ORDER BY started_at DESC LIMIT ?",
+                "SELECT data_json FROM tasks ORDER BY rowid DESC LIMIT ?",
                 (n,)).fetchall()
         out = []
         for row in rows:

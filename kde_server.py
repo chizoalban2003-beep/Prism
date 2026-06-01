@@ -30,6 +30,9 @@ Routes:
   GET  /reflect                → learned state JSON
   GET  /devices                → connected devices list
   POST /device/sync            → trigger device sync
+  GET  /llm/status             → LLM router status (available models, best)
+  GET  /tasks                  → recent background tasks list (?n=10)
+  GET  /tasks/<id>             → single task progress by task_id
 
 All responses: Content-Type: application/json
 Error format:  {"error": "message", "status": 4xx}
@@ -84,6 +87,8 @@ class KDEHandler(BaseHTTPRequestHandler):
     live_pipeline:    object   # LiveMomentPipeline
     policy_engine:    object   # PolicyEngine
     tool_finder:      object   # ToolFinder
+    llm_router:       object   # LLMRouter
+    task_queue:       object   # TaskQueue
     _moment_history:  dict     # player → list[MomentResult]
 
     # ── common ────────────────────────────────────────────────────────────
@@ -564,6 +569,50 @@ class KDEHandler(BaseHTTPRequestHandler):
                 })
                 return
 
+            elif path == "/llm/status":
+                self._json_response(self.llm_router.status_summary())
+
+            elif path == "/tasks":
+                n = int(qs.get("n", 10))
+                tasks = self.task_queue.list_recent(n)
+                items = [
+                    {
+                        "task_id":      t.task_id,
+                        "title":        t.title,
+                        "status":       t.status if isinstance(t.status, str) else t.status.value,
+                        "progress":     t.progress,
+                        "current_step": t.current_step,
+                        "steps_done":   t.steps_done,
+                        "steps_total":  t.steps_total,
+                        "error":        t.error,
+                    }
+                    for t in tasks
+                ]
+                self._json_response({"tasks": items, "count": len(items)})
+
+            elif path.startswith("/tasks/"):
+                task_id = path[len("/tasks/"):]
+                if not task_id:
+                    self._error("task_id is required", 400)
+                    return
+                progress = self.task_queue.get(task_id)
+                if progress is None:
+                    self._error(f"Task '{task_id}' not found", 404)
+                    return
+                self._json_response({
+                    "task_id":      progress.task_id,
+                    "title":        progress.title,
+                    "status":       progress.status if isinstance(progress.status, str) else progress.status.value,
+                    "progress":     progress.progress,
+                    "current_step": progress.current_step,
+                    "steps_done":   progress.steps_done,
+                    "steps_total":  progress.steps_total,
+                    "result":       progress.result,
+                    "error":        progress.error,
+                    "started_at":   progress.started_at,
+                    "completed_at": progress.completed_at,
+                })
+
             else:
                 self._error(f"Unknown route: {path}", 404)
 
@@ -960,6 +1009,17 @@ class KDEServer:
             except Exception:
                 self._tool_finder = None
 
+        try:
+            from prism_llm_router import LLMRouter
+            self._llm_router = LLMRouter.from_config()
+        except Exception:
+            self._llm_router = None
+        try:
+            from prism_task_queue import TaskQueue
+            self._task_queue = TaskQueue()
+        except Exception:
+            self._task_queue = None
+
         self._server:  Optional[HTTPServer] = None
         self._thread:  Optional[threading.Thread] = None
 
@@ -980,6 +1040,8 @@ class KDEServer:
         domain_models   = self._domain_models
         policy_engine   = self._policy_engine
         tool_finder     = self._tool_finder
+        llm_router      = self._llm_router
+        task_queue      = self._task_queue
 
         # Build live pipeline from the moment analyzer
         live_pipeline = None
@@ -1001,6 +1063,8 @@ class KDEServer:
         _Handler.live_pipeline   = live_pipeline
         _Handler.policy_engine   = policy_engine
         _Handler.tool_finder     = tool_finder
+        _Handler.llm_router      = llm_router
+        _Handler.task_queue      = task_queue
         _Handler._moment_history = {}  # player → list[MomentResult]
 
         self._server = HTTPServer((self._host, self._port), _Handler)
