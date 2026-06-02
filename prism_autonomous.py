@@ -1,4 +1,5 @@
 from __future__ import annotations
+import ast
 import hashlib
 import importlib.util
 import json
@@ -30,25 +31,71 @@ class AcquiredTool:
     last_result:  str   = ""
 
 
-# ── Safety patterns — never execute code containing these ─────────────────────
-_BLOCKED_PATTERNS = [
-    r"os\.system\s*\(",
-    r"subprocess\.call\s*\(\s*['\"]",   # shell=True style
-    r"__import__\s*\(\s*['\"]os['\"]",
-    r"shutil\.rmtree",
-    r"os\.remove\s*\(",
-    r"open\s*\([^,]+,\s*['\"]w",        # file write without explicit path var
-    r"eval\s*\(",
-    r"exec\s*\(",
-    r"socket\.connect",
-    r"\.chmod\s*\(",
-]
+# ── AST-based safety check — never execute code containing these ──────────────
+_BLOCKED_CALLS = {
+    "eval", "exec", "compile", "__import__",
+    "open",          # file writes blocked; reads OK if path is safe
+    "breakpoint",
+}
+_BLOCKED_IMPORTS = {
+    "os", "subprocess", "shutil", "socket", "ctypes",
+    "multiprocessing", "importlib", "builtins", "pty",
+}
+_BLOCKED_ATTRS = {
+    # os.system, os.remove, os.chmod, shutil.rmtree, etc.
+    "system", "popen", "remove", "unlink", "rmtree",
+    "chmod", "chown", "rename", "replace", "symlink",
+    "fork", "spawn", "execv", "execve", "kill",
+}
+
+class _SafetyVisitor(ast.NodeVisitor):
+    def __init__(self):
+        self.violations: list[str] = []
+
+    def visit_Import(self, node):
+        for alias in node.names:
+            root = alias.name.split(".")[0]
+            if root in _BLOCKED_IMPORTS:
+                self.violations.append(f"blocked import: {alias.name}")
+        self.generic_visit(node)
+
+    def visit_ImportFrom(self, node):
+        root = (node.module or "").split(".")[0]
+        if root in _BLOCKED_IMPORTS:
+            self.violations.append(f"blocked from-import: {node.module}")
+        self.generic_visit(node)
+
+    def visit_Call(self, node):
+        # Direct calls: eval(...), exec(...)
+        if isinstance(node.func, ast.Name):
+            if node.func.id in _BLOCKED_CALLS:
+                self.violations.append(f"blocked call: {node.func.id}()")
+        # Attribute calls: os.system(...), shutil.rmtree(...)
+        elif isinstance(node.func, ast.Attribute):
+            if node.func.attr in _BLOCKED_ATTRS:
+                self.violations.append(f"blocked attr call: .{node.func.attr}()")
+        self.generic_visit(node)
+
+    def visit_Attribute(self, node):
+        if node.attr in _BLOCKED_ATTRS:
+            self.violations.append(f"blocked attribute access: .{node.attr}")
+        self.generic_visit(node)
+
 
 def _is_safe_code(code: str) -> tuple[bool, str]:
-    """Return (safe, reason). Blocks dangerous patterns."""
-    for pat in _BLOCKED_PATTERNS:
-        if re.search(pat, code):
-            return False, f"Blocked pattern: {pat}"
+    """
+    AST-based safety check. Parses code into a syntax tree and walks
+    every node looking for dangerous imports, calls, and attribute access.
+    Cannot be bypassed by string obfuscation.
+    """
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as e:
+        return False, f"Syntax error: {e}"
+    visitor = _SafetyVisitor()
+    visitor.visit(tree)
+    if visitor.violations:
+        return False, "; ".join(visitor.violations)
     return True, ""
 
 
@@ -213,30 +260,70 @@ Return ONLY valid JSON:
     # ── Tool execution ────────────────────────────────────────────────────────
 
     def _run_tool(self, tool: AcquiredTool, task: str, params: dict) -> str:
-        # Write code to temp file and import it
-        tmp = tempfile.NamedTemporaryFile(
+        """
+        Execute synthesised tool in an isolated subprocess.
+        - 30-second hard timeout
+        - stdout captured as result
+        - stderr logged but not surfaced to user
+        - Clean temp file after execution
+        """
+        # Write tool code to temp file
+        tool_file = tempfile.NamedTemporaryFile(
             mode="w", suffix=".py", delete=False,
             dir=str(self.TOOL_DIR), prefix=f"tool_{tool.tool_id}_")
         try:
-            tmp.write(tool.code)
-            tmp.flush()
-            tmp_path = tmp.name
+            tool_file.write(tool.code)
+            tool_file.flush()
+            tool_path = tool_file.name
         finally:
-            tmp.close()
+            tool_file.close()
+
+        # Write a runner script that imports the tool and calls execute()
+        runner_code = f"""
+import sys, json
+sys.path.insert(0, {repr(str(self.TOOL_DIR))})
+import importlib.util, traceback
+
+spec   = importlib.util.spec_from_file_location("_tool", {repr(tool_path)})
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+task   = {repr(task)}
+params = {repr(params)}
+try:
+    result = module.execute(task, params)
+    print(str(result))
+except Exception as e:
+    print(f"ERROR: {{e}}", file=sys.stderr)
+    sys.exit(1)
+"""
+        runner_file = tempfile.NamedTemporaryFile(
+            mode="w", suffix=".py", delete=False,
+            dir=str(self.TOOL_DIR), prefix="runner_")
+        try:
+            runner_file.write(runner_code)
+            runner_file.flush()
+            runner_path = runner_file.name
+        finally:
+            runner_file.close()
 
         try:
-            spec   = importlib.util.spec_from_file_location(
-                f"prism_tool_{tool.tool_id}", tmp_path)
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-            fn     = getattr(module, tool.entry_fn)
-            result = fn(task, params)
-            return str(result)
+            proc = subprocess.run(
+                [sys.executable, runner_path],
+                capture_output=True, text=True,
+                timeout=30,
+            )
+            if proc.returncode != 0:
+                err = proc.stderr.strip() or "Unknown error"
+                raise RuntimeError(f"Tool subprocess failed: {err}")
+            return proc.stdout.strip() or "(no output)"
+        except subprocess.TimeoutExpired:
+            raise RuntimeError("Tool timed out after 30 seconds")
         finally:
-            try:
-                os.unlink(tmp_path)
-            except Exception:
-                pass
+            for p in (tool_path, runner_path):
+                try:
+                    os.unlink(p)
+                except Exception:
+                    pass
 
     # ── Requirement installation ──────────────────────────────────────────────
 

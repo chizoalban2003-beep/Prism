@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 import urllib.request
 from pathlib import Path
 from typing import Optional
@@ -889,7 +890,13 @@ class PrismAgent:
         if intent == "approve_pending":
             pending = getattr(self, '_pending_approval', None)
             if pending:
-                task    = pending.get("task","")
+                if time.time() > pending.get("expires", 0):
+                    self._pending_approval = None
+                    return text_card(
+                        "That approval request expired (5-minute window). "
+                        "Repeat your original request to try again.",
+                        "Approval expired")
+                task = pending.get("task","")
                 self._pending_approval = None
                 task_id = self._autonomous.execute_async(task, ctx)
                 return text_card(
@@ -964,8 +971,9 @@ class PrismAgent:
         if approval_needed:
             # Store pending and ask
             self._pending_approval = {
-                "task":   message,
-                "reason": f"This requires: {capability_desc}. Approve autonomous execution?"
+                "task":    message,
+                "reason":  f"This requires: {capability_desc}. Approve autonomous execution?",
+                "expires": time.time() + 300,   # 5-minute window
             }
             return text_card(
                 f"I can do this, but it involves **{capability_desc}** which may "

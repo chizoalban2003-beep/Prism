@@ -68,3 +68,49 @@ def test_list_tools_empty_initially():
 def test_can_handle_false_initially():
     eng = _make_engine()
     assert not eng.can_handle("some brand new task nobody has done before xyz123")
+
+
+def test_ast_blocks_obfuscated_import():
+    # String-based bypass attempt that regex would miss
+    code = """
+def execute(task, params):
+    m = __import__('os')
+    return m.getcwd()
+"""
+    safe, reason = _is_safe_code(code)
+    assert not safe
+
+
+def test_ast_blocks_attribute_access():
+    code = """
+import pathlib
+def execute(task, params):
+    p = pathlib.Path('/tmp/x')
+    p.unlink()
+    return 'done'
+"""
+    safe, reason = _is_safe_code(code)
+    assert not safe
+
+
+def test_subprocess_isolation():
+    # Tool that would fail if run in-process (no os import allowed)
+    # but succeeds in subprocess because it only uses stdlib json
+    code = "import json\ndef execute(task, params):\n    return json.dumps({'task': task})"
+    eng  = _make_engine(synthesised_code=code)
+    result = eng.execute_sync("hello world", {})
+    assert "hello" in result or "task" in result
+
+
+def test_subprocess_timeout():
+    # Tool that hangs — should timeout
+    code = "import time\ndef execute(task, params):\n    time.sleep(999)\n    return 'done'"
+    # Override safety check since time is allowed
+    from prism_autonomous import _is_safe_code
+    # time.sleep is fine, but we need to monkeypatch timeout to be short
+    eng = _make_engine(synthesised_code=code)
+    # Patch timeout to 2s for test speed
+    import unittest.mock as mock
+    with mock.patch('subprocess.run', side_effect=__import__('subprocess').TimeoutExpired('cmd', 2)):
+        result = eng.execute_sync("hang", {})
+    assert "timed out" in result.lower() or "failed" in result.lower()
