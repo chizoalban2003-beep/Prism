@@ -330,6 +330,7 @@ class PrismAgent:
             autonomous         = self._autonomous,
             memory             = self._memory,
             interceptor_policy = InterceptorPolicy(),
+            soul               = getattr(self, '_soul', None),
         )
         self._organ_loader = OrganLoader(llm_router=self._router)
         self._chain_expert = PrismChainExpert(
@@ -375,6 +376,25 @@ class PrismAgent:
         except Exception as e:
             logger.warning("OrganBus not available: %s", e)
             self._organ_bus = None
+
+        # PrismSoul — living identity document
+        try:
+            from prism_soul import PrismSoul
+            self._soul = PrismSoul(llm_router=self._router)
+            if self._organ_bus is not None:
+                self._soul.register_with_bus(self._organ_bus)
+            # Back-patch soul into chain (chain is constructed before soul)
+            if hasattr(self, '_chain'):
+                self._chain._soul = self._soul
+            if not self._soul.has_seed():
+                logger.info("PrismSoul: no soul seed found — run identity ceremony to personalise")
+            else:
+                logger.info("PrismSoul: loaded (%d beliefs, %d lenses)",
+                            len(self._soul.list_beliefs()),
+                            len(self._soul.list_lenses()))
+        except Exception as e:
+            logger.warning("PrismSoul not available: %s", e)
+            self._soul = None
 
     def stop(self) -> None:
         """Gracefully shut down all background subsystems."""

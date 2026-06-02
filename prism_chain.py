@@ -156,7 +156,8 @@ Rules:
                   use_evaluator: bool = True,
                   interceptor_policy=None,
                   use_soft_logic: bool = True,
-                  horizon_planner=None):
+                  horizon_planner=None,
+                  soul=None):
         self._router             = llm_router
         self._policy             = policy_engine
         self._push               = push
@@ -166,6 +167,7 @@ Rules:
         self._interceptor_policy = interceptor_policy
         self._use_soft_logic     = use_soft_logic
         self._horizon            = horizon_planner
+        self._soul               = soul
 
         # Thread-safety note: _state_lock protects the internal results list
         # in _execute_branch. The append to state.steps happens in run() which
@@ -665,7 +667,13 @@ Rules:
         Sees: original goal + all prior step results.
         Produces: done flag OR (next_logic + reframed message) OR branch.
         """
-        system = self.SYSTEM_PROMPT.format(registry=self._registry_str)
+        soul_ctx = ""
+        if self._soul is not None:
+            try:
+                soul_ctx = "\n\nUser identity context:\n" + self._soul.compress_for_llm(max_chars=500)
+            except Exception:
+                pass
+        system = self.SYSTEM_PROMPT.format(registry=self._registry_str) + soul_ctx
 
         if step_num == 1:
             user_prompt = (
