@@ -77,3 +77,14 @@ ical_url    = ""                # paste a webcal:// or https:// .ics URL here
 caldav_url  = ""
 username    = ""
 password    = ""
+
+[documents]
+# Google Drive — create service account at console.cloud.google.com
+# OR use OAuth2 token from https://developers.google.com/drive/api
+gdrive_token       = ""   # OAuth2 access token
+
+# Notion — create integration at notion.so/my-integrations
+notion_token       = ""   # "secret_..."
+
+# Dropbox — create app at dropbox.com/developers/apps
+dropbox_token      = ""   # long-lived access token

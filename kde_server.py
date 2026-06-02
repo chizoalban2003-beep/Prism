@@ -804,6 +804,20 @@ class KDEHandler(BaseHTTPRequestHandler):
                 else:
                     self._json_response({"count": 0, "services": []})
 
+            elif path.startswith('/documents'):
+                agent = getattr(self.server, 'prism_agent', None)
+                if not agent or not hasattr(agent, '_docs'):
+                    self._json_response({"results": []})
+                    return
+                if 'q' in qs:
+                    docs = agent._docs.search(qs['q'], n=10)
+                else:
+                    docs = agent._docs.recent(n=10)
+                self._json_response({"results": [
+                    {"id": d.doc_id, "title": d.title, "url": d.url,
+                     "provider": d.provider, "modified": d.modified}
+                    for d in docs]})
+
             else:
                 self._error(f"Unknown route: {path}", 404)
 

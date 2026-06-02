@@ -16,6 +16,7 @@ from prism_memory import PrismMemory
 from prism_tts import PrismTTS
 from prism_proactive import PrismProactive, build_default_triggers
 from prism_smart_home import PrismSmartHome
+from prism_documents import PrismDocuments
 from prism_email    import PrismEmail
 from prism_calendar import PrismCalendar
 from prism_browser_agent import PrismBrowserAgent
@@ -101,6 +102,9 @@ class PrismAgent:
          r"(?:email|mail).*(?:unread|new|recent)|send.*(?:email|mail)|"
          r"draft.*(?:email|reply)|reply.*email|email.*summary",
          "email"),
+        (r"(?:find|search|look for|open|read) (?:my )?(?:document|doc|file|note|page|drive)|"
+         r"(?:what(?:'s| is) in|show me) (?:my )?(?:google drive|notion|dropbox)|"
+         r"(?:create|write|save) (?:a )?(?:note|document|doc|page)",  "documents"),
     ]
 
     def __init__(
@@ -138,6 +142,7 @@ class PrismAgent:
         self._smarthome = PrismSmartHome.from_config({})
         self._email    = PrismEmail.from_config({})
         self._calendar = PrismCalendar.from_config({})
+        self._docs     = PrismDocuments.from_config({})
         self._browser  = PrismBrowserAgent.setup(
             llm_router = getattr(self, '_router', None),
             headless   = True,
@@ -643,5 +648,37 @@ class PrismAgent:
                 + (f"\n\nI also need a few answers:\n{q_text}" if q_text else "")
             )
             return text_card(body, f"Connecting: {service_name}")
+
+        if intent == "documents":
+            if not self._docs.configured_providers:
+                return text_card(
+                    "No document providers configured. "
+                    "Add gdrive_token, notion_token, or dropbox_token to "
+                    "prism_config.toml [documents] section.", "Documents")
+            router = getattr(self, '_router', None)
+            msg_lower = message.lower()
+            if any(w in msg_lower for w in ("create","write","save","new note")):
+                parsed = None
+                if router:
+                    prompt = (f"Extract title and content from: '{message}'. "
+                              f"Return JSON: {{\"title\":\"...\",\"content\":\"...\"}}")
+                    raw, _ = router.call(prompt, min_capability=1, max_tokens=200,
+                                          json_mode=True)
+                    from prism_llm_router import parse_llm_json
+                    parsed = parse_llm_json(raw)
+                if parsed:
+                    doc = self._docs.create_note(parsed.get("title","New note"),
+                                                  parsed.get("content",""))
+                    if doc:
+                        return text_card(f"Created: {doc.title}\n{doc.url}", "Document created")
+                return text_card("Could not parse note details.", "Documents")
+            # Search or recent
+            query = message.replace("find","").replace("search","").replace(
+                "document","").replace("my","").strip()
+            docs = self._docs.search(query) if query else self._docs.recent()
+            if not docs:
+                return text_card("No documents found.", "Documents")
+            lines = "\n".join(f"• [{d.provider}] {d.title}  {d.url}" for d in docs[:8])
+            return text_card(lines, f"Documents ({len(docs)} found)")
 
         return text_card("I'm not sure how to help with that. Try: 'help'")
