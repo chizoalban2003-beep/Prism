@@ -356,7 +356,25 @@ provider     = "google"
 google_token = "ya29...."
 ```
 
-PRISM reads/writes your primary calendar. Token refresh is not automatic — refresh via your OAuth flow and update the config.
+PRISM reads/writes your primary calendar. Token refresh is **automatic** — when the access token expires, PRISM reads `google_creds.json`, calls `oauth2.googleapis.com/token` with the stored `refresh_token`, and writes the updated `access_token` and `expiry` back to disk. The file must contain:
+
+```json
+{
+  "access_token":  "ya29.…",
+  "refresh_token": "1//…",
+  "client_id":     "….apps.googleusercontent.com",
+  "client_secret": "…",
+  "expiry":        "2025-01-01T00:00:00Z"
+}
+```
+
+Point PRISM at the file via config:
+
+```toml
+[calendar]
+provider      = "google"
+google_creds  = "~/.prism/google_creds.json"
+```
 
 ---
 
@@ -554,6 +572,13 @@ python kde_cli.py server --port 8742
 | GET | `/voice/status` | STT backend, model, enabled flag |
 | GET | `/chain/recent?n=5` | Recent general chain runs with avg eval score |
 | GET | `/chain/expert/recent?n=5` | Recent expert chain runs |
+| GET | `/horizon/goals` | List horizon goals (`?status=watching\|triggered\|paused\|completed\|abandoned`) |
+| GET | `/horizon/status` | Planner summary with counts per status |
+| POST | `/horizon/goal` | `{"intent":"…","trigger_condition":"…","completion_condition":"…","expires_in_days":30}` |
+| POST | `/horizon/goal/<id>/complete` | Mark goal completed `{"notes":"…"}` |
+| POST | `/horizon/goal/<id>/abandon` | Abandon goal `{"reason":"…"}` |
+| POST | `/horizon/goal/<id>/context` | Deposit facts into accumulated context `{key: value, …}` |
+| GET | `/organs` | List loaded organ intents and descriptions |
 
 ### Memory & Perception
 
@@ -658,7 +683,8 @@ PRISM/
 │
 ├── Autonomous execution
 │   ├── prism_autonomous.py     Tool synthesis (AST safety + subprocess sandbox + cache)
-│   └── prism_horizon.py        Cross-session long-horizon goal persistence (SQLite)
+│   ├── prism_horizon.py        Cross-session long-horizon goal persistence (SQLite)
+│   └── organs/                 Cached synthesised organ modules (JSON, auto-populated)
 │
 ├── Personal assistant
 │   ├── prism_email.py          IMAP/SMTP email reader and sender
@@ -796,8 +822,10 @@ All major gaps from the initial build have been bridged. The table below reflect
 | Multi-user support | **Working** | Scoped by `[user].name` in config; run separate instances for isolation |
 | Adaptive reasoning chains | **Working** | LLM↔Logic+Policy alternating spine with Evaluator quality gate |
 | Autonomous tool synthesis | **Working** | AST safety + subprocess sandbox + pip auto-install + cache |
-| iOS / Android companion | **Not implemented** | Push via ntfy.sh works bidirectionally; native app would add rich UI |
-| Token refresh for Google OAuth | **Not implemented** | Access tokens expire — refresh manually or via google-auth library |
+| iOS / Android companion | **PWA in progress** | Push via ntfy.sh works bidirectionally; native app would add rich UI |
+| Token refresh for Google OAuth | **Working** | Auto-refresh via `google_creds.json` — stores `access_token`, `refresh_token`, `client_id`, `client_secret`, `expiry` |
+| Horizon goals | `prism_horizon.py` | **Working** — cross-session goal watching; say "watch for X when Y" in chat |
+| Organ registry | `prism_organ_loader.py` | **Working** — synthesised tools persist; say "what organs do you have" |
 
 ---
 
