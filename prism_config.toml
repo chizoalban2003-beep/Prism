@@ -109,3 +109,17 @@ telegram_chat_id = ""
 twilio_whatsapp_sid   = ""
 twilio_whatsapp_token = ""
 twilio_whatsapp_from  = "whatsapp:+14155238886"  # Twilio sandbox default — replace with your WhatsApp Business number for production
+
+[search]
+provider      = "auto"   # "brave"|"serp"|"ddg"|"auto"
+# Brave: 2000 free queries/month — api.search.brave.com/app/keys
+brave_api_key = ""
+# SerpAPI: 100 free/month — serpapi.com/manage-api-key
+serp_api_key  = ""
+
+[push]
+# ntfy.sh — free, no account. Install ntfy app, pick a unique topic.
+# Subscribe to your topic in the app, then add it here.
+topic    = ""            # e.g. "prism-yourname-2024" (keep unique and private)
+server   = "https://ntfy.sh"
+priority = "default"    # min|low|default|high|urgent

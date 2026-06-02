@@ -834,6 +834,24 @@ class KDEHandler(BaseHTTPRequestHandler):
                     msgs = PrismMessaging()
                 self._json_response(msgs.status_summary())
 
+            elif path.startswith('/search'):
+                agent  = getattr(self.server, 'prism_agent', None)
+                q      = qs.get('q', '')
+                if agent and hasattr(agent, '_search') and q:
+                    results = agent._search.search(q, n=8)
+                    self._json_response({"query": q, "results": [
+                        {"title": r.title, "url": r.url, "snippet": r.snippet}
+                        for r in results]})
+                else:
+                    self._json_response({"query": q, "results": []})
+
+            elif path == '/push/status':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_push'):
+                    self._json_response(agent._push.status_summary())
+                else:
+                    self._json_response({"configured": False})
+
             else:
                 self._error(f"Unknown route: {path}", 404)
 

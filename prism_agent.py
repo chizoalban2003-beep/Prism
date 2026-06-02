@@ -20,6 +20,8 @@ from prism_documents import PrismDocuments
 from prism_email    import PrismEmail
 from prism_calendar import PrismCalendar
 from prism_browser_agent import PrismBrowserAgent
+from prism_search import PrismSearch
+from prism_push   import PrismPush
 from prism_instructions import PrismInstructions
 from prism_service_discovery import PrismServiceDiscovery
 from prism_calls     import PrismCalls
@@ -90,6 +92,14 @@ class PrismAgent:
         (r"(?:go to|open|browse|visit|search (?:the )?web|find (?:on|online)|"
          r"look up|book|reserve|fill (?:in|out)|check (?:the )?(?:price|availability)|"
          r"what(?:'s| is) (?:on|the) website)",  "browser_task"),
+        (r"search (?:the web|online|internet|for)|"
+         r"look up|find (?:out|info|information)|"
+         r"what(?:'s| is) (?:the )?(?:latest|current|today)|"
+         r"research|who is|where is|when (?:did|does|is)",
+         "web_search"),
+        (r"(?:send|push) (?:me )?(?:a )?(?:notification|alert|reminder)|"
+         r"notify me|ping me|alert me",
+         "send_push"),
         (r"show (?:my )?(?:instructions?|rules?|standing orders?)|"
          r"what (?:have you )?(?:remember|know) about my preferences",
          "show_instructions"),
@@ -159,6 +169,8 @@ class PrismAgent:
         )
         self._calls    = PrismCalls.from_config({})
         self._messages = PrismMessaging.from_config({})
+        self._search   = PrismSearch.from_config({})
+        self._push     = PrismPush.from_config({})
         self._instructions = PrismInstructions()
         self._discovery    = PrismServiceDiscovery(
             collaborator  = getattr(self, '_collaborator', None),
@@ -182,7 +194,8 @@ class PrismAgent:
             self._perception = None
         try:
             self._proactive = PrismProactive(
-                on_event=self._handle_proactive_event)
+                on_event=self._handle_proactive_event,
+                push=self._push)
             triggers = build_default_triggers(
                 perception    = getattr(self, '_perception', None),
                 policy_engine = getattr(self, '_policy', None),
@@ -596,6 +609,42 @@ class PrismAgent:
             result = self._browser.execute_with_session(message)
             body   = result.extracted[:500] if result.success else result.error
             return text_card(body, "Browser result")
+
+        if intent == "web_search":
+            results = self._search.search(message, n=5)
+            if not results:
+                # Try instant answer
+                answer = self._search.quick_answer(message)
+                if answer:
+                    return text_card(answer, "Search result")
+                return text_card("No results found.", "Search")
+            router = getattr(self, '_router', None)
+            if router and results:
+                # Synthesise answer from results
+                context = "\n".join(
+                    f"{r.title}: {r.snippet}" for r in results[:4])
+                prompt  = (f"Answer this query using the search results below.\n"
+                           f"Query: {message}\nResults:\n{context}\n"
+                           f"Give a concise factual answer in 2-3 sentences.")
+                answer, _ = router.call(
+                    prompt, min_capability=1, max_tokens=300,
+                    conversation_history=self._chat_history[-4:])
+                body = answer or "\n".join(
+                    f"• {r.title}  {r.url}" for r in results[:4])
+            else:
+                body = "\n".join(
+                    f"• {r.title}\n  {r.snippet}\n  {r.url}"
+                    for r in results[:4])
+            return text_card(body, f"Search · {self._search.status_summary()['provider']}")
+
+        if intent == "send_push":
+            if not self._push.configured:
+                return text_card(
+                    "Push not configured. Add topic to prism_config.toml [push]. "
+                    "Get the free ntfy app at ntfy.sh — no account needed.",
+                    "Push notifications")
+            self._push.alert(message)
+            return text_card("Notification sent to your device.", "Push")
 
         if intent == "show_instructions":
             instrs = self._instructions.all_active()
