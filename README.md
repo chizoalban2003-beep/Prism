@@ -37,44 +37,68 @@ PRISM is a local personal AI assistant that decides, plans, and acts for any use
 ## Architecture
 
 ```
-User input (chat / CLI / REST API)
+User input (chat / voice / CLI / REST API)
          │
          ▼
   ┌─────────────────────────────────────────────┐
   │  PrismAgent  (prism_agent.py)               │
-  │  Intent routing · standing instructions     │
+  │  Four-tier routing · standing instructions  │
   │  Chat history · memory injection            │
   └──────────┬──────────────────────────────────┘
              │
-    ┌────────▼────────┐       ┌─────────────────┐
-    │  KDEAgent       │       │  KSAgent         │
-    │  Sport + Domain │       │  Developer tasks │
-    └────────┬────────┘       └────────┬────────┘
-             │                         │
-    ┌────────▼─────────────────────────▼────────┐
-    │        Decision Engine                     │
-    │  decision_spectrum.py                      │
-    │  p = Σ(w·v·t)/Σ(w·v)  ← fulcrum          │
-    │  activation = Gaussian kernel over options │
-    │  AdaptiveFulcrum.observe() ← online learn  │
-    └────────────────────────────────────────────┘
+    ┌────────▼────────────────────────────────────────────────────────┐
+    │  Four-Tier Reasoning Cascade                                     │
+    │                                                                  │
+    │  Tier 0 — Expert Chain (prism_chain_expert.py)                  │
+    │    Router LLM → Logic+Policy → Evaluator LLM (1-5 score)        │
+    │    → Branch Judge → Synthesiser LLM  [research queries]         │
+    │                                                                  │
+    │  Tier 1 — General Chain (prism_chain.py)                        │
+    │    LLM₁ → Logic+Policy → Evaluator gate → LLM₂ → ... → LLMₙ   │
+    │    Adaptive: plan emerges from real intermediate results         │
+    │    Evaluator early-exits when result quality score ≥ 4/5        │
+    │    Branches: up to 3 parallel logics when genuinely ambiguous   │
+    │                                                                  │
+    │  Tier 2 — Static Composer (prism_composer.py)                   │
+    │    LLM decomposes upfront → DAG → sequential/parallel execute   │
+    │    [multi-step requests with clear dependencies]                 │
+    │                                                                  │
+    │  Tier 3 — Single Intent (prism_agent._execute)                  │
+    │    Regex route → one logic module  [simple one-shot requests]   │
+    └──────────┬──────────────────────────────────────────────────────┘
+               │
+    ┌──────────▼──────────┐       ┌─────────────────┐
+    │  KDEAgent           │       │  KSAgent         │
+    │  Sport + Domain     │       │  Developer tasks │
+    └──────────┬──────────┘       └────────┬────────┘
+               │                           │
+    ┌──────────▼───────────────────────────▼────────┐
+    │        Decision Engine                         │
+    │  decision_spectrum.py                          │
+    │  p = Σ(w·v·t)/Σ(w·v)  ← fulcrum             │
+    │  activation = Gaussian kernel over options    │
+    │  AdaptiveFulcrum.observe() ← online learn     │
+    └────────────────────────────────────────────────┘
 
 Personal Assistant Layer (all local):
   ┌──────────┐ ┌──────────┐ ┌──────────────┐ ┌────────────┐
   │  Email   │ │ Calendar │ │ Web Search   │ │  Contacts  │
-  │ IMAP/SMTP│ │ CalDAV   │ │ Brave/DDG    │ │  SQLite    │
+  │ IMAP/SMTP│ │ CalDAV / │ │ Brave/DDG    │ │  SQLite    │
+  │          │ │  Google  │ │              │ │  + Google  │
   └──────────┘ └──────────┘ └──────────────┘ └────────────┘
   ┌──────────┐ ┌──────────┐ ┌──────────────┐ ┌────────────┐
   │  Tasks   │ │ SmartHome│ │ Push (ntfy)  │ │  Browser   │
   │ Todoist/ │ │ Home Asst│ │  free, local │ │ Playwright │
   │ GitHub/  │ │  REST    │ │              │ │            │
-  │  Local   │ └──────────┘ └──────────────┘ └────────────┘
+  │ Linear / │ └──────────┘ └──────────────┘ └────────────┘
+  │  Local   │
   └──────────┘
 
 Background loop:
-  PrismProactive  →  triggers (calendar, budget, recovery, calibration)
-  PrismMemory     →  short/long-term memory store (SQLite + TF-IDF)
+  PrismProactive  →  triggers (calendar, budget, recovery, wearable, calibration)
+  PrismMemory     →  short/long-term memory (SQLite + TF-IDF)
   PrismPerception →  context (time, biometrics, system state)
+  PrismVoice      →  STT input (Whisper local / SpeechRecognition)
   TaskQueue       →  async background tasks with live progress
   PrismCalibration→  conversational feedback → model adjustment
 ```
@@ -121,12 +145,16 @@ Background loop:
 | Scheduled reminders | `prism_proactive.py` | Working |
 | Wearable sync trigger | `prism_proactive.py` | Working |
 | TTS | `prism_tts.py` | Working (espeak fallback) |
-| Voice input (Whisper) | `prism_perception.py` | Working (opt-in; needs pyaudio + openai-whisper) |
+| Voice input (Whisper) | `prism_voice.py` | Working — Whisper local / faster-whisper / SpeechRecognition; `pip install openai-whisper` |
 | LLM routing (Ollama) | `prism_llm_router.py` | Working |
 | LLM routing (Claude API) | `prism_llm_router.py` | Working (needs API key) |
 | Multi-user | `prism_agent.py` | Working (`[user].name` in config) |
 | Unknown-tool PA fallback | `prism_agent.py` | Working (discovers + plans integrations) |
-| Autonomous tool synthesis | `prism_autonomous.py` | Working — synthesises, installs, executes, caches |
+| Autonomous tool synthesis | `prism_autonomous.py` | Working — synthesises, installs, sandboxes (AST+subprocess), caches |
+| Adaptive reasoning chain | `prism_chain.py` | Working — alternating LLM→Logic+Policy→Evaluator spine, branches |
+| Expert reasoning chain | `prism_chain_expert.py` | Working — Router/Evaluator/BranchJudge/Synthesiser specialised nodes |
+| Evaluator quality gate | `prism_chain.py` | Working — per-step 1-5 score, early exit when sufficient |
+| Logic composition (DAG) | `prism_composer.py` | Working — LLM decomposes task → parallel/sequential DAG |
 
 ---
 
@@ -135,10 +163,10 @@ Background loop:
 PRISM is a managerial PA with full autonomy. When asked to do something it has no built-in tool for, instead of returning instructions to the user it:
 
 1. **Synthesises a Python tool on demand** — the LLM writes a self-contained `execute(task, params) -> str` module
-2. **Safety-checks the code** — a strict pattern blocklist rejects any code containing `eval`, `exec`, `os.system`, `shutil.rmtree`, `socket.connect`, or unguarded file writes
-3. **Installs pip dependencies** — any required packages are installed automatically with `pip install --quiet`
-4. **Executes and returns the result** — the module is dynamically loaded and run in-process
-5. **Caches the tool** — synthesised tools are stored as JSON in `~/.prism/tools/` and reused for identical or similar future tasks
+2. **AST safety check** — a strict `_SafetyVisitor` (Python AST walker) rejects any code calling `eval`, `exec`, `os.system`, `shutil.rmtree`, `socket.connect`, `open(..., "w"`, or dangerous imports — no string-pattern bypass possible
+3. **Subprocess isolation** — synthesised code runs in a separate process (30s timeout) via a temp runner script, never in-process
+4. **Installs pip dependencies** — any required packages are installed automatically with `pip install --quiet`
+5. **Caches the tool** — stored as JSON in `~/.prism/tools/` (SHA256 key + fuzzy name match); reused for identical or similar future tasks
 6. **Push-notifies on completion** — if push is configured, you get a notification on your phone when done
 
 ### Approval gate
@@ -189,22 +217,70 @@ The following patterns are **always blocked** regardless of LLM output:
 
 ---
 
+## Reasoning Chains
+
+For complex requests PRISM uses an alternating chain architecture instead of a single LLM call:
+
+```
+Message: "research async Python patterns and add a task to refactor my code"
+
+Step 1 — LLM node:  decides to call web_search
+Step 1 — Logic:     web_search("async Python patterns")
+Step 1 — Policy:    no action flags
+Step 1 — Evaluator: score 4/5 — sufficient, early exit
+         Synthesiser LLM composes final answer from accumulated results
+```
+
+**Four-tier cascade** selects the right architecture per request:
+
+| Tier | Module | When used |
+|---|---|---|
+| 0 — Expert | `prism_chain_expert.py` | "research", "analyse", "decide", "compare", "evaluate" |
+| 1 — General | `prism_chain.py` | Multi-goal, conditional, "and then", "after that" |
+| 2 — Composer | `prism_composer.py` | Multiple steps with clear "and" / "then" dependency |
+| 3 — Single | `prism_agent._execute()` | Simple one-shot requests |
+
+**Evaluator quality gate** runs after every logic step in the general chain. If the Evaluator scores the result ≥ 4/5 (`sufficient=True`), the chain exits early and a Synthesiser LLM composes the final answer — reducing wasted steps without the full +200% Expert overhead.
+
+**Branching**: when genuinely ambiguous, the LLM spawns up to 3 parallel logic executions. Results are merged before the next LLM node, turning the spine into a tree.
+
+View recent chains: say `show chain history` or call `GET /chain/recent`.
+
+---
+
 ## Voice input setup
 
-PRISM supports local speech-to-text via OpenAI Whisper (no cloud):
+PRISM supports local speech-to-text via `prism_voice.py`. Three backends in priority order:
+
+| Backend | Install | Notes |
+|---|---|---|
+| **openai-whisper** | `pip install openai-whisper` | Local, fully offline, best accuracy |
+| **faster-whisper** | `pip install faster-whisper` | Local, ~4× faster, lighter model |
+| **SpeechRecognition** | `pip install SpeechRecognition` | Requires internet (Google free tier) |
 
 ```bash
-pip install openai-whisper pyaudio
-```
+# Recommended — fully local, no cloud:
+pip install openai-whisper sounddevice
 
-Then in `prism_config.toml`:
+# Then optionally configure in prism_config.toml:
+```
 
 ```toml
-[agent]
-enable_voice = true
+[voice]
+enabled     = true
+model       = "base"    # tiny | base | small | medium | large
+language    = "en"      # ISO 639-1; leave blank for auto-detect
+sample_rate = 16000
 ```
 
-Say "Hey Prism, ..." — PRISM transcribes locally and routes the command. Falls back gracefully if pyaudio or whisper are not installed.
+**Chat commands:**
+- `voice status` — check which backend is active
+- `voice on` / `voice off` — enable/disable
+- `transcribe /path/to/audio.wav` — transcribe a file
+
+**REST API:** `POST /voice/transcribe` with `{"path": "/tmp/clip.wav"}` or raw audio bytes.
+
+Falls back gracefully when no backend is installed — PRISM remains fully functional via text.
 
 ---
 
@@ -464,6 +540,10 @@ python kde_cli.py server --port 8742
 | GET | `/push/status` | Push notification status |
 | GET | `/smarthome/status` | Smart home status |
 | POST | `/smarthome` | `{"action":"turn_on","entity_id":"..."}` |
+| POST | `/voice/transcribe` | `{"path":"/tmp/clip.wav"}` or raw audio bytes → transcript |
+| GET | `/voice/status` | STT backend, model, enabled flag |
+| GET | `/chain/recent?n=5` | Recent general chain runs with avg eval score |
+| GET | `/chain/expert/recent?n=5` | Recent expert chain runs |
 
 ### Memory & Perception
 
@@ -543,14 +623,15 @@ PRISM/
 │   └── vision_analyzer.py      Local vision AI via Ollama LLaVA
 │
 ├── PRISM chat + identity
-│   ├── prism_agent.py          Unified PRISM orchestration layer
+│   ├── prism_agent.py          Unified PRISM orchestration layer (four-tier routing)
 │   ├── prism_chat.py           Local chat interface and UI payloads
 │   ├── prism_responses.py      Response formatting helpers
 │   ├── prism_perception.py     Perceptual context engine — time, location, device state
 │   ├── prism_memory.py         Short- and long-term memory store
 │   ├── prism_planner.py        Goal decomposition and multi-step planning
-│   ├── prism_llm_router.py     Local LLM routing via Ollama
+│   ├── prism_llm_router.py     LLM routing (Ollama / Claude API / OpenAI-compat)
 │   ├── prism_tts.py            Text-to-speech output layer
+│   ├── prism_voice.py          Speech-to-text input (Whisper / faster-whisper / SR)
 │   ├── prism_proactive.py      Proactive trigger evaluation and scheduling
 │   ├── prism_smart_home.py     Smart-home device command layer
 │   ├── prism_task_queue.py     Async task queue for background execution
@@ -559,9 +640,18 @@ PRISM/
 │   ├── identity_bus.py         Cross-module identity event bus
 │   └── artifact_store.py       Artifact collection with identity tagging
 │
+├── Reasoning chains (LLM sandwich architecture)
+│   ├── prism_chain.py          General alternating LLM→Logic+Policy→Evaluator chain
+│   ├── prism_chain_expert.py   Expert chain — Router/Evaluator/BranchJudge/Synthesiser
+│   ├── prism_chain_bench.py    Benchmark: general vs expert, mock + live modes
+│   └── prism_composer.py       Static DAG composer for multi-step requests
+│
+├── Autonomous execution
+│   └── prism_autonomous.py     Tool synthesis (AST safety + subprocess sandbox + cache)
+│
 ├── Personal assistant
 │   ├── prism_email.py          IMAP/SMTP email reader and sender
-│   ├── prism_calendar.py       Calendar event management (CalDAV + iCal)
+│   ├── prism_calendar.py       Calendar event management (CalDAV + iCal + Google)
 │   ├── prism_search.py         Web search (Brave / SerpAPI / DuckDuckGo)
 │   ├── prism_push.py           Push notifications via ntfy.sh
 │   ├── prism_contacts.py       Contact management (local SQLite + Google)
@@ -588,7 +678,7 @@ PRISM/
 │   ├── domain_configs.py       Medical · Financial · Legal · HR · Supply Chain · Climate
 │   └── domain_validator.py     Expert-label accuracy validation
 │
-└── tests/                      769 pytest tests — all passing
+└── tests/                      856 pytest tests — all passing
 ```
 
 ---
@@ -682,16 +772,21 @@ agent.register("my_tool", ["my", "tool", "keywords"],
 
 ## What is still missing for a full local personal assistant
 
-| Gap | Status | Notes |
+All major gaps from the initial build have been bridged. The table below reflects the current state:
+
+| Capability | Status | Notes |
 |---|---|---|
-| Voice input (Whisper) | Not wired | `prism_tts.py` exists; Whisper import/pipeline missing from `prism_agent.py`. Install `openai-whisper` and wire `PrismPerception` voice channel. |
-| LLM (without Ollama) | Partial | Works with Ollama; Claude API key field exists but not fully exercised |
-| Google Calendar OAuth | Not implemented | CalDAV + iCal URL work; full Google OAuth flow needs `google-auth` library |
-| Contact auto-extraction | Partial | Manual add + Google sync work; LLM extraction from memory needs Ollama |
-| Linear task integration | Stub | API key field exists in config; `_resolve_provider()` returns "linear" but no API calls implemented |
-| Notification scheduling | Partial | Push works on-demand; cron-style "remind me at 3pm" not wired to a scheduler |
-| Multi-user support | Not implemented | All state is single-user; `_user` defaults to `"default"` |
-| iOS / Android companion | Not implemented | Push via ntfy.sh works; native app would enable bidirectional |
+| Voice input (Whisper) | **Working** | `prism_voice.py` — local Whisper; `pip install openai-whisper` |
+| LLM fallback (Claude API) | **Working** | `prism_llm_router.py` — auto-falls back when Ollama unavailable |
+| Google Calendar OAuth | **Working** | Set `[calendar] google_token` in config |
+| Contact auto-extraction | **Working** | LLM extracts contacts from memory entries when Ollama available |
+| Linear task integration | **Working** | GraphQL API via `[tasks] linear_api_key` |
+| Scheduled reminders | **Working** | "remind me in 30 mins" → `PrismProactive.schedule_in()` |
+| Multi-user support | **Working** | Scoped by `[user].name` in config; run separate instances for isolation |
+| Adaptive reasoning chains | **Working** | LLM↔Logic+Policy alternating spine with Evaluator quality gate |
+| Autonomous tool synthesis | **Working** | AST safety + subprocess sandbox + pip auto-install + cache |
+| iOS / Android companion | **Not implemented** | Push via ntfy.sh works bidirectionally; native app would add rich UI |
+| Token refresh for Google OAuth | **Not implemented** | Access tokens expire — refresh manually or via google-auth library |
 
 ---
 
