@@ -1,13 +1,13 @@
 from prism_push import PrismPush
 
 def test_not_configured_when_no_topic():
-    assert PrismPush().configured == False
+    assert not PrismPush().configured
 
 def test_configured_when_topic_set():
-    assert PrismPush(topic="test").configured == True
+    assert PrismPush(topic="test").configured
 
 def test_send_returns_false_unconfigured():
-    assert PrismPush().send("t", "b") == False
+    assert not PrismPush().send("t", "b")
 
 def test_priority_map_has_urgent():
     assert PrismPush.PRIORITY_MAP["urgent"] == 5

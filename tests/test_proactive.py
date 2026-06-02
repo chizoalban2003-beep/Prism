@@ -150,7 +150,11 @@ def test_start_stop(proactive):
 def test_build_default_no_deps():
     triggers = build_default_triggers()
     assert isinstance(triggers, list)
-    assert len(triggers) == 0
+    # calibration_prompt is always included as a baseline trigger
+    assert len(triggers) >= 0
+    trigger_ids = [t.trigger_id for t in triggers]
+    # calibration_prompt is always present
+    assert "calibration_prompt" in trigger_ids
 
 
 def test_build_default_with_perception():
@@ -161,9 +165,11 @@ def test_build_default_with_perception():
             return Ctx()
 
     triggers = build_default_triggers(perception=FakePerception())
-    assert len(triggers) == 1
-    assert triggers[0].trigger_id == "recovery_alert"
-    assert triggers[0].condition() is True
+    trigger_ids = [t.trigger_id for t in triggers]
+    assert "recovery_alert" in trigger_ids
+    assert "calibration_prompt" in trigger_ids
+    recovery = next(t for t in triggers if t.trigger_id == "recovery_alert")
+    assert recovery.condition() is True
 
 
 def test_build_default_with_task_queue():

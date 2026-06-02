@@ -4,6 +4,7 @@ import json
 import logging
 import re
 import urllib.request
+from pathlib import Path
 from typing import Optional
 
 from prism_llm_router import LLMRouter
@@ -35,8 +36,8 @@ from prism_responses import (
 
 from prism_search import PrismSearch
 from prism_push   import PrismPush
-from prism_contacts import PrismContacts, Contact
-from prism_tasks    import PrismTasks, Task
+from prism_contacts import PrismContacts
+from prism_tasks    import PrismTasks
 from prism_calibration import PrismCalibration
 
 logger = logging.getLogger(__name__)
@@ -127,10 +128,12 @@ class PrismAgent:
         (r"turn (?:on|off)|set (?:the )?(?:lights?|thermostat|temp)|"
          r"lock|unlock|what(?:'s| is) (?:on|off)|smart home|home assistant",
          "smart_home"),
+        # NOTE: broad email catch-all — maps to email_read to avoid duplication
+        # with the more specific email_read/email_send intents above.
         (r"(?:check|read|show|open|fetch|get|list).*(?:email|inbox|mail)|"
          r"(?:email|mail).*(?:unread|new|recent)|send.*(?:email|mail)|"
          r"draft.*(?:email|reply)|reply.*email|email.*summary",
-         "email"),
+         "email_read"),
     ]
 
     def __init__(
@@ -165,6 +168,10 @@ class PrismAgent:
             logger.warning("PrismMemory not available: %s", e)
             self._memory = None
         self._tts = PrismTTS.setup()
+        # NOTE: _smarthome, _email, _calendar are initially constructed with
+        # empty config here and are replaced once prism_config.toml is loaded
+        # below (after tomllib is imported). This two-step init is needed
+        # because config loading happens later in __init__.
         self._smarthome = PrismSmartHome.from_config({})
         self._email    = PrismEmail.from_config({})
         self._calendar = PrismCalendar.from_config({})
@@ -217,8 +224,11 @@ class PrismAgent:
             except ImportError:
                 tomllib = None
         if tomllib:
+            # Use absolute path relative to this file so it works regardless
+            # of the current working directory when prism_agent is imported.
+            _config_path = Path(__file__).parent / "prism_config.toml"
             try:
-                with open("prism_config.toml", "rb") as f:
+                with open(_config_path, "rb") as f:
                     self._config = tomllib.load(f)
             except Exception:
                 pass
@@ -230,6 +240,15 @@ class PrismAgent:
         self._task_mgr     = PrismTasks.from_config(self._config)
         self._calibration  = PrismCalibration()
         self._last_decision: dict = {}
+
+        # Re-construct email/calendar/smarthome with the real config now that
+        # prism_config.toml has been loaded.  The initial construction above
+        # used {} so these modules default to "unconfigured"; this pass wires
+        # any credentials the user has provided in prism_config.toml.
+        if self._config:
+            self._smarthome = PrismSmartHome.from_config(self._config)
+            self._email     = PrismEmail.from_config(self._config)
+            self._calendar  = PrismCalendar.from_config(self._config)
 
     def _handle_proactive_event(self, event) -> None:
         """Store proactive notification for chat UI polling."""
@@ -478,16 +497,20 @@ class PrismAgent:
             )
         if intent == "show_policies":
             from prism_responses import policy_view_card
-            if hasattr(self, '_policy') and self._policy:
-                data = self._policy.show_policies(self._user)
+            _policy = getattr(self, '_policy', None)
+            _user   = getattr(self, '_user', 'default')
+            if _policy:
+                data = _policy.show_policies(_user)
             else:
                 data = {"allocations": {}, "note": "No policies set yet. "
                         "Try: 'set my food budget to £80'"}
             return policy_view_card(data)
 
         if intent == "update_policy":
-            if hasattr(self, '_policy') and self._policy:
-                result = self._policy.parse_policy_update(message, self._user)
+            _policy = getattr(self, '_policy', None)
+            _user   = getattr(self, '_user', 'default')
+            if _policy:
+                result = _policy.parse_policy_update(message, _user)
                 if result:
                     return text_card(result, "Policy updated")
             return text_card("Policy engine not configured.", "Policy")
@@ -526,22 +549,6 @@ class PrismAgent:
                 f"{summary['total_entities']} total · "
                 f"domains: {', '.join(summary.get('domains', [])[:5])}",
                 "Smart Home Status")
-
-        if intent == "email":
-            if not self._email.configured:
-                return text_card(
-                    "Email not configured. "
-                    "Add email config to prism_config.toml.",
-                    "Email")
-            msg_lower = message.lower()
-            if any(w in msg_lower for w in ("send", "draft", "reply")):
-                return text_card(
-                    "Use the /email/send endpoint to send emails or "
-                    "ask me to draft a reply to a specific message.",
-                    "Email")
-            messages = self._email.fetch_unread()
-            summary = self._email.summarise_inbox(messages, self._router)
-            return text_card(summary, "Email Inbox")
 
         if intent == "email_read":
             if not self._email.configured:

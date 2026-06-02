@@ -1,5 +1,5 @@
 from __future__ import annotations
-import json, logging, sqlite3, time
+import json, logging, sqlite3, time, uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -103,7 +103,7 @@ class PrismCalibration:
                 logger.debug("Calibration update failed: %s", e)
 
         event = CalibrationEvent(
-            event_id   = f"{time.time():.6f}",
+            event_id   = str(uuid.uuid4()),
             domain     = domain,
             message    = message,
             direction  = direction,

@@ -1,5 +1,5 @@
 from __future__ import annotations
-import json, logging, sqlite3, time, urllib.parse, urllib.request
+import json, logging, sqlite3, urllib.parse, urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional

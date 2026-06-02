@@ -136,7 +136,6 @@ class PrismContacts:
             raw, _ = llm_router.call(
                 prompt, min_capability=1, max_tokens=300, json_mode=True)
             try:
-                import re as _re
                 clean = raw.strip().lstrip("```json").rstrip("```").strip()
                 people = json.loads(clean)
                 for p in (people or []):

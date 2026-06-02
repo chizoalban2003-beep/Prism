@@ -1,7 +1,7 @@
 from prism_search import PrismSearch
 
 def test_always_configured():
-    assert PrismSearch().configured == True
+    assert PrismSearch().configured
 
 def test_ddg_provider_when_no_keys():
     assert PrismSearch()._resolve_provider() == "ddg"
