@@ -803,6 +803,26 @@ class KDEHandler(BaseHTTPRequestHandler):
                 else:
                     self._json_response({"chains": []})
 
+            elif path == '/chain/expert/recent':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_chain_expert'):
+                    import sqlite3
+                    db = agent._chain_expert._db
+                    with sqlite3.connect(db) as c:
+                        rows = c.execute(
+                            "SELECT chain_id,original,n_steps,n_llm_calls,"
+                            "done,final_answer,avg_eval_score,created_at "
+                            "FROM expert_chains ORDER BY created_at DESC LIMIT ?",
+                            (int(qs.get('n','5')),)).fetchall()
+                    self._json_response({"chains": [
+                        {"chain_id":r[0],"original":r[1],"n_steps":r[2],
+                         "n_llm_calls":r[3],"done":bool(r[4]),
+                         "summary":r[5][:80] if r[5] else "",
+                         "avg_eval_score":r[6],"created_at":r[7]}
+                        for r in rows]})
+                else:
+                    self._json_response({"chains": []})
+
             elif path == '/chain/status':
                 agent = getattr(self.server, 'prism_agent', None)
                 if agent and hasattr(agent, '_chain'):

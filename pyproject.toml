@@ -60,6 +60,8 @@ py-modules = [
     "prism_autonomous",
     "prism_browser_agent",
     "prism_chain",
+    "prism_chain_bench",
+    "prism_chain_expert",
     "prism_composer",
     "prism_calendar",
     "prism_calibration",

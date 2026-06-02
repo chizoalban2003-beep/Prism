@@ -43,6 +43,7 @@ from prism_calibration import PrismCalibration
 from prism_autonomous import PrismAutonomous
 from prism_composer import PrismComposer, LOGIC_REGISTRY
 from prism_chain import PrismChain
+from prism_chain_expert import PrismChainExpert
 
 logger = logging.getLogger(__name__)
 
@@ -287,6 +288,13 @@ class PrismAgent:
             autonomous    = self._autonomous,
             memory        = self._memory,
         )
+        self._chain_expert = PrismChainExpert(
+            llm_router    = self._router,
+            policy_engine = getattr(self, '_policy', None),
+            push          = self._push,
+            autonomous    = self._autonomous,
+            memory        = self._memory,
+        )
 
         # Re-construct email/calendar/smarthome with the real config now that
         # prism_config.toml has been loaded.  The initial construction above
@@ -387,28 +395,50 @@ class PrismAgent:
                     pass
 
             # 7. Route intent and execute
-            # Tier 1: alternating chain (complex, adaptive, multi-logic)
+            # Tier 0: expert chain — for research/evaluation-heavy requests
+            # Tier 1: general chain — adaptive multi-step
             # Tier 2: static composition (known multi-step, predictable)
             # Tier 3: single intent (simple, direct)
             card   = None
             msg_ln = len((message or "").split())
+            msg_lw = (message or "").lower()
 
-            if message and msg_ln > 5 and self._chain.should_chain(message):
+            # Tier 0: expert chain — for research/evaluation-heavy requests
+            EXPERT_SIGNALS = [
+                "research", "analyse", "analyze", "figure out",
+                "decide", "best way", "should i", "compare",
+                "comprehensive", "investigate", "evaluate",
+            ]
+            use_expert = (message and msg_ln > 5
+                          and any(s in msg_lw for s in EXPERT_SIGNALS))
+
+            if use_expert:
+                try:
+                    card = self._chain_expert.run(
+                        message, self._execute, context)
+                except Exception as e:
+                    logger.debug("Expert chain failed: %s", e)
+                    card = None
+
+            # Tier 1: general chain — adaptive multi-step
+            if card is None and message and msg_ln > 5 and self._chain.should_chain(message):
                 try:
                     card = self._chain.run(message, self._execute, context)
                 except Exception as e:
-                    logger.debug("Chain failed, trying composer: %s", e)
+                    logger.debug("Chain failed: %s", e)
                     card = None
 
+            # Tier 2: static composition
             if card is None and message and msg_ln > 6 and self._composer.should_compose(message):
                 try:
                     plan = self._composer.decompose(message)
                     if plan:
                         card = self._composer.execute(plan, self._execute, context)
                 except Exception as e:
-                    logger.debug("Composer failed, falling to single intent: %s", e)
+                    logger.debug("Composer failed: %s", e)
                     card = None
 
+            # Tier 3: single intent
             if card is None:
                 intent = self._route(message or "")
                 card   = self._execute(intent, message or "", context)
