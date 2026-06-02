@@ -818,6 +818,22 @@ class KDEHandler(BaseHTTPRequestHandler):
                      "provider": d.provider, "modified": d.modified}
                     for d in docs]})
 
+            elif path == '/calls/status':
+                from prism_calls import PrismCalls
+                agent = getattr(self.server, 'prism_agent', None)
+                calls = getattr(agent, '_calls', None) if agent else None
+                if calls is None:
+                    calls = PrismCalls()
+                self._json_response(calls.status_summary())
+
+            elif path == '/messages/status':
+                from prism_messaging import PrismMessaging
+                agent = getattr(self.server, 'prism_agent', None)
+                msgs = getattr(agent, '_messages', None) if agent else None
+                if msgs is None:
+                    msgs = PrismMessaging()
+                self._json_response(msgs.status_summary())
+
             else:
                 self._error(f"Unknown route: {path}", 404)
 

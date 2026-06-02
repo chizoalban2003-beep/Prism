@@ -22,6 +22,8 @@ from prism_calendar import PrismCalendar
 from prism_browser_agent import PrismBrowserAgent
 from prism_instructions import PrismInstructions
 from prism_service_discovery import PrismServiceDiscovery
+from prism_calls     import PrismCalls
+from prism_messaging import PrismMessaging
 from prism_responses import (
     PrismCard,
     domain_card,
@@ -105,6 +107,12 @@ class PrismAgent:
         (r"(?:find|search|look for|open|read) (?:my )?(?:document|doc|file|note|page|drive)|"
          r"(?:what(?:'s| is) in|show me) (?:my )?(?:google drive|notion|dropbox)|"
          r"(?:create|write|save) (?:a )?(?:note|document|doc|page)",  "documents"),
+        (r"(?:call|phone|ring|dial) (?:the )?(?:\+?[\d\s\-]+|[\w\s]+)",
+         "make_call"),
+        (r"(?:send|message|text|telegram|whatsapp|imessage) (?:to )?(?:me|myself|\+?[\d]+|[\w]+)",
+         "send_message"),
+        (r"(?:any|check|read) (?:new )?(?:messages?|texts?|telegrams?)",
+         "check_messages"),
     ]
 
     def __init__(
@@ -147,6 +155,8 @@ class PrismAgent:
             llm_router = getattr(self, '_router', None),
             headless   = True,
         )
+        self._calls    = PrismCalls.from_config({})
+        self._messages = PrismMessaging.from_config({})
         self._instructions = PrismInstructions()
         self._discovery    = PrismServiceDiscovery(
             collaborator  = getattr(self, '_collaborator', None),
@@ -680,5 +690,43 @@ class PrismAgent:
                 return text_card("No documents found.", "Documents")
             lines = "\n".join(f"• [{d.provider}] {d.title}  {d.url}" for d in docs[:8])
             return text_card(lines, f"Documents ({len(docs)} found)")
+
+        if intent == "make_call":
+            num = re.search(r'\+?[\d\s\-]{7,}', message)
+            if not num:
+                return text_card("Please include a phone number to call.", "Calls")
+            if not self._calls.configured:
+                return text_card(
+                    "Calling not configured. Add Twilio credentials or "
+                    "use a Mac with iPhone Continuity.", "Calls")
+            result = self._calls.call(num.group().strip(),
+                                       message="Calling from PRISM.")
+            body = (f"Call placed to {num.group().strip()} · status: {result.status}"
+                    if result.success else f"Call failed: {result.error}")
+            return text_card(body, "Call")
+
+        if intent == "send_message":
+            platforms = self._messages.configured_platforms
+            if not platforms:
+                return text_card(
+                    "Messaging not configured. Add telegram_token to "
+                    "prism_config.toml [messaging] to enable.", "Messaging")
+            num = re.search(r'\+?[\d\s\-]{7,}', message)
+            if "telegram" in message.lower() or (not num and "telegram" in platforms):
+                ok = self._messages.send_to_self(message)
+                return text_card("Sent to Telegram." if ok else "Send failed.", "Message")
+            if num and "imessage" in platforms:
+                ok = self._messages.send("imessage", num.group().strip(), message)
+                return text_card("Sent via iMessage." if ok else "iMessage failed.",
+                                  "Message")
+            return text_card(f"Available platforms: {', '.join(platforms)}", "Messaging")
+
+        if intent == "check_messages":
+            msgs = self._messages.get_updates("telegram", n=5)
+            if not msgs:
+                return text_card("No new messages.", "Messages")
+            lines = "\n".join(f"[{m.platform}] {m.sender}: {m.content[:100]}"
+                              for m in msgs)
+            return text_card(lines, f"Messages ({len(msgs)})")
 
         return text_card("I'm not sure how to help with that. Try: 'help'")

@@ -89,3 +89,23 @@ notion_parent_id   = ""   # page UUID to use as parent for new pages
 
 # Dropbox — create app at dropbox.com/developers/apps
 dropbox_token      = ""   # long-lived access token
+
+[calls]
+provider           = "auto"   # "twilio" | "macos" | "auto"
+twilio_account_sid = ""       # console.twilio.com — Account SID
+twilio_auth_token  = ""       # console.twilio.com — Auth Token
+twilio_from_number = ""       # Your Twilio phone number e.g. "+14155551234"
+
+[messaging]
+# Telegram — fastest to set up, free, no phone needed
+# 1. Open Telegram, search @BotFather, type /newbot
+# 2. Copy the token below
+# 3. Start a chat with your bot, then visit:
+#    https://api.telegram.org/bot<TOKEN>/getUpdates to get your chat_id
+telegram_token   = ""
+telegram_chat_id = ""
+
+# WhatsApp via Twilio (same credentials as [calls] if configured)
+twilio_whatsapp_sid   = ""
+twilio_whatsapp_token = ""
+twilio_whatsapp_from  = "whatsapp:+14155238886"  # Twilio sandbox default
