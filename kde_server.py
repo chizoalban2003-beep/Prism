@@ -33,6 +33,13 @@ Routes:
   GET  /llm/status             → LLM router status (available models, best)
   GET  /tasks                  → recent background tasks list (?n=10)
   GET  /tasks/<id>             → single task progress by task_id
+  GET  /horizon/goals          → list all horizon goals (?status=watching|triggered|…)
+  GET  /horizon/status         → horizon planner summary
+  POST /horizon/goal           → {"intent","trigger_condition","completion_condition","expires_in_days"}
+  POST /horizon/goal/<id>/complete  → mark goal completed {"notes":"…"}
+  POST /horizon/goal/<id>/abandon   → abandon goal {"reason":"…"}
+  POST /horizon/goal/<id>/context   → update accumulated context {key:value,…}
+  GET  /organs                 → list loaded organ intents and descriptions
 
 All responses: Content-Type: application/json
 Error format:  {"error": "message", "status": 4xx}
@@ -853,6 +860,47 @@ class KDEHandler(BaseHTTPRequestHandler):
                 else:
                     self._json_response({"configured":False})
 
+            elif path == '/horizon/goals':
+                agent = getattr(self.server, 'prism_agent', None)
+                h = getattr(agent, '_horizon', None) if agent else None
+                if h is None:
+                    self._json_response({"goals": [], "total": 0})
+                    return
+                status_filter = qs.get('status')
+                from prism_horizon import HorizonGoalStatus
+                sf = HorizonGoalStatus(status_filter) if status_filter else None
+                goals = h.list_goals(status=sf)
+                self._json_response({"total": len(goals), "goals": [
+                    {"goal_id": g.goal_id, "intent": g.intent,
+                     "trigger_condition": g.trigger_condition,
+                     "completion_condition": g.completion_condition,
+                     "status": g.status.value,
+                     "session_count": g.session_count,
+                     "completed_steps": g.completed_steps,
+                     "accumulated_context": g.accumulated_context,
+                     "created_at": g.created_at,
+                     "triggered_at": g.triggered_at,
+                     "expires_at": g.expires_at,
+                     "notes": g.notes}
+                    for g in goals]})
+
+            elif path == '/horizon/status':
+                agent = getattr(self.server, 'prism_agent', None)
+                h = getattr(agent, '_horizon', None) if agent else None
+                if h is None:
+                    self._json_response({"available": False})
+                else:
+                    self._json_response({**h.status(), "available": True})
+
+            elif path == '/organs':
+                agent = getattr(self.server, 'prism_agent', None)
+                ol = getattr(agent, '_organ_loader', None) if agent else None
+                if ol is None:
+                    self._json_response({"organs": {}})
+                else:
+                    self._json_response({"organs": ol.known_intents(),
+                                         "count": len(ol.list_organs())})
+
             else:
                 self._error(f"Unknown route: {path}", 404)
 
@@ -1320,6 +1368,62 @@ class KDEHandler(BaseHTTPRequestHandler):
                         self._error("Service not found", 404)
                 else:
                     self._error("Discovery not initialised", 503)
+
+            # ── Horizon Planner endpoints ─────────────────────────────────
+            elif path == '/horizon/goal':
+                agent = getattr(self.server, 'prism_agent', None)
+                h = getattr(agent, '_horizon', None) if agent else None
+                if h is None:
+                    self._error("HorizonPlanner not available", 503)
+                    return
+                intent    = body.get('intent', '')
+                trigger   = body.get('trigger_condition', '')
+                complete  = body.get('completion_condition', '')
+                expires   = body.get('expires_in_days')
+                if not intent or not trigger:
+                    self._error("'intent' and 'trigger_condition' are required", 400)
+                    return
+                gid = h.add(
+                    intent=intent,
+                    trigger_condition=trigger,
+                    completion_condition=complete,
+                    expires_in_days=float(expires) if expires else None,
+                )
+                self._json_response({"goal_id": gid, "status": "watching"})
+
+            elif path.startswith('/horizon/goal/') and path.endswith('/complete'):
+                gid   = path.split('/')[3]
+                agent = getattr(self.server, 'prism_agent', None)
+                h = getattr(agent, '_horizon', None) if agent else None
+                if h is None:
+                    self._error("HorizonPlanner not available", 503)
+                    return
+                notes = body.get('notes', '')
+                ok    = h.complete(gid, notes=notes)
+                self._json_response({"ok": ok, "goal_id": gid})
+
+            elif path.startswith('/horizon/goal/') and path.endswith('/abandon'):
+                gid   = path.split('/')[3]
+                agent = getattr(self.server, 'prism_agent', None)
+                h = getattr(agent, '_horizon', None) if agent else None
+                if h is None:
+                    self._error("HorizonPlanner not available", 503)
+                    return
+                reason = body.get('reason', '')
+                ok     = h.abandon(gid, reason=reason)
+                self._json_response({"ok": ok, "goal_id": gid})
+
+            elif path.startswith('/horizon/goal/') and path.endswith('/context'):
+                gid   = path.split('/')[3]
+                agent = getattr(self.server, 'prism_agent', None)
+                h = getattr(agent, '_horizon', None) if agent else None
+                if h is None:
+                    self._error("HorizonPlanner not available", 503)
+                    return
+                facts = {k: v for k, v in body.items() if k != 'goal_id'}
+                h.update_context(gid, **facts)
+                self._json_response({"ok": True, "goal_id": gid,
+                                     "context_keys": list(facts.keys())})
 
             else:
                 self._error(f"Unknown route: {path}", 404)

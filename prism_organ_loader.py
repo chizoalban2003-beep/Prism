@@ -176,6 +176,10 @@ class OrganLoader:
         """Return {intent: description} for every loaded organ."""
         return {k: v[1].get("description", k) for k, v in self._organs.items()}
 
+    def list_organs(self) -> list[str]:
+        """Return sorted list of loaded organ intent names."""
+        return sorted(self._organs.keys())
+
     def synthesize(self, intent: str, message: str) -> bool:
         """
         Ask the LLM to write a new organ for this intent, safety-check it,

@@ -91,6 +91,99 @@ class PrismCalendar:
     def configured(self) -> bool:
         return bool(self._provider)
 
+    # ── OAuth2 token management ────────────────────────────────────────────
+
+    def _get_access_token(self) -> str:
+        """Return a valid Google access token, refreshing it if expired.
+
+        Reads ``google_creds`` JSON file (contains access_token, refresh_token,
+        client_id, client_secret, expiry).  If the access token is expired or
+        missing, exchanges the refresh token for a new one via the Google
+        OAuth2 token endpoint and writes the updated credentials back to disk.
+
+        Falls back to the bare ``google_token`` config value if no creds file
+        is configured.
+        """
+        if not self._google_creds:
+            return self._google_token
+
+        creds_path = Path(self._google_creds).expanduser()
+        if not creds_path.exists():
+            return self._google_token
+
+        try:
+            import json as _json
+            creds = _json.loads(creds_path.read_text())
+        except Exception as exc:
+            logger.warning("PrismCalendar: cannot read creds file: %s", exc)
+            return self._google_token
+
+        access_token  = creds.get("access_token", "")
+        refresh_token = creds.get("refresh_token", "")
+        expiry_str    = creds.get("expiry", "")     # ISO-8601 string
+        client_id     = creds.get("client_id", "")
+        client_secret = creds.get("client_secret", "")
+
+        # Check whether the current token is still valid (with 60-s margin)
+        token_valid = False
+        if access_token and expiry_str:
+            try:
+                from datetime import timezone
+                expiry = datetime.fromisoformat(expiry_str.replace("Z", "+00:00"))
+                token_valid = expiry > datetime.now(timezone.utc) + timedelta(seconds=60)
+            except Exception:
+                token_valid = False
+
+        if token_valid:
+            self._google_token = access_token
+            return access_token
+
+        # Token expired or missing — use refresh_token to get a new one
+        if not refresh_token or not client_id or not client_secret:
+            logger.warning(
+                "PrismCalendar: token expired and no refresh_token/client credentials "
+                "available — re-authorisation required"
+            )
+            return access_token or self._google_token
+
+        try:
+            import json as _json
+            payload = urllib.parse.urlencode({
+                "grant_type":    "refresh_token",
+                "refresh_token": refresh_token,
+                "client_id":     client_id,
+                "client_secret": client_secret,
+            }).encode()
+            req = urllib.request.Request(
+                "https://oauth2.googleapis.com/token",
+                data=payload,
+                method="POST",
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                data = _json.loads(resp.read().decode())
+
+            new_token   = data["access_token"]
+            expires_in  = int(data.get("expires_in", 3600))
+            from datetime import timezone
+            new_expiry  = (datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+                           ).isoformat()
+
+            creds["access_token"] = new_token
+            creds["expiry"]       = new_expiry
+            # Google may rotate the refresh token; persist the new one if provided
+            if "refresh_token" in data:
+                creds["refresh_token"] = data["refresh_token"]
+
+            creds_path.write_text(_json.dumps(creds, indent=2))
+            self._google_token = new_token
+            logger.info("PrismCalendar: Google access token refreshed, expires %s",
+                        new_expiry)
+            return new_token
+
+        except Exception as exc:
+            logger.warning("PrismCalendar: token refresh failed: %s", exc)
+            return access_token or self._google_token
+
     # ── Reading events ─────────────────────────────────────────────────────
 
     def upcoming(self, hours: int = 24) -> list[CalendarEvent]:
@@ -236,7 +329,7 @@ class PrismCalendar:
                  f"&timeMax={urllib.parse.quote(end)}"
                  f"&singleEvents=true&orderBy=startTime")
         req = urllib.request.Request(url, headers={
-            "Authorization": f"Bearer {self._google_token}"})
+            "Authorization": f"Bearer {self._get_access_token()}"})
         try:
             resp  = urllib.request.urlopen(req, timeout=8)
             items = json.loads(resp.read()).get("items", [])
@@ -263,7 +356,7 @@ class PrismCalendar:
         req = urllib.request.Request(
             "https://www.googleapis.com/calendar/v3/calendars/primary/events",
             data=payload,
-            headers={"Authorization": f"Bearer {self._google_token}",
+            headers={"Authorization": f"Bearer {self._get_access_token()}",
                      "Content-Type": "application/json"},
             method="POST")
         try:
