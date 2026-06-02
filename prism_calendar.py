@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -60,6 +61,7 @@ class PrismCalendar:
         password:    str = "",
         ical_url:    str = "",
         google_creds:str = "",
+        google_token:str = "",
     ):
         self._provider     = provider
         self._caldav_url   = caldav_url
@@ -67,6 +69,10 @@ class PrismCalendar:
         self._password     = password
         self._ical_url     = ical_url
         self._google_creds = google_creds
+        self._google_token = google_token
+        # Auto-detect Google provider when token is provided
+        if google_token and not provider:
+            self._provider = "google"
 
     @classmethod
     def from_config(cls, config: dict) -> "PrismCalendar":
@@ -78,6 +84,7 @@ class PrismCalendar:
             password     = cal.get("password", ""),
             ical_url     = cal.get("ical_url", ""),
             google_creds = cal.get("google_creds", ""),
+            google_token = cal.get("google_token", ""),
         )
 
     @property
@@ -95,6 +102,8 @@ class PrismCalendar:
 
     def today(self) -> list[CalendarEvent]:
         """Return all events today."""
+        if self._google_token:
+            return self._google_today()
         now    = datetime.now()
         events = self._fetch_events(days_ahead=1)
         return [e for e in events if e.start.date() == now.date()]
@@ -143,6 +152,21 @@ class PrismCalendar:
     ) -> Optional[CalendarEvent]:
         """Create a new calendar event."""
         if not self.configured:
+            return None
+        if self._google_token:
+            gcal_id = self._google_create(
+                title, start.isoformat(), duration_mins,
+                location, attendees)
+            if gcal_id:
+                return CalendarEvent(
+                    event_id    = gcal_id,
+                    title       = title,
+                    start       = start,
+                    end         = start + timedelta(minutes=duration_mins),
+                    location    = location,
+                    description = description,
+                    attendees   = attendees or [],
+                )
             return None
         event = CalendarEvent(
             event_id    = f"prism-{int(time.time())}",
@@ -200,6 +224,78 @@ class PrismCalendar:
         }
 
     # ── Backend implementations ────────────────────────────────────────────
+
+    def _google_today(self) -> list:
+        """Fetch today's events from Google Calendar API."""
+        from datetime import timezone as _tz
+        now   = datetime.now(_tz.utc)
+        start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
+        end   = now.replace(hour=23, minute=59, second=59, microsecond=0).isoformat()
+        url   = (f"https://www.googleapis.com/calendar/v3/calendars/primary/events"
+                 f"?timeMin={urllib.parse.quote(start)}"
+                 f"&timeMax={urllib.parse.quote(end)}"
+                 f"&singleEvents=true&orderBy=startTime")
+        req = urllib.request.Request(url, headers={
+            "Authorization": f"Bearer {self._google_token}"})
+        try:
+            resp  = urllib.request.urlopen(req, timeout=8)
+            items = json.loads(resp.read()).get("items", [])
+            return [self._google_item_to_event(i) for i in items]
+        except Exception as e:
+            logger.warning("Google Calendar fetch failed: %s", e)
+            return []
+
+    def _google_create(self, title: str, start_iso: str,
+                        duration_mins: int = 60,
+                        location: str = "",
+                        attendees=None) -> Optional[str]:
+        from datetime import timedelta as _td
+        start  = datetime.fromisoformat(start_iso)
+        end    = start + _td(minutes=duration_mins)
+        body   = {
+            "summary":  title,
+            "location": location,
+            "start":    {"dateTime": start.isoformat(), "timeZone": "UTC"},
+            "end":      {"dateTime": end.isoformat(),   "timeZone": "UTC"},
+            "attendees":[{"email": a} for a in (attendees or [])],
+        }
+        payload = json.dumps(body).encode()
+        req = urllib.request.Request(
+            "https://www.googleapis.com/calendar/v3/calendars/primary/events",
+            data=payload,
+            headers={"Authorization": f"Bearer {self._google_token}",
+                     "Content-Type": "application/json"},
+            method="POST")
+        try:
+            resp = urllib.request.urlopen(req, timeout=8)
+            return json.loads(resp.read()).get("id")
+        except Exception as e:
+            logger.warning("Google Calendar create failed: %s", e)
+            return None
+
+    def _google_item_to_event(self, item: dict) -> CalendarEvent:
+        start_str = item.get("start",{}).get("dateTime",
+                    item.get("start",{}).get("date",""))
+        end_str   = item.get("end",{}).get("dateTime",
+                    item.get("end",{}).get("date",""))
+        try:
+            start = datetime.fromisoformat(start_str.replace("Z","+00:00"))
+        except Exception:
+            start = datetime.now()
+        try:
+            end = datetime.fromisoformat(end_str.replace("Z","+00:00"))
+        except Exception:
+            end = start + timedelta(hours=1)
+        return CalendarEvent(
+            event_id    = item.get("id",""),
+            title       = item.get("summary","Untitled"),
+            start       = start,
+            end         = end,
+            location    = item.get("location",""),
+            description = item.get("description",""),
+            attendees   = [a.get("email","")
+                           for a in item.get("attendees",[])],
+        )
 
     def _fetch_events(self, days_ahead: int = 7) -> list[CalendarEvent]:
         if self._provider == "ical_url" and self._ical_url:

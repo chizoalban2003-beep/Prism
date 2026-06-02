@@ -106,20 +106,124 @@ Background loop:
 |---|---|---|
 | Chat interface | `prism_chat.py`, `prism_agent.py` | Working |
 | Email read/send | `prism_email.py` | Working (needs config) |
-| Calendar read/write | `prism_calendar.py` | Working (needs config) |
+| Calendar read/write (CalDAV/iCal) | `prism_calendar.py` | Working (needs config) |
+| Calendar read/write (Google) | `prism_calendar.py` | Working (needs OAuth token) |
 | Web search | `prism_search.py` | Working (DDG free; Brave/Serp optional) |
 | Push notifications | `prism_push.py` | Working (ntfy.sh, free) |
 | Contacts | `prism_contacts.py` | Working (local + Google optional) |
-| Tasks | `prism_tasks.py` | Working (local + Todoist/GitHub optional) |
+| Tasks | `prism_tasks.py` | Working (local + Todoist/GitHub/Linear) |
 | Smart home | `prism_smart_home.py` | Working (Home Assistant) |
 | Browser automation | `prism_browser_agent.py` | Working (needs playwright) |
 | Device tasks | `prism_device_agent.py` | Working |
 | Memory | `prism_memory.py` | Working (SQLite + TF-IDF) |
 | Standing instructions | `prism_instructions.py` | Working |
 | Proactive triggers | `prism_proactive.py` | Working |
+| Scheduled reminders | `prism_proactive.py` | Working |
+| Wearable sync trigger | `prism_proactive.py` | Working |
 | TTS | `prism_tts.py` | Working (espeak fallback) |
-| Voice input | — | Missing (Whisper not wired) |
-| LLM routing | `prism_llm_router.py` | Working (Ollama) |
+| Voice input (Whisper) | `prism_perception.py` | Working (opt-in; needs pyaudio + openai-whisper) |
+| LLM routing (Ollama) | `prism_llm_router.py` | Working |
+| LLM routing (Claude API) | `prism_llm_router.py` | Working (needs API key) |
+| Multi-user | `prism_agent.py` | Working (`[user].name` in config) |
+| Unknown-tool PA fallback | `prism_agent.py` | Working (discovers + plans integrations) |
+
+---
+
+## Voice input setup
+
+PRISM supports local speech-to-text via OpenAI Whisper (no cloud):
+
+```bash
+pip install openai-whisper pyaudio
+```
+
+Then in `prism_config.toml`:
+
+```toml
+[agent]
+enable_voice = true
+```
+
+Say "Hey Prism, ..." — PRISM transcribes locally and routes the command. Falls back gracefully if pyaudio or whisper are not installed.
+
+---
+
+## Claude API key setup
+
+PRISM uses Ollama (local) by default and falls back to Claude API when Ollama is unavailable or returns empty:
+
+1. Get an API key from [console.anthropic.com](https://console.anthropic.com)
+2. Add to `prism_config.toml`:
+
+```toml
+[llm]
+claude_api_key = "sk-ant-..."
+```
+
+Or set `ANTHROPIC_API_KEY` environment variable.
+
+---
+
+## Linear task integration
+
+PRISM supports [Linear](https://linear.app) as a task provider via GraphQL API:
+
+1. Get your API key from Linear → Settings → API → Personal API Keys
+2. Add to `prism_config.toml`:
+
+```toml
+[tasks]
+provider       = "auto"
+linear_api_key = "lin_api_..."
+```
+
+When `linear_api_key` is set and no Todoist/GitHub tokens are configured, tasks automatically route to Linear. Say:
+
+- `add task: Fix the login bug`
+- `show my tasks`
+
+---
+
+## Scheduled reminders
+
+PRISM supports natural language reminder scheduling:
+
+- `remind me in 30 minutes to call Alice`
+- `remind me at 3pm to check the oven`
+- `don't let me forget to submit the report by 5pm`
+
+Reminders fire via the proactive loop (polling every 60 seconds by default) and can send push notifications if `[push].topic` is configured.
+
+---
+
+## Google Calendar OAuth
+
+PRISM supports Google Calendar via OAuth2 access token:
+
+1. Set up a Google Cloud project and enable Calendar API at [developers.google.com/calendar](https://developers.google.com/calendar)
+2. Obtain an OAuth2 access token (use `google-auth` library or the OAuth playground)
+3. Add to `prism_config.toml`:
+
+```toml
+[calendar]
+provider     = "google"
+google_token = "ya29...."
+```
+
+PRISM reads/writes your primary calendar. Token refresh is not automatic — refresh via your OAuth flow and update the config.
+
+---
+
+## Multi-user support
+
+PRISM scopes the active user from `[user].name` in `prism_config.toml`:
+
+```toml
+[user]
+name = "Alice"
+```
+
+Policies, calibration history, and standing instructions use this name as the user key. To support multiple users on the same machine, run separate instances with separate config files.
 
 ---
 

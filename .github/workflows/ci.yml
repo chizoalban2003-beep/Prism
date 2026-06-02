@@ -61,6 +61,9 @@ jobs:
           pip install -r requirements.txt
           python -m pip install .
 
+      - name: Install Playwright (optional, non-blocking)
+        run: pip install playwright && playwright install chromium || true
+
       - name: Run tests
         run: pytest tests/ -q --tb=short
 

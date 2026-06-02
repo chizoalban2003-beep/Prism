@@ -124,6 +124,9 @@ class PrismAgent:
         (r"(?:how am i|calibration|what have you learned|"
          r"how (?:accurate|well) (?:are you|is prism)|"
          r"show (?:my )?feedback history)", "calibration_summary"),
+        (r"remind me|set (?:a )?reminder|alert me (?:in|at|when)|"
+         r"don't let me forget|in (\d+) (?:minute|hour|day)|"
+         r"at (\d+(?::\d+)?(?:am|pm)?)", "reminder"),
         (r"help|what\.can|commands|options", "help"),
         (r"turn (?:on|off)|set (?:the )?(?:lights?|thermostat|temp)|"
          r"lock|unlock|what(?:'s| is) (?:on|off)|smart home|home assistant",
@@ -149,7 +152,33 @@ class PrismAgent:
         self._ollama_host = ollama_host.rstrip('/')
         self._text_model = text_model
         self._claude_key = claude_api_key
-        self._router = LLMRouter.from_config()
+
+        # Load config early so all subsequent setup can use it
+        self._config = {}
+        self._user = "default"
+        try:
+            import tomllib  # Python 3.11+
+        except ImportError:
+            try:
+                import tomli as tomllib  # type: ignore[no-redef]
+            except ImportError:
+                tomllib = None  # type: ignore[assignment]
+        if tomllib:
+            _config_path = Path(__file__).parent / "prism_config.toml"
+            try:
+                with open(_config_path, "rb") as f:
+                    self._config = tomllib.load(f)
+            except Exception:
+                pass
+        self._user = self._config.get("user", {}).get("name", "default")
+
+        # Build LLMRouter with claude_api_key from config or constructor arg
+        _llm_cfg = self._config.get("llm", {})
+        _claude_key_cfg = (_llm_cfg.get("claude_api_key", "")
+                           or self._claude_key or "")
+        self._router = LLMRouter.from_config(
+            claude_api_key=_claude_key_cfg) if _claude_key_cfg else LLMRouter.from_config()
+
         self._queue  = TaskQueue()
         self._planner = PrismPlanner(
             ollama_host    = ollama_host,
@@ -168,13 +197,10 @@ class PrismAgent:
             logger.warning("PrismMemory not available: %s", e)
             self._memory = None
         self._tts = PrismTTS.setup()
-        # NOTE: _smarthome, _email, _calendar are initially constructed with
-        # empty config here and are replaced once prism_config.toml is loaded
-        # below (after tomllib is imported). This two-step init is needed
-        # because config loading happens later in __init__.
-        self._smarthome = PrismSmartHome.from_config({})
-        self._email    = PrismEmail.from_config({})
-        self._calendar = PrismCalendar.from_config({})
+        # Config is loaded above — construct with real config directly
+        self._smarthome = PrismSmartHome.from_config(self._config)
+        self._email    = PrismEmail.from_config(self._config)
+        self._calendar = PrismCalendar.from_config(self._config)
         self._browser  = PrismBrowserAgent.setup(
             llm_router = getattr(self, '_router', None),
             headless   = True,
@@ -187,7 +213,7 @@ class PrismAgent:
         )
         self._chat_history: list[dict] = []
         try:
-            cfg = {}
+            cfg = self._config.get("agent", {}) if hasattr(self, '_config') and self._config else {}
             self._perception = PrismPerception.setup(
                 enable_voice     = cfg.get("enable_voice", False),
                 enable_screen    = cfg.get("enable_screen", False),
@@ -215,23 +241,6 @@ class PrismAgent:
             logger.warning("PrismProactive not available: %s", e)
             self._proactive = None
 
-        self._config = {}
-        try:
-            import tomllib  # Python 3.11+
-        except ImportError:
-            try:
-                import tomli as tomllib
-            except ImportError:
-                tomllib = None
-        if tomllib:
-            # Use absolute path relative to this file so it works regardless
-            # of the current working directory when prism_agent is imported.
-            _config_path = Path(__file__).parent / "prism_config.toml"
-            try:
-                with open(_config_path, "rb") as f:
-                    self._config = tomllib.load(f)
-            except Exception:
-                pass
         self._search = PrismSearch.from_config(self._config)
         self._push   = PrismPush.from_config(self._config)
         if self._proactive:
@@ -793,6 +802,39 @@ class PrismAgent:
                 for t in tasks[:15])
             return text_card(lines, f"Tasks ({len(tasks)}) · {provider}")
 
+        if intent == "reminder":
+            router = getattr(self, '_router', None)
+            parsed_time = None
+            if router:
+                prompt = (f"Extract reminder details from: '{message}'. "
+                          f"Return JSON: {{\"message\":\"...\","
+                          f"\"seconds_from_now\": <integer seconds or null>,"
+                          f"\"iso_datetime\": \"YYYY-MM-DDTHH:MM or null\"}}")
+                raw, _ = router.call(prompt, min_capability=1, max_tokens=150, json_mode=True)
+                try:
+                    import json as _j
+                    clean = raw.strip().lstrip("```json").rstrip("```").strip()
+                    parsed_time = _j.loads(clean)
+                except Exception:
+                    pass
+            if parsed_time and self._proactive:
+                msg = parsed_time.get("message", message)
+                secs = parsed_time.get("seconds_from_now")
+                iso  = parsed_time.get("iso_datetime")
+                if secs:
+                    self._proactive.schedule_in(msg, float(secs))
+                    mins = int(float(secs) // 60)
+                    return text_card(f"Reminder set: '{msg}' in {mins} minutes.", "Reminder")
+                elif iso:
+                    from datetime import datetime as _dt
+                    try:
+                        fire_at = _dt.fromisoformat(iso).timestamp()
+                        self._proactive.schedule(msg, fire_at)
+                        return text_card(f"Reminder set: '{msg}' at {iso}.", "Reminder")
+                    except Exception:
+                        pass
+            return text_card("Could not parse reminder time. Try: 'remind me in 30 minutes to call Alice'.", "Reminder")
+
         if intent == "calibrate":
             direction = self._calibration.detect(message)
             if not direction:
@@ -829,4 +871,71 @@ class PrismAgent:
                 for e in history[:8])
             return text_card(f"{summary}\n\n{lines}", "Calibration history")
 
-        return text_card("I'm not sure how to help with that. Try: 'help'")
+        # Unknown intent — behave like a real PA
+        return self._handle_unknown(intent, message, ctx)
+
+    def _handle_unknown(self, intent: str, message: str, ctx: dict) -> PrismCard:
+        """
+        Real-PA fallback: when PRISM can't handle a request directly,
+        it identifies what it would need, attempts discovery, and
+        offers concrete next steps — never just says 'I don't know'.
+        """
+        router = getattr(self, '_router', None)
+
+        # Step 1: Try service discovery — maybe this is a known integration
+        first_word = message.split()[0] if message else ""
+        if self._discovery.is_known(first_word):
+            # Delegate to discover_service path
+            return self._execute("discover_service", message, ctx)
+
+        # Step 2: Ask LLM what capability this request needs
+        capability_needed = ""
+        fallback_action   = ""
+        if router:
+            cap_prompt = (
+                f"A user said: '{message}'\n"
+                f"An AI assistant cannot handle this yet. In one short sentence each:\n"
+                f"1. What specific tool or integration would handle this?\n"
+                f"2. What is the closest thing the assistant CAN do instead?\n"
+                f"Return JSON: {{\"needs\": \"...\", \"fallback\": \"...\"}}"
+            )
+            raw, _ = router.call(cap_prompt, min_capability=1, max_tokens=150, json_mode=True)
+            try:
+                import json as _j
+                clean = raw.strip().lstrip("```json").rstrip("```").strip()
+                parsed = _j.loads(clean)
+                capability_needed = parsed.get("needs", "")
+                fallback_action   = parsed.get("fallback", "")
+            except Exception:
+                pass
+
+        # Step 3: Check if service discovery can research this
+        if capability_needed:
+            try:
+                service, questions = self._discovery.discover(
+                    service_name = capability_needed[:50],
+                    user_intent  = message,
+                    constraints  = {},
+                )
+                steps = "\n".join(f"  {i+1}. {s}"
+                                   for i, s in enumerate(service.setup_steps[:3]))
+                body = (
+                    f"I can't do that yet — I'd need: **{capability_needed}**\n\n"
+                    f"Here's how I could set that up:\n{steps}\n\n"
+                )
+                if fallback_action:
+                    body += f"In the meantime, I can: {fallback_action}\n"
+                if questions:
+                    body += f"\nTo proceed, I need to know:\n" + "\n".join(
+                        f"• {q}" for q in questions[:2])
+                return text_card(body, "I'd need a new capability for this")
+            except Exception:
+                pass
+
+        # Step 4: Minimal honest fallback
+        fallback_msg = (
+            "I don't have a tool for that yet."
+            + (f" Closest I can do: {fallback_action}" if fallback_action else "")
+            + "\n\nTry: 'help' to see what I can do, or describe what you need and I'll research an integration."
+        )
+        return text_card(fallback_msg, "Not yet supported")

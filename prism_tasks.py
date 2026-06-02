@@ -75,6 +75,11 @@ class PrismTasks:
                 task.source  = "github"
                 task.url     = (f"https://github.com/{self._repo}"
                                 f"/issues/{gh_num}")
+        elif provider == "linear":
+            linear_id = self._linear_add(task)
+            if linear_id:
+                task.task_id = linear_id
+                task.source  = "linear"
         self._store(task)
         return task
 
@@ -86,6 +91,10 @@ class PrismTasks:
                 return remote
         if provider == "github" and not done:
             remote = self._github_list()
+            if remote:
+                return remote
+        if provider == "linear" and not done:
+            remote = self._linear_list()
             if remote:
                 return remote
         with sqlite3.connect(self._db) as c:
@@ -106,6 +115,8 @@ class PrismTasks:
             self._todoist_complete(task_id)
         elif provider == "github":
             self._github_close(task_id)
+        elif provider == "linear":
+            self._linear_complete(task_id)
         with sqlite3.connect(self._db) as c:
             c.execute("UPDATE tasks SET done=1 WHERE id=?", (task_id,))
         return True
@@ -219,6 +230,81 @@ class PrismTasks:
         try:
             urllib.request.urlopen(req, timeout=8)
         except Exception: pass
+
+    def _linear_add(self, task: Task) -> Optional[str]:
+        """Create a Linear issue via GraphQL API."""
+        if not self._linear:
+            return None
+        query = """
+        mutation CreateIssue($title: String!, $description: String) {
+          issueCreate(input: {title: $title, description: $description}) {
+            issue { id identifier url }
+          }
+        }
+        """
+        payload = json.dumps({
+            "query": query,
+            "variables": {"title": task.title, "description": task.notes or ""}
+        }).encode()
+        req = urllib.request.Request(
+            "https://api.linear.app/graphql",
+            data=payload,
+            headers={"Authorization": self._linear,
+                     "Content-Type": "application/json"})
+        try:
+            resp = urllib.request.urlopen(req, timeout=8)
+            data = json.loads(resp.read())
+            issue = data.get("data",{}).get("issueCreate",{}).get("issue",{})
+            if issue.get("id"):
+                task.url = issue.get("url","")
+                return issue["id"]
+        except Exception as e:
+            logger.debug("Linear add failed: %s", e)
+        return None
+
+    def _linear_list(self) -> list[Task]:
+        query = """
+        query { issues(filter: {state: {type: {nin: ["completed","cancelled"]}}},
+                       first: 30) {
+          nodes { id title description url state { name } dueDate priority }
+        }}
+        """
+        payload = json.dumps({"query": query}).encode()
+        req = urllib.request.Request(
+            "https://api.linear.app/graphql",
+            data=payload,
+            headers={"Authorization": self._linear,
+                     "Content-Type": "application/json"})
+        try:
+            resp  = urllib.request.urlopen(req, timeout=8)
+            nodes = json.loads(resp.read()).get("data",{}).get("issues",{}).get("nodes",[])
+            return [Task(
+                task_id  = n["id"],
+                title    = n["title"],
+                notes    = n.get("description","") or "",
+                due_date = n.get("dueDate","") or "",
+                priority = n.get("priority",1),
+                source   = "linear",
+                url      = n.get("url",""),
+            ) for n in nodes]
+        except Exception as e:
+            logger.debug("Linear list failed: %s", e)
+            return []
+
+    def _linear_complete(self, task_id: str) -> None:
+        cancel_query = """
+        mutation { issueUpdate(id: "%s", input: {stateType: "completed"}) { success } }
+        """ % task_id
+        payload = json.dumps({"query": cancel_query}).encode()
+        req = urllib.request.Request(
+            "https://api.linear.app/graphql",
+            data=payload,
+            headers={"Authorization": self._linear,
+                     "Content-Type": "application/json"})
+        try:
+            urllib.request.urlopen(req, timeout=8)
+        except Exception:
+            pass
 
     def _resolve_provider(self) -> str:
         if self._provider != "auto":

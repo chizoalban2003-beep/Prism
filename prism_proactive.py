@@ -3,11 +3,23 @@ import logging
 import sqlite3
 import threading
 import time
+import uuid as _uuid_mod
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class ScheduledTrigger:
+    """One-shot trigger that fires at a specific datetime."""
+    trigger_id:  str
+    name:        str
+    fire_at:     float        # Unix timestamp
+    message:     str          # static message (no callable needed)
+    fired:       bool = False
+
 
 @dataclass
 class ProactiveTrigger:
@@ -54,6 +66,7 @@ class PrismProactive:
         self._db.parent.mkdir(parents=True, exist_ok=True)
         self._poll        = poll_seconds
         self._triggers:   list[ProactiveTrigger] = []
+        self._scheduled:  list[ScheduledTrigger] = []
         self._stop        = threading.Event()
         self._thread:     Optional[threading.Thread] = None
         self._init_db()
@@ -85,6 +98,26 @@ class PrismProactive:
             c.execute("UPDATE events SET delivered=1 WHERE trigger_id=?",
                       (trigger_id,))
 
+    def schedule(self, message: str, fire_at: float,
+                  trigger_id: str = None) -> str:
+        """
+        Schedule a one-shot reminder.
+        fire_at: Unix timestamp (use time.time() + seconds for relative).
+        Returns trigger_id.
+        """
+        tid = trigger_id or str(_uuid_mod.uuid4())[:8]
+        self._scheduled.append(ScheduledTrigger(
+            trigger_id = tid,
+            name       = f"Reminder: {message[:40]}",
+            fire_at    = fire_at,
+            message    = message,
+        ))
+        return tid
+
+    def schedule_in(self, message: str, seconds: float) -> str:
+        """Schedule a reminder N seconds from now."""
+        return self.schedule(message, time.time() + seconds)
+
     def _loop(self) -> None:
         while not self._stop.wait(self._poll):
             now = time.time()
@@ -104,6 +137,15 @@ class PrismProactive:
                         trigger.last_fired = now
                 except Exception as e:
                     logger.debug("Trigger %s error: %s", trigger.trigger_id, e)
+            # Check one-shot scheduled reminders
+            for st in self._scheduled:
+                if not st.fired and time.time() >= st.fire_at:
+                    st.fired = True
+                    event = ProactiveEvent(st.trigger_id, st.message)
+                    self._store(event)
+                    self._on_event(event)
+                    if getattr(self, '_push', None) and self._push.configured:
+                        self._push.alert(st.message)
 
     def _store(self, event: ProactiveEvent) -> None:
         with sqlite3.connect(self._db) as c:
@@ -179,6 +221,23 @@ def build_default_triggers(
             "budget_warning","Budget warning",
             check_every=1800, condition=check_budget,
             message=msg_budget, cooldown=86400))
+
+    # Wearable sync trigger — fires when a device agent has new data
+    if perception:
+        def check_wearable():
+            try:
+                ctx = perception.current_context()
+                # Fires if wearable data freshness flag is set
+                return ctx.factors.get("wearable_new_data", 0) > 0.5
+            except Exception:
+                return False
+        def msg_wearable():
+            return ("New wearable data available. "
+                    "Say 'sync wearables' or 'show my recovery' to analyse it.")
+        triggers.append(ProactiveTrigger(
+            "wearable_sync", "Wearable data available",
+            check_every=300, condition=check_wearable,
+            message=msg_wearable, cooldown=3600))
 
     def check_calibration():
         from prism_calibration import PrismCalibration

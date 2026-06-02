@@ -82,7 +82,8 @@ class LLMRouter:
         self._last_scan   = 0.0
 
     @classmethod
-    def from_config(cls, config_path: str = "~/.prism/config.toml") -> "LLMRouter":
+    def from_config(cls, config_path: str = "~/.prism/config.toml",
+                    claude_api_key: str = "") -> "LLMRouter":
         """Load LLM preferences from prism_config.toml [llm] section."""
         try:
             from pathlib import Path
@@ -91,6 +92,9 @@ class LLMRouter:
             if path.exists():
                 data = tomllib.loads(path.read_text())
                 llm  = data.get("llm", {})
+                # Allow caller to override claude_api_key
+                if claude_api_key:
+                    llm["claude_api_key"] = claude_api_key
                 return cls(
                     preferred   = llm.get("preferred", ""),
                     fallback    = llm.get("fallback", []),
@@ -99,6 +103,8 @@ class LLMRouter:
                 )
         except Exception:
             pass
+        if claude_api_key:
+            return cls(config={"claude_api_key": claude_api_key})
         return cls()
 
     def discover(self, force: bool = False) -> list[LLMOption]:

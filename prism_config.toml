@@ -48,11 +48,12 @@ password  = ""                  # Gmail: use App Password from myaccount.google.
 max_fetch = 20
 
 [calendar]
-provider    = ""                # set to "ical_url" or "caldav" to enable
+provider    = ""                # set to "ical_url", "caldav", or "google" to enable
 ical_url    = ""                # paste a webcal:// or https:// .ics URL here
 caldav_url  = ""
 username    = ""
 password    = ""
+google_token = ""               # OAuth2 access token — see developers.google.com/calendar
 
 [search]
 provider      = "auto"
@@ -74,3 +75,8 @@ todoist_token  = ""
 github_token   = ""
 github_repo    = ""
 linear_api_key = ""
+
+[llm]
+claude_api_key = ""   # get from console.anthropic.com — used as fallback when Ollama unavailable
+preferred      = ""
+ollama_host    = "http://localhost:11434"
