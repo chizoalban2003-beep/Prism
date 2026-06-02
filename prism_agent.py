@@ -26,6 +26,8 @@ from prism_instructions import PrismInstructions
 from prism_service_discovery import PrismServiceDiscovery
 from prism_calls     import PrismCalls
 from prism_messaging import PrismMessaging
+from prism_contacts  import PrismContacts, Contact
+from prism_tasks     import PrismTasks, Task
 from prism_responses import (
     PrismCard,
     domain_card,
@@ -110,6 +112,14 @@ class PrismAgent:
          r"(?:[A-Z][a-z]+(?:\s[A-Z][a-z]+)*|[a-z]+\.[a-z]+)|"
          r"(?:can you|how do i) (?:use|access|connect to) ", "discover_service"),
         (r"help|what\.can|commands|options", "help"),
+        (r"(?:find|search|look up|who is|contact|call|email) (?:my )?(?:contact|person|colleague|client|friend)",
+         "contacts"),
+        (r"(?:add|create|make|new) (?:a )?(?:task|todo|reminder|ticket|issue)|"
+         r"(?:i need to|i have to|remember to|don't forget)",
+         "add_task"),
+        (r"(?:my )?(?:tasks?|todos?|to-do|to do|what(?:'s| is) (?:on my )?list|"
+         r"pending|backlog|open issues?)",
+         "list_tasks"),
         (r"turn (?:on|off)|set (?:the )?(?:lights?|thermostat|temp)|"
          r"lock|unlock|what(?:'s| is) (?:on|off)|smart home|home assistant",
          "smart_home"),
@@ -170,6 +180,8 @@ class PrismAgent:
         )
         self._calls    = PrismCalls.from_config({})
         self._messages = PrismMessaging.from_config({})
+        self._contacts = PrismContacts.from_config({})
+        self._task_mgr = PrismTasks.from_config({})
         self._search   = PrismSearch.from_config({})
         self._push     = PrismPush.from_config({})
         self._instructions = PrismInstructions()
@@ -778,5 +790,60 @@ class PrismAgent:
             lines = "\n".join(f"[{m.platform}] {m.sender}: {m.content[:100]}"
                               for m in msgs)
             return text_card(lines, f"Messages ({len(msgs)})")
+
+        if intent == "contacts":
+            query = message.lower().replace("find","").replace(
+                "contact","").replace("who is","").strip()
+            contacts = self._contacts.search(query)
+            if not contacts:
+                return text_card(f"No contact found for '{query}'.", "Contacts")
+            c = contacts[0]
+            lines = [f"{c.name}"]
+            if c.organisation: lines.append(f"  {c.role} at {c.organisation}")
+            if c.emails:  lines.append(f"  Email: {', '.join(c.emails)}")
+            if c.phones:  lines.append(f"  Phone: {', '.join(c.phones)}")
+            if c.notes:   lines.append(f"  Notes: {c.notes[:200]}")
+            return text_card("\n".join(lines),
+                              f"Contact · {c.source}")
+
+        if intent == "add_task":
+            router = getattr(self, '_router', None)
+            parsed = None
+            if router:
+                prompt = (f"Extract task details from: '{message}'. "
+                          f"Return JSON: {{\"title\":\"...\",\"notes\":\"...\","
+                          f"\"due_date\":\"YYYY-MM-DD or empty\","
+                          f"\"priority\":1}}")
+                raw, _ = router.call(prompt, min_capability=1, max_tokens=200,
+                                      json_mode=True)
+                try:
+                    from prism_llm_router import parse_llm_json
+                    parsed = parse_llm_json(raw)
+                except Exception:
+                    pass
+            if parsed:
+                task = self._task_mgr.add(
+                    title    = parsed.get("title", message[:80]),
+                    notes    = parsed.get("notes",""),
+                    due_date = parsed.get("due_date",""),
+                    priority = parsed.get("priority",1),
+                )
+                return text_card(
+                    f"Added: {task.title}"
+                    + (f"  Due: {task.due_date}" if task.due_date else ""),
+                    f"Task added · {task.source}")
+            task = self._task_mgr.add(title=message[:80])
+            return text_card(f"Added: {task.title}", "Task added")
+
+        if intent == "list_tasks":
+            tasks = self._task_mgr.list_tasks(done=False)
+            if not tasks:
+                return text_card("No open tasks.", "Tasks")
+            provider = self._task_mgr._resolve_provider()
+            lines = "\n".join(
+                f"{'⚡' if t.priority>=3 else '·'} {t.title}"
+                + (f"  (due {t.due_date})" if t.due_date else "")
+                for t in tasks[:15])
+            return text_card(lines, f"Tasks ({len(tasks)}) · {provider}")
 
         return text_card("I'm not sure how to help with that. Try: 'help'")

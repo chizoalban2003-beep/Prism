@@ -852,6 +852,25 @@ class KDEHandler(BaseHTTPRequestHandler):
                 else:
                     self._json_response({"configured": False})
 
+            elif path == '/contacts/search':
+                agent = getattr(self.server, 'prism_agent', None)
+                q = qs.get('q', '')
+                if not q:
+                    self._error("Query parameter 'q' is required", 400)
+                    return
+                if agent and hasattr(agent, '_contacts'):
+                    results = agent._contacts.search(q)
+                else:
+                    from prism_contacts import PrismContacts
+                    results = PrismContacts().search(q)
+                self._json_response({"query": q, "count": len(results),
+                    "contacts": [
+                        {"id": c.contact_id, "name": c.name,
+                         "emails": c.emails, "phones": c.phones,
+                         "organisation": c.organisation, "role": c.role,
+                         "source": c.source}
+                        for c in results]})
+
             else:
                 self._error(f"Unknown route: {path}", 404)
 
@@ -1282,6 +1301,33 @@ class KDEHandler(BaseHTTPRequestHandler):
                 else:
                     self._error("LLM router not initialised", 503)
                 return
+
+            elif path == '/tasks/add':
+                agent = getattr(self.server, 'prism_agent', None)
+                title = body.get('title', '')
+                if not title:
+                    self._error("'title' field required", 400)
+                    return
+                if agent and hasattr(agent, '_task_mgr'):
+                    task = agent._task_mgr.add(
+                        title    = title,
+                        notes    = body.get('notes', ''),
+                        due_date = body.get('due_date', ''),
+                        priority = int(body.get('priority', 1)),
+                        project  = body.get('project', ''),
+                        tags     = body.get('tags', []),
+                    )
+                else:
+                    from prism_tasks import PrismTasks
+                    task = PrismTasks().add(title=title)
+                self._json_response({
+                    "task_id":  task.task_id,
+                    "title":    task.title,
+                    "source":   task.source,
+                    "due_date": task.due_date,
+                    "priority": task.priority,
+                    "url":      task.url,
+                })
 
             else:
                 self._error(f"Unknown route: {path}", 404)

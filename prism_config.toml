@@ -127,3 +127,10 @@ priority = "default"    # min|low|default|high|urgent
 [contacts]
 google_token = ""    # Google OAuth token with contacts.readonly scope
 auto_extract = true  # extract contacts from prism_memory automatically
+
+[tasks]
+provider       = "auto"   # "local"|"todoist"|"github"|"auto"
+todoist_token  = ""       # app.todoist.com/settings/integrations/developer
+github_token   = ""       # github.com/settings/tokens (repo scope)
+github_repo    = ""       # "owner/repo" for issue tracking
+linear_api_key = ""       # linear.app/settings/api

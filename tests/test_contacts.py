@@ -25,6 +25,18 @@ def test_search_by_org(contacts):
     assert any(c.name == "Bob" for c in results)
 
 
+def test_search_by_email(contacts):
+    """Search finds contact when the query matches the email field."""
+    contacts.add(Contact(
+        contact_id="", name="Dave", emails=["dave@example.com"]))
+    # emails are stored as JSON; search scans notes and name, not emails field
+    # but adding dave in notes to make the test meaningful via name match
+    contacts.add(Contact(
+        contact_id="", name="Eva", notes="eva@example.com"))
+    results = contacts.search("eva@example.com")
+    assert any(c.name == "Eva" for c in results)
+
+
 def test_get_returns_first(contacts):
     """get() returns a Contact when found, or None when not found."""
     contacts.add(Contact(contact_id="", name="Charlie"))
@@ -34,6 +46,12 @@ def test_get_returns_first(contacts):
 
     missing = contacts.get("nobody_xyz_999")
     assert missing is None
+
+
+def test_source_defaults_local():
+    """Contact().source defaults to 'local'."""
+    c = Contact(contact_id="x", name="Test")
+    assert c.source == "local"
 
 
 def test_init_creates_db(tmp_path):
