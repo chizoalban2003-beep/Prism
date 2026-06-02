@@ -80,3 +80,9 @@ linear_api_key = ""
 claude_api_key = ""   # get from console.anthropic.com — used as fallback when Ollama unavailable
 preferred      = ""
 ollama_host    = "http://localhost:11434"
+
+[voice]
+enabled     = true
+model       = "base"      # whisper model: tiny | base | small | medium | large
+language    = "en"        # ISO 639-1 — leave blank for auto-detect
+sample_rate = 16000       # Hz — 16000 recommended for Whisper

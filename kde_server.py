@@ -891,6 +891,53 @@ class KDEHandler(BaseHTTPRequestHandler):
                 self._json_response(card.to_json())
                 return
 
+            if path == "/voice/transcribe":
+                # Accept either JSON {"path": "/tmp/clip.wav"} or raw audio bytes
+                # with Content-Type: audio/wav | audio/mpeg | audio/flac
+                from prism_agent import PrismAgent
+                import tempfile, os as _os
+                agent = getattr(self.server, 'prism_agent', None) or PrismAgent()
+                audio_path = None
+                if isinstance(body, dict):
+                    audio_path = body.get("path", "")
+                else:
+                    # Raw bytes — write to temp file
+                    ct = self.headers.get("Content-Type", "audio/wav")
+                    ext = {"audio/mpeg": ".mp3", "audio/flac": ".flac",
+                           "audio/ogg": ".ogg"}.get(ct, ".wav")
+                    tmp = tempfile.NamedTemporaryFile(suffix=ext, delete=False)
+                    tmp.write(body if isinstance(body, bytes) else b"")
+                    tmp.close()
+                    audio_path = tmp.name
+                if not audio_path:
+                    self._error("Provide {'path': '/path/to/audio'} or raw audio bytes", 400)
+                    return
+                try:
+                    text = agent._voice.transcribe(audio_path)
+                    self._json_response({"transcript": text, "path": audio_path})
+                finally:
+                    if not isinstance(body, dict):
+                        try:
+                            _os.unlink(audio_path)
+                        except Exception:
+                            pass
+                return
+
+            if path == "/voice/status":
+                from prism_agent import PrismAgent
+                agent = getattr(self.server, 'prism_agent', None) or PrismAgent()
+                v = agent._voice
+                self._json_response({
+                    "enabled":  v._enabled,
+                    "available": v.available,
+                    "can_record": v.can_record,
+                    "backend": v._backend or "none",
+                    "record_lib": v._record_lib or "none",
+                    "model": v._model_size,
+                    "language": v._language,
+                })
+                return
+
             if path == "/ask":
                 prompt = body.get("prompt", "")
                 if not prompt:

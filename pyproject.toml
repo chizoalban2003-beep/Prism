@@ -90,6 +90,7 @@ py-modules = [
     "prism_tasks",
     "prism_tool_finder",
     "prism_tts",
+    "prism_voice",
     "sport_data",
     "sport_executor",
     "sport_spectrum",

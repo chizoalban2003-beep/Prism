@@ -44,6 +44,7 @@ from prism_autonomous import PrismAutonomous
 from prism_composer import PrismComposer, LOGIC_REGISTRY
 from prism_chain import PrismChain
 from prism_chain_expert import PrismChainExpert
+from prism_voice import PrismVoice
 
 logger = logging.getLogger(__name__)
 
@@ -146,6 +147,11 @@ class PrismAgent:
         (r"show (?:me )?(?:the )?chain|chain (?:steps?|history|log)|"
          r"how did (?:the )?chain work|what (?:steps?|logics?) did you use",
          "chain_history"),
+        (r"(?:start|begin|enable|use) (?:voice|microphone|listening|speech)|"
+         r"(?:stop|disable) (?:voice|listening|speech)|"
+         r"(?:voice|speech|microphone) (?:on|off|status|available)|"
+         r"(?:transcribe|listen|record) (?:audio|voice|speech|this)",
+         "voice"),
         (r"help|what\.can|commands|options", "help"),
         (r"turn (?:on|off)|set (?:the )?(?:lights?|thermostat|temp)|"
          r"lock|unlock|what(?:'s| is) (?:on|off)|smart home|home assistant",
@@ -215,7 +221,8 @@ class PrismAgent:
         except Exception as e:
             logger.warning("PrismMemory not available: %s", e)
             self._memory = None
-        self._tts = PrismTTS.setup()
+        self._tts   = PrismTTS.setup()
+        self._voice = PrismVoice.from_config(self._config)
         # Config is loaded above — construct with real config directly
         self._smarthome = PrismSmartHome.from_config(self._config)
         self._email    = PrismEmail.from_config(self._config)
@@ -1029,8 +1036,61 @@ class PrismAgent:
                 f"Task ID: `{task_id}`{notify}",
                 "Autonomous task started")
 
+        if intent == "voice":
+            return self._handle_voice(message, ctx)
+
         # Unknown intent — behave like a real PA
         return self._handle_unknown(intent, message, ctx)
+
+    def _handle_voice(self, message: str, ctx: dict) -> PrismCard:
+        """Handle voice/STT intents: status, enable/disable, transcribe file."""
+        msg = message.lower()
+
+        # Status query
+        if any(w in msg for w in ("status", "available", "configured")):
+            backend  = self._voice._backend or "none"
+            rec_lib  = self._voice._record_lib or "none"
+            enabled  = self._voice._enabled
+            return text_card(
+                f"Voice STT: {'enabled' if enabled else 'disabled'}\n"
+                f"Transcription backend: {backend}\n"
+                f"Recording backend: {rec_lib}\n"
+                f"can_record={self._voice.can_record}  available={self._voice.available}",
+                "Voice Status")
+
+        # Enable / disable
+        if any(w in msg for w in ("enable", "start", "on", "begin", "use")):
+            self._voice._enabled = True
+            return text_card("Voice input enabled. I'll transcribe audio you send.",
+                             "Voice On")
+        if any(w in msg for w in ("disable", "stop", "off")):
+            self._voice._enabled = False
+            return text_card("Voice input disabled.", "Voice Off")
+
+        # Transcribe a file path if mentioned
+        import re
+        path_match = re.search(r'(/[\w./~-]+\.(?:wav|mp3|flac|m4a|ogg))', message)
+        if path_match:
+            path = path_match.group(1)
+            text = self._voice.transcribe(path)
+            if text:
+                return text_card(text, f"Transcript — {path}")
+            return text_card("Could not transcribe the file. "
+                             "Check the path and install openai-whisper.",
+                             "Transcription Failed")
+
+        if not self._voice.available:
+            return text_card(
+                "No STT backend available. Install openai-whisper for local transcription:\n"
+                "  pip install openai-whisper\n"
+                "Or install faster-whisper for a lighter alternative:\n"
+                "  pip install faster-whisper",
+                "Voice — not configured")
+
+        return text_card(
+            "Voice input is ready. Send an audio file path or use the /voice/transcribe "
+            "API endpoint to upload audio.",
+            "Voice Ready")
 
     def _handle_unknown(self, intent: str, message: str, ctx: dict) -> PrismCard:
         """
