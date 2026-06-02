@@ -169,11 +169,13 @@ def _start_server_for_approval(port: int):
     from kde_server import KDEServer
 
     # Build a minimal agent
-    from kde_agent import KDEAgent
-    from kde_config import KDEConfig
+    from kde_agent import KDEAgent, KDEConfig
+    from sports_pro import SportsProProfile, Role
     try:
-        cfg   = KDEConfig()
-        agent = KDEAgent(cfg)
+        cfg     = KDEConfig()
+        profile = SportsProProfile(name="Tester", role=Role.ATHLETE,
+                                   sport="Football", team="")
+        agent   = KDEAgent(profile, cfg)
     except Exception as exc:
         pytest.skip(f"KDEAgent could not be initialised: {exc}")
 

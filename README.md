@@ -657,7 +657,8 @@ PRISM/
 │   └── prism_composer.py       Static DAG composer for multi-step requests
 │
 ├── Autonomous execution
-│   └── prism_autonomous.py     Tool synthesis (AST safety + subprocess sandbox + cache)
+│   ├── prism_autonomous.py     Tool synthesis (AST safety + subprocess sandbox + cache)
+│   └── prism_horizon.py        Cross-session long-horizon goal persistence (SQLite)
 │
 ├── Personal assistant
 │   ├── prism_email.py          IMAP/SMTP email reader and sender
@@ -688,7 +689,7 @@ PRISM/
 │   ├── domain_configs.py       Medical · Financial · Legal · HR · Supply Chain · Climate
 │   └── domain_validator.py     Expert-label accuracy validation
 │
-└── tests/                      882 pytest tests — all passing
+└── tests/                      957 pytest tests — all passing
 ```
 
 ---
@@ -714,7 +715,7 @@ PRISM/
 
 ```bash
 python -m pytest tests/ -q
-# 882 tests pass in ~90 seconds
+# 957 tests pass in ~90 seconds
 ```
 
 ---

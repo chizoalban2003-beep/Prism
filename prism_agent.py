@@ -212,11 +212,28 @@ class PrismAgent:
             ollama_model   = text_model,
             claude_api_key = claude_api_key,
         )
+
+        # PolicyEngine — resource allocation + per-action approval policy
+        try:
+            from prism_policy import PolicyEngine
+            self._policy = PolicyEngine()
+        except Exception as e:
+            logger.warning("PolicyEngine not available: %s", e)
+            self._policy = None
+
+        # PrismCollaborator — external research/synthesis bridge
+        try:
+            from prism_collaborator import PrismCollaborator
+            self._collaborator = PrismCollaborator(router=self._router)
+        except Exception as e:
+            logger.warning("PrismCollaborator not available: %s", e)
+            self._collaborator = None
+
         self._device = PrismDeviceAgent.setup(
-            policy_engine = getattr(self, '_policy', None),
+            policy_engine = self._policy,
             on_approval   = self._request_approval,
-            collaborator  = getattr(self, '_collaborator', None),
-            user          = getattr(self, '_user', 'default'),
+            collaborator  = self._collaborator,
+            user          = self._user,
         )
         try:
             self._memory = PrismMemory(ollama_host=ollama_host)
@@ -235,7 +252,7 @@ class PrismAgent:
         )
         self._instructions = PrismInstructions()
         self._discovery    = PrismServiceDiscovery(
-            collaborator  = getattr(self, '_collaborator', None),
+            collaborator  = self._collaborator,
             tool_registry = getattr(
                 getattr(self, '_device', None), '_registry', None),
         )
@@ -258,9 +275,9 @@ class PrismAgent:
             self._proactive = PrismProactive(
                 on_event=self._handle_proactive_event)
             triggers = build_default_triggers(
-                perception    = getattr(self, '_perception', None),
-                policy_engine = getattr(self, '_policy', None),
-                task_queue    = getattr(self, '_queue', None),
+                perception    = self._perception,
+                policy_engine = self._policy,
+                task_queue    = self._queue,
             )
             for t in triggers:
                 self._proactive.register(t)
@@ -280,19 +297,19 @@ class PrismAgent:
         self._autonomous = PrismAutonomous(
             llm_router   = self._router,
             device_agent = self._device,
-            policy_engine= getattr(self, '_policy', None),
+            policy_engine= self._policy,
             push         = self._push,
             task_queue   = self._queue,
         )
         self._composer = PrismComposer(
             llm_router    = self._router,
-            policy_engine = getattr(self, '_policy', None),
+            policy_engine = self._policy,
             push          = self._push,
             task_queue    = self._queue,
         )
         self._chain = PrismChain(
             llm_router         = self._router,
-            policy_engine      = getattr(self, '_policy', None),
+            policy_engine      = self._policy,
             push               = self._push,
             autonomous         = self._autonomous,
             memory             = self._memory,
@@ -301,7 +318,7 @@ class PrismAgent:
         self._organ_loader = OrganLoader(llm_router=self._router)
         self._chain_expert = PrismChainExpert(
             llm_router    = self._router,
-            policy_engine = getattr(self, '_policy', None),
+            policy_engine = self._policy,
             push          = self._push,
             autonomous    = self._autonomous,
             memory        = self._memory,
@@ -368,27 +385,24 @@ class PrismAgent:
         db_path: str = "~/.prism/prism.db",
     ) -> "PrismAgent":
         try:
-            from kde_agent import KDEAgent
+            from kde_agent import KDEAgent, KDEConfig
             from sports_pro import Role
 
             kde = KDEAgent.setup(
                 name=name,
-                role=Role.UNIVERSAL,
+                role=Role.ATHLETE,   # Role.UNIVERSAL exists only on UserRole
                 sport=sport,
                 team=team,
-                config=type(
-                    'C',
-                    (),
-                    {
-                        'db_path': db_path,
-                        'media_dir': '~/.prism/media',
-                        'ollama_model': 'mistral',
-                        'ollama_host': 'http://localhost:11434',
-                        'auto_watch': False,
-                    },
-                )(),
+                config=KDEConfig(
+                    db_path     = db_path,
+                    media_dir   = "~/.prism/media",
+                    ollama_model= "mistral",
+                    ollama_host = "http://localhost:11434",
+                    auto_watch  = False,
+                ),
             )
-        except Exception:
+        except Exception as e:
+            logger.warning("KDEAgent.setup failed: %s", e)
             kde = None
         try:
             from ksa_agent import KSAgent
@@ -651,20 +665,16 @@ class PrismAgent:
             )
         if intent == "show_policies":
             from prism_responses import policy_view_card
-            _policy = getattr(self, '_policy', None)
-            _user   = getattr(self, '_user', 'default')
-            if _policy:
-                data = _policy.show_policies(_user)
+            if self._policy:
+                data = self._policy.show_policies(self._user)
             else:
                 data = {"allocations": {}, "note": "No policies set yet. "
                         "Try: 'set my food budget to £80'"}
             return policy_view_card(data)
 
         if intent == "update_policy":
-            _policy = getattr(self, '_policy', None)
-            _user   = getattr(self, '_user', 'default')
-            if _policy:
-                result = _policy.parse_policy_update(message, _user)
+            if self._policy:
+                result = self._policy.parse_policy_update(message, self._user)
                 if result:
                     return text_card(result, "Policy updated")
             return text_card("Policy engine not configured.", "Policy")
