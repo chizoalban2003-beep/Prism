@@ -58,7 +58,7 @@ class PrismContacts:
         if not contact.contact_id:
             import hashlib
             contact.contact_id = hashlib.sha256(
-                contact.name.encode()).hexdigest()[:10]
+                contact.name.encode()).hexdigest()[:16]
         with sqlite3.connect(self._db) as c:
             c.execute("""INSERT OR REPLACE INTO contacts
                 VALUES(?,?,?,?,?,?,?,?,?,?)""", (
@@ -157,7 +157,6 @@ class PrismContacts:
             raw, _ = llm_router.call(
                 prompt, min_capability=1, max_tokens=300, json_mode=True)
             try:
-                import re as _re
                 clean = raw.strip().lstrip("```json").rstrip("```").strip()
                 people = json.loads(clean)
                 for p in (people or []):

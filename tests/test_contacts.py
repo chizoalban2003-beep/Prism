@@ -1,7 +1,4 @@
 """Tests for prism_contacts.py — Gap Prompt 14b."""
-import tempfile
-from pathlib import Path
-
 import pytest
 
 from prism_contacts import Contact, PrismContacts
