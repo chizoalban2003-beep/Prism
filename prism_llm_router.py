@@ -417,15 +417,15 @@ class LLMRouter:
             host = urlparse(url).hostname or ""
         except Exception:
             host = ""
-        if host.endswith("openai.com"):
+        if host == "api.openai.com" or host.endswith(".openai.com"):
             return "openai"
-        if host.endswith("deepseek.com"):
+        if host == "api.deepseek.com" or host.endswith(".deepseek.com"):
             return "deepseek"
-        if host.endswith("mistral.ai"):
+        if host == "api.mistral.ai" or host.endswith(".mistral.ai"):
             return "mistral"
-        if host.endswith("groq.com"):
+        if host == "api.groq.com" or host.endswith(".groq.com"):
             return "groq"
-        if host.endswith("together.xyz"):
+        if host == "api.together.xyz" or host.endswith(".together.xyz"):
             return "together"
         return "openai_compat"
 
