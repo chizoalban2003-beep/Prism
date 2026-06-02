@@ -25,6 +25,7 @@ class DiscoveredService:
     config_data:  dict = field(default_factory=dict)   # stored credentials/tokens
     created_at:   float = field(default_factory=time.time)
     last_used:    float = 0.0
+    auto_buildable: bool = False  # True when PRISM can synthesise the integration autonomously
 
 class PrismServiceDiscovery:
     """
@@ -130,6 +131,7 @@ class PrismServiceDiscovery:
             access_method = method,
             setup_steps   = steps,
             executor_code = "",
+            auto_buildable= (method in ("official_api", "webhook", "unofficial_api")),
         )
         self._store(service)
         return service, questions

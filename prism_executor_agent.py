@@ -265,6 +265,7 @@ class PrismExecutorAgent:
         spending_limits: Optional[dict] = None,
         db_path: str = "~/.prism/executions.db",
         tool_registry: Optional[ToolRegistry] = None,
+        autonomous=None,
     ) -> None:
         self.registry = tool_registry or registry or ToolRegistry()
         self.policy_engine = policy_engine
@@ -274,6 +275,7 @@ class PrismExecutorAgent:
         self.spending_limits = spending_limits or dict(self.SPENDING_LIMITS)
         self.db_path = Path(db_path).expanduser()
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._autonomous = autonomous
         self._init_log_db()
 
     def plan(
@@ -375,6 +377,20 @@ class PrismExecutorAgent:
                 elapsed_ms,
                 option.description,
                 executor_used=option.name,
+            )
+            self._log(plan, final)
+            return final
+
+        # Autonomous engine fallback: synthesise and run a tool on the fly
+        if hasattr(self, '_autonomous') and self._autonomous:
+            autonomous_result = self._autonomous.execute_sync(
+                plan.task, context or {})
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            final = ExecutionResult(
+                True, {"result": autonomous_result},
+                "autonomous", elapsed_ms,
+                autonomous_result[:200],
+                executor_used="autonomous",
             )
             self._log(plan, final)
             return final

@@ -39,6 +39,7 @@ from prism_push   import PrismPush
 from prism_contacts import PrismContacts
 from prism_tasks    import PrismTasks
 from prism_calibration import PrismCalibration
+from prism_autonomous import PrismAutonomous
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +128,13 @@ class PrismAgent:
         (r"remind me|set (?:a )?reminder|alert me (?:in|at|when)|"
          r"don't let me forget|in (\d+) (?:minute|hour|day)|"
          r"at (\d+(?::\d+)?(?:am|pm)?)", "reminder"),
+        (r"^(?:yes[,.]?|yeah[,.]?|go ahead|approved?|confirm|do it|proceed)[\s!.]*$",
+         "approve_pending"),
+        (r"^(?:no[,.]?|cancel|stop|don't|abort|never mind)[\s!.]*$",
+         "cancel_pending"),
+        (r"(?:what tools|learned tools|acquired tools|"
+         r"what can you now do|new capabilities|tool list)",
+         "list_tools"),
         (r"help|what\.can|commands|options", "help"),
         (r"turn (?:on|off)|set (?:the )?(?:lights?|thermostat|temp)|"
          r"lock|unlock|what(?:'s| is) (?:on|off)|smart home|home assistant",
@@ -249,6 +257,13 @@ class PrismAgent:
         self._task_mgr     = PrismTasks.from_config(self._config)
         self._calibration  = PrismCalibration()
         self._last_decision: dict = {}
+        self._autonomous = PrismAutonomous(
+            llm_router   = self._router,
+            device_agent = self._device,
+            policy_engine= getattr(self, '_policy', None),
+            push         = self._push,
+            task_queue   = self._queue,
+        )
 
         # Re-construct email/calendar/smarthome with the real config now that
         # prism_config.toml has been loaded.  The initial construction above
@@ -871,71 +886,106 @@ class PrismAgent:
                 for e in history[:8])
             return text_card(f"{summary}\n\n{lines}", "Calibration history")
 
+        if intent == "approve_pending":
+            pending = getattr(self, '_pending_approval', None)
+            if pending:
+                task    = pending.get("task","")
+                self._pending_approval = None
+                task_id = self._autonomous.execute_async(task, ctx)
+                return text_card(
+                    f"Approved. Executing autonomously.\nTask ID: `{task_id}`\n"
+                    f"I'll notify you when done.",
+                    "Authorised — working on it")
+            return text_card("No pending task to approve.", "Nothing pending")
+
+        if intent == "cancel_pending":
+            self._pending_approval = None
+            return text_card("Cancelled. Nothing was executed.", "Cancelled")
+
+        if intent == "list_tools":
+            tools = self._autonomous.list_tools()
+            if not tools:
+                return text_card(
+                    "No custom tools acquired yet. Give me a task I don't know how "
+                    "to do and I'll build the tool for it.",
+                    "Learned tools")
+            lines = "\n".join(
+                f"• **{t.name}** — {t.description} (used {t.use_count}×)"
+                for t in tools[:15])
+            return text_card(lines, f"Learned tools ({len(tools)})")
+
         # Unknown intent — behave like a real PA
         return self._handle_unknown(intent, message, ctx)
 
     def _handle_unknown(self, intent: str, message: str, ctx: dict) -> PrismCard:
         """
-        Real-PA fallback: when PRISM can't handle a request directly,
-        it identifies what it would need, attempts discovery, and
-        offers concrete next steps — never just says 'I don't know'.
+        Managerial PA fallback: PRISM autonomously acquires the capability,
+        executes the task, and reports back. Never returns instructions to the user.
         """
+        # Check if autonomous engine has a cached tool for this
+        if self._autonomous.can_handle(message):
+            task_id = self._autonomous.execute_async(
+                message, ctx, on_complete=None)
+            return text_card(
+                f"On it. I have a tool for this — working in the background.\n"
+                f"Task ID: {task_id}\n"
+                f"I'll notify you when done."
+                + (" Check your phone." if self._push.configured else ""),
+                "Working on it")
+
+        # No cached tool — synthesise and execute asynchronously
         router = getattr(self, '_router', None)
 
-        # Step 1: Try service discovery — maybe this is a known integration
-        first_word = message.split()[0] if message else ""
-        if self._discovery.is_known(first_word):
-            # Delegate to discover_service path
-            return self._execute("discover_service", message, ctx)
-
-        # Step 2: Ask LLM what capability this request needs
-        capability_needed = ""
-        fallback_action   = ""
+        # Ask LLM whether this needs approval or is safe to do autonomously
+        approval_needed = False
+        capability_desc = ""
         if router:
-            cap_prompt = (
-                f"A user said: '{message}'\n"
-                f"An AI assistant cannot handle this yet. In one short sentence each:\n"
-                f"1. What specific tool or integration would handle this?\n"
-                f"2. What is the closest thing the assistant CAN do instead?\n"
-                f"Return JSON: {{\"needs\": \"...\", \"fallback\": \"...\"}}"
+            assess_prompt = (
+                f"A personal assistant is about to autonomously handle: '{message}'\n"
+                f"Assess:\n"
+                f"1. What external service/capability is needed?\n"
+                f"2. Does this require user approval before acting "
+                f"(e.g. sending emails, making purchases, deleting data)? yes/no\n"
+                f"Return JSON: {{\"capability\": \"...\", \"needs_approval\": true/false, "
+                f"\"reason\": \"...\"}}"
             )
-            raw, _ = router.call(cap_prompt, min_capability=1, max_tokens=150, json_mode=True)
+            raw, _ = router.call(assess_prompt, min_capability=1,
+                                  max_tokens=150, json_mode=True)
             try:
                 import json as _j
                 clean = raw.strip().lstrip("```json").rstrip("```").strip()
-                parsed = _j.loads(clean)
-                capability_needed = parsed.get("needs", "")
-                fallback_action   = parsed.get("fallback", "")
+                assessment = _j.loads(clean)
+                capability_desc  = assessment.get("capability", "")
+                approval_needed  = assessment.get("needs_approval", False)
             except Exception:
                 pass
 
-        # Step 3: Check if service discovery can research this
-        if capability_needed:
-            try:
-                service, questions = self._discovery.discover(
-                    service_name = capability_needed[:50],
-                    user_intent  = message,
-                    constraints  = {},
-                )
-                steps = "\n".join(f"  {i+1}. {s}"
-                                   for i, s in enumerate(service.setup_steps[:3]))
-                body = (
-                    f"I can't do that yet — I'd need: **{capability_needed}**\n\n"
-                    f"Here's how I could set that up:\n{steps}\n\n"
-                )
-                if fallback_action:
-                    body += f"In the meantime, I can: {fallback_action}\n"
-                if questions:
-                    body += f"\nTo proceed, I need to know:\n" + "\n".join(
-                        f"• {q}" for q in questions[:2])
-                return text_card(body, "I'd need a new capability for this")
-            except Exception:
-                pass
+        # Gate destructive/external actions behind policy
+        if approval_needed:
+            # Store pending and ask
+            self._pending_approval = {
+                "task":   message,
+                "reason": f"This requires: {capability_desc}. Approve autonomous execution?"
+            }
+            return text_card(
+                f"I can do this, but it involves **{capability_desc}** which may "
+                f"affect external systems.\n\n"
+                f"Say **'yes, go ahead'** to authorise, or **'cancel'** to stop.\n\n"
+                f"Task: {message}",
+                "Approval needed before I proceed")
 
-        # Step 4: Minimal honest fallback
-        fallback_msg = (
-            "I don't have a tool for that yet."
-            + (f" Closest I can do: {fallback_action}" if fallback_action else "")
-            + "\n\nTry: 'help' to see what I can do, or describe what you need and I'll research an integration."
-        )
-        return text_card(fallback_msg, "Not yet supported")
+        # Safe to proceed autonomously
+        task_id = self._autonomous.execute_async(message, ctx)
+
+        notify_suffix = ""
+        if self._push and self._push.configured:
+            notify_suffix = "\nYou'll get a push notification when it's done."
+
+        capability_line = f"\nAcquiring capability: **{capability_desc}**" if capability_desc else ""
+
+        return text_card(
+            f"On it — handling this autonomously in the background.{capability_line}\n"
+            f"Task ID: `{task_id}`{notify_suffix}\n\n"
+            f"I'll synthesise the tool, install any dependencies, execute, "
+            f"and report back.",
+            "Autonomous execution started")

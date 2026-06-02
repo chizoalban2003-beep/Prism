@@ -126,6 +126,66 @@ Background loop:
 | LLM routing (Claude API) | `prism_llm_router.py` | Working (needs API key) |
 | Multi-user | `prism_agent.py` | Working (`[user].name` in config) |
 | Unknown-tool PA fallback | `prism_agent.py` | Working (discovers + plans integrations) |
+| Autonomous tool synthesis | `prism_autonomous.py` | Working — synthesises, installs, executes, caches |
+
+---
+
+## Autonomous Execution
+
+PRISM is a managerial PA with full autonomy. When asked to do something it has no built-in tool for, instead of returning instructions to the user it:
+
+1. **Synthesises a Python tool on demand** — the LLM writes a self-contained `execute(task, params) -> str` module
+2. **Safety-checks the code** — a strict pattern blocklist rejects any code containing `eval`, `exec`, `os.system`, `shutil.rmtree`, `socket.connect`, or unguarded file writes
+3. **Installs pip dependencies** — any required packages are installed automatically with `pip install --quiet`
+4. **Executes and returns the result** — the module is dynamically loaded and run in-process
+5. **Caches the tool** — synthesised tools are stored as JSON in `~/.prism/tools/` and reused for identical or similar future tasks
+6. **Push-notifies on completion** — if push is configured, you get a notification on your phone when done
+
+### Approval gate
+
+Actions that may affect external systems (send emails, make purchases, delete data) are held for one-time approval before executing:
+
+```
+You: order 10 roses from florist.com
+PRISM: I can do this, but it involves external purchase which may
+       affect external systems.
+       Say 'yes, go ahead' to authorise, or 'cancel' to stop.
+You: yes, go ahead
+PRISM: Approved. Executing autonomously. Task ID: `a3f8b2c1`
+       I'll notify you when done.
+```
+
+Approval is remembered per-conversation — once approved, PRISM acts. `cancel` or `no` drops the pending task with no side effects.
+
+### Viewing accumulated tools
+
+Say **"what tools have you learned?"** (or "tool list", "acquired tools", "new capabilities") to see everything PRISM has synthesised:
+
+```
+You: what tools have you learned?
+PRISM: Learned tools (3)
+• weather_lookup — fetches current weather via Open-Meteo (used 4×)
+• currency_convert — converts currencies using exchangerate.host (used 2×)
+• hacker_news — fetches top Hacker News stories via the public API (used 1×)
+```
+
+### Tool cache location
+
+All synthesised tools are stored in `~/.prism/tools/` as JSON files containing the tool name, description, synthesised code, requirements, use count, and last result. They persist across sessions — PRISM accumulates capability over time without re-synthesising.
+
+### Safety blocklist
+
+The following patterns are **always blocked** regardless of LLM output:
+
+| Pattern | Reason |
+|---|---|
+| `os.system(` | Shell injection |
+| `eval(` / `exec(` | Arbitrary code execution |
+| `shutil.rmtree` | Recursive deletion |
+| `os.remove(` | File deletion |
+| `socket.connect` | Raw socket access |
+| `.chmod(` | Permission changes |
+| `open(..., "w"` | Unguarded file write |
 
 ---
 
