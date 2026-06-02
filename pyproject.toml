@@ -62,6 +62,8 @@ py-modules = [
     "prism_chain",
     "prism_chain_bench",
     "prism_chain_expert",
+    "prism_chain_theory",
+    "prism_chain_theory_bench",
     "prism_composer",
     "prism_calendar",
     "prism_calibration",

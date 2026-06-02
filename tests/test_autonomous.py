@@ -1,7 +1,7 @@
 import json
 import tempfile
-from unittest.mock import MagicMock, patch
-from prism_autonomous import PrismAutonomous, _is_safe_code, AcquiredTool
+from unittest.mock import MagicMock
+from prism_autonomous import PrismAutonomous, _is_safe_code
 
 
 def _make_engine(synthesised_code=None):
@@ -18,7 +18,7 @@ def _make_engine(synthesised_code=None):
         push=MagicMock(configured=False),
     )
     # Override tool dir to temp
-    import pathlib, os
+    import pathlib
     eng.TOOL_DIR = pathlib.Path(tempfile.mkdtemp())
     return eng
 
@@ -106,7 +106,6 @@ def test_subprocess_timeout():
     # Tool that hangs — should timeout
     code = "import time\ndef execute(task, params):\n    time.sleep(999)\n    return 'done'"
     # Override safety check since time is allowed
-    from prism_autonomous import _is_safe_code
     # time.sleep is fine, but we need to monkeypatch timeout to be short
     eng = _make_engine(synthesised_code=code)
     # Patch timeout to 2s for test speed

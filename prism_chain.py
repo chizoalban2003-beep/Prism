@@ -7,10 +7,13 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Optional
 
 # Evaluator prompt reused from expert chain — narrow, single-responsibility role
 from prism_chain_expert import EVALUATOR_PROMPT
+
+if TYPE_CHECKING:
+    from prism_responses import PrismCard
 
 logger = logging.getLogger(__name__)
 
@@ -147,13 +150,15 @@ Rules:
 
     def __init__(self, llm_router=None, policy_engine=None,
                   push=None, autonomous=None, memory=None,
-                  use_evaluator: bool = True):
-        self._router        = llm_router
-        self._policy        = policy_engine
-        self._push          = push
-        self._autonomous    = autonomous
-        self._memory        = memory
-        self._use_evaluator = use_evaluator
+                  use_evaluator: bool = True,
+                  interceptor_policy=None):
+        self._router             = llm_router
+        self._policy             = policy_engine
+        self._push               = push
+        self._autonomous         = autonomous
+        self._memory             = memory
+        self._use_evaluator      = use_evaluator
+        self._interceptor_policy = interceptor_policy
 
         # Thread-safety note: _state_lock protects the internal results list
         # in _execute_branch. The append to state.steps happens in run() which
@@ -213,7 +218,6 @@ Rules:
 
         Returns a PrismCard with the composed final answer.
         """
-        from prism_responses import text_card
 
         if not self._router:
             logger.debug("PrismChain: no router, skipping chain")
@@ -277,6 +281,49 @@ Rules:
                     decision.next_logic, decision.next_message,
                     base_ctx, agent_execute_fn)
                 elapsed = (time.time() - t0) * 1000
+
+                # ── INTERCEPTOR POLICY: active rerouting ──────────────────────
+                if self._interceptor_policy is not None:
+                    intercept = self._interceptor_policy.intercept(
+                        decision.next_logic, logic_result,
+                        "", state.goal)
+                    if intercept is not None:
+                        logger.info(
+                            "[chain %s] Interceptor fired: %s → %s (%s)",
+                            state.chain_id, decision.next_logic,
+                            intercept.substitute_logic, intercept.reason)
+                        # Record the original step (unscored)
+                        orig_step = ChainStep(
+                            step_num    = step_num,
+                            logic       = decision.next_logic,
+                            message_in  = decision.next_message[:200],
+                            result_out  = logic_result[:400],
+                            policy_note = f"[intercepted: {intercept.reason}]",
+                            duration_ms = elapsed,
+                        )
+                        state.steps.append(orig_step)
+                        # Run substitute logic immediately
+                        t_sub = time.time()
+                        sub_result = self._logic_node(
+                            intercept.substitute_logic,
+                            intercept.substitute_message,
+                            base_ctx, agent_execute_fn)
+                        sub_elapsed = (time.time() - t_sub) * 1000
+                        sub_step = ChainStep(
+                            step_num    = step_num,
+                            logic       = intercept.substitute_logic,
+                            message_in  = intercept.substitute_message[:200],
+                            result_out  = sub_result[:400],
+                            policy_note = f"[intercept substitute for {decision.next_logic}]",
+                            duration_ms = sub_elapsed,
+                        )
+                        state.steps.append(sub_step)
+                        state.accumulated += (
+                            f"\n\n[Step {step_num} — INTERCEPTED {decision.next_logic}"
+                            f" → {intercept.substitute_logic}]\n"
+                            f"Reason: {intercept.reason}\n"
+                            f"Substitute result: {sub_result[:300]}")
+                        continue
 
                 # ── POLICY NODE: check result ─────────────────────────────────
                 policy_note = self._policy_node(

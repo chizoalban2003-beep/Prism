@@ -14,7 +14,6 @@ import argparse
 import json
 import time
 from dataclasses import dataclass, field
-from typing import Callable
 from unittest.mock import MagicMock
 
 from prism_responses import text_card
@@ -88,14 +87,14 @@ class BenchReport:
             print(f"  Expected logics:  {tc['expects']}")
             print(f"  Type:             {tc['type']}")
             if g:
-                print(f"\n  GENERAL chain:")
+                print("\n  GENERAL chain:")
                 print(f"    Logics used:  {g.logics_used}")
                 print(f"    LLM calls:    {g.n_llm_calls}")
                 print(f"    Duration:     {g.duration_ms:.0f}ms")
                 print(f"    Answer len:   {g.answer_len} chars")
                 if g.error: print(f"    Error:        {g.error}")
             if e:
-                print(f"\n  EXPERT chain:")
+                print("\n  EXPERT chain:")
                 print(f"    Logics used:  {e.logics_used}")
                 print(f"    LLM calls:    {e.n_llm_calls}")
                 print(f"    Duration:     {e.duration_ms:.0f}ms")

@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import io
 import logging
 import os
 import tempfile
 import threading
-import time
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -152,7 +150,6 @@ class PrismVoice:
 
     def _record_sounddevice(self, seconds: float) -> str:
         import sounddevice as sd
-        import numpy as np
         import wave
 
         logger.debug("PrismVoice: recording %.1fs via sounddevice", seconds)

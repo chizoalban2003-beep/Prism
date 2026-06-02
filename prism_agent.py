@@ -41,7 +41,7 @@ from prism_contacts import PrismContacts
 from prism_tasks    import PrismTasks
 from prism_calibration import PrismCalibration
 from prism_autonomous import PrismAutonomous
-from prism_composer import PrismComposer, LOGIC_REGISTRY
+from prism_composer import PrismComposer
 from prism_chain import PrismChain
 from prism_chain_expert import PrismChainExpert
 from prism_voice import PrismVoice

@@ -3,7 +3,7 @@ import sys
 import wave
 import struct
 import tempfile
-from unittest.mock import MagicMock, patch, PropertyMock
+from unittest.mock import MagicMock, patch
 from prism_voice import PrismVoice
 
 
@@ -197,7 +197,7 @@ def test_listen_once_transcribes_recording():
 # ── background listening ──────────────────────────────────────────────────────
 
 def test_start_background_calls_callback():
-    import threading, time
+    import time
     v = _make_voice(backend="whisper", record_lib="sounddevice")
     received = []
 
@@ -214,7 +214,6 @@ def test_start_background_calls_callback():
 
 
 def test_start_background_does_not_duplicate_thread():
-    import time
     v = _make_voice(backend="whisper", record_lib="sounddevice")
 
     with patch.object(v, "listen_once", return_value=""):
@@ -231,14 +230,6 @@ def test_start_background_does_not_duplicate_thread():
 
 def test_detect_transcription_backend_no_deps():
     """When all optional libs missing, returns empty string without raising."""
-    v = PrismVoice.__new__(PrismVoice)
-    with patch.dict(sys.modules, {"whisper": None,
-                                   "faster_whisper": None,
-                                   "speech_recognition": None}):
-        # Simulate all imports failing
-        original = __builtins__.__import__ if hasattr(__builtins__, "__import__") else __import__
-        backend = v._detect_transcription_backend.__func__(v) if False else ""
-    # Just verify attribute exists and is a string after normal construction
     v2 = PrismVoice(enabled=False)
     assert isinstance(v2._backend, str)
 

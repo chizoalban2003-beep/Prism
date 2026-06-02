@@ -7,7 +7,10 @@ import threading
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from prism_responses import PrismCard
 
 logger = logging.getLogger(__name__)
 
@@ -255,7 +258,6 @@ class PrismChainExpert:
                  f"{n_steps} logic steps · {n_llm} LLM calls · "
                  f"{total_ms/1000:.1f}s · {logics}")
 
-        from prism_responses import text_card
         return text_card(state.final_answer, title)
 
     # ── Specialised LLM nodes ─────────────────────────────────────────────────

@@ -1,7 +1,7 @@
 import json
 import tempfile
 import pathlib
-from unittest.mock import MagicMock, call
+from unittest.mock import MagicMock
 from prism_chain import PrismChain, ChainState, ChainStep, LLMDecision, BranchResult
 from prism_responses import text_card
 
@@ -252,7 +252,7 @@ def test_chain_persists_to_db():
     c = _make_chain([step1, done])
     c._db = pathlib.Path(tempfile.mktemp(suffix=".db"))
     c._init_db()
-    card = c.run("tell me about python", _agent, {})
+    c.run("tell me about python", _agent, {})
     recent = c.recent_chains()
     assert len(recent) >= 1
     assert "python" in recent[0]["original"].lower()

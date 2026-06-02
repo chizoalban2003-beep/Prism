@@ -1,8 +1,7 @@
 import json
 from unittest.mock import MagicMock
 from prism_chain_expert import (
-    PrismChainExpert, ExpertChainState, NodeTrace,
-    ROUTER_PROMPT, EVALUATOR_PROMPT, BRANCH_JUDGE_PROMPT, SYNTHESISER_PROMPT,
+    PrismChainExpert, ExpertChainState, ROUTER_PROMPT, EVALUATOR_PROMPT, BRANCH_JUDGE_PROMPT, SYNTHESISER_PROMPT,
 )
 from prism_responses import text_card
 import tempfile, pathlib

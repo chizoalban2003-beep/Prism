@@ -6,7 +6,10 @@ import time
 import threading
 import uuid
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
+
+if TYPE_CHECKING:
+    from prism_responses import PrismCard
 
 logger = logging.getLogger(__name__)
 
@@ -230,7 +233,6 @@ Rules:
 
         Returns a single composed PrismCard summarising all step results.
         """
-        from prism_responses import text_card
 
         results: dict[str, LogicResult] = {}
         completed = set()
