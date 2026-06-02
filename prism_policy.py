@@ -363,7 +363,7 @@ class PolicyEngine:
 
         # "set my ai budget to $20 a month"
         llm_budget_match = re.search(
-            r"(?:ai|llm|model) budget.*?\$?(\d+\.?\d*)", message, flags=re.IGNORECASE
+            r"(?:ai|llm|model)\s+\bbudget\b.*?\$?(\d+\.?\d*)", message, flags=re.IGNORECASE
         )
         if llm_budget_match:
             amount = float(llm_budget_match.group(1))

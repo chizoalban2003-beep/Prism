@@ -1229,8 +1229,7 @@ class KDEHandler(BaseHTTPRequestHandler):
                 router = getattr(self.server, 'llm_router', None)
                 if router:
                     provider_model = body.get('preferred', '')
-                    router._preferred = provider_model
-                    router._config['preferred'] = provider_model
+                    router.set_preferred(provider_model)
                     self._json_response({"ok": True, "preferred": provider_model})
                 else:
                     self._error("LLM router not initialised", 503)

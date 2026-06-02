@@ -102,6 +102,20 @@ MODEL_CAPABILITY: dict[str, int] = {
     "stdlib": 0,
 }
 
+# Map provider id → env variable name for API key lookup
+PROVIDER_ENV_KEYS: dict[str, str] = {
+    "openai":       "OPENAI_API_KEY",
+    "deepseek":     "DEEPSEEK_API_KEY",
+    "mistral":      "MISTRAL_API_KEY",
+    "groq":         "GROQ_API_KEY",
+    "together":     "TOGETHER_API_KEY",
+    "openai_compat":"CUSTOM_LLM_API_KEY",
+}
+
+# Multiplier applied to word-split token count to approximate real token usage.
+# LLMs use subword (BPE/WordPiece) tokenization; words average ~1.3 tokens.
+_TOKEN_WORD_RATIO = 1.3
+
 def _rank(option: LLMOption) -> int:
     for key, cap in MODEL_CAPABILITY.items():
         if key in option.model.lower():
@@ -287,8 +301,11 @@ class LLMRouter:
                     opt, prompt, max_tokens, system,
                     json_mode, conversation_history or [])
                 if text:
-                    # Track approximate spend
-                    approx_tokens = len(prompt.split()) + len(text.split())
+                    # Approximate token count using word count with correction factor
+                    # (subword tokenizers average ~1.3 tokens per whitespace-split word)
+                    approx_tokens = int(
+                        (len(prompt.split()) + len(text.split())) * _TOKEN_WORD_RATIO
+                    )
                     spend = (approx_tokens * opt.cost_per_1k_in / 1000 +
                              approx_tokens * opt.cost_per_1k_out / 1000)
                     self._record_spend(opt.provider, opt.model, spend)
@@ -306,6 +323,11 @@ class LLMRouter:
         if self._policy_engine is not None:
             self._policy_engine._log_spend(
                 "default", "llm", f"{provider}/{model}", usd, True)
+
+    def set_preferred(self, provider_model: str) -> None:
+        """Set the preferred provider/model for future calls."""
+        self._preferred = provider_model
+        self._config["preferred"] = provider_model
 
     def status_summary(self) -> dict:
         """For /llm/status endpoint and sidebar display."""
@@ -389,16 +411,21 @@ class LLMRouter:
             return LLMOption(pid, model, url, False, 0, 0, str(e)[:80])
 
     def _pid_from_url(self, url: str) -> str:
-        """Derive a provider id string from a base URL."""
-        if "openai.com" in url:
+        """Derive a provider id string from a base URL using hostname matching."""
+        from urllib.parse import urlparse
+        try:
+            host = urlparse(url).hostname or ""
+        except Exception:
+            host = ""
+        if host.endswith("openai.com"):
             return "openai"
-        if "deepseek.com" in url:
+        if host.endswith("deepseek.com"):
             return "deepseek"
-        if "mistral.ai" in url:
+        if host.endswith("mistral.ai"):
             return "mistral"
-        if "groq.com" in url:
+        if host.endswith("groq.com"):
             return "groq"
-        if "together.xyz" in url:
+        if host.endswith("together.xyz"):
             return "together"
         return "openai_compat"
 
@@ -511,17 +538,9 @@ class LLMRouter:
     def _call_openai_compat_full(self, opt: LLMOption, prompt: str,
                                   max_tokens: int, system: str,
                                   json_mode: bool, history: list = None) -> str:
-        _ENV_KEY_MAP = {
-            "openai":       "OPENAI_API_KEY",
-            "deepseek":     "DEEPSEEK_API_KEY",
-            "mistral":      "MISTRAL_API_KEY",
-            "groq":         "GROQ_API_KEY",
-            "together":     "TOGETHER_API_KEY",
-            "openai_compat":"CUSTOM_LLM_API_KEY",
-        }
         provider = opt.provider
         api_key = (self._config.get(f"{provider}_api_key")
-                   or os.environ.get(_ENV_KEY_MAP.get(provider, ""), ""))
+                   or os.environ.get(PROVIDER_ENV_KEYS.get(provider, ""), ""))
         msgs = []
         if system: msgs.append({"role": "system", "content": system})
         for h in (history or []):
