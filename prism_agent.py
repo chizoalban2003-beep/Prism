@@ -33,6 +33,12 @@ from prism_responses import (
     text_card,
 )
 
+from prism_search import PrismSearch
+from prism_push   import PrismPush
+from prism_contacts import PrismContacts, Contact
+from prism_tasks    import PrismTasks, Task
+from prism_calibration import PrismCalibration
+
 logger = logging.getLogger(__name__)
 
 
@@ -93,6 +99,30 @@ class PrismAgent:
         (r"(?:use|connect|integrate|set up|configure|add) (?:with )?(?!my )(?!the )"
          r"(?:[A-Z][a-z]+(?:\s[A-Z][a-z]+)*|[a-z]+\.[a-z]+)|"
          r"(?:can you|how do i) (?:use|access|connect to) ", "discover_service"),
+        (r"search (?:the web|online|internet|for)|"
+         r"look up|find (?:out|info|information)|"
+         r"what(?:'s| is) (?:the )?(?:latest|current|today)|"
+         r"research|who is|where is|when (?:did|does|is)",
+         "web_search"),
+        (r"(?:send|push) (?:me )?(?:a )?(?:notification|alert|reminder)|"
+         r"notify me|ping me|alert me",
+         "send_push"),
+        (r"(?:find|search|look up|who is|contact|call|email) (?:my )?(?:contact|person|colleague|client|friend)",
+         "contacts"),
+        (r"(?:add|create|make|new) (?:a )?(?:task|todo|reminder|ticket|issue)|"
+         r"(?:i need to|i have to|remember to|don't forget)",
+         "add_task"),
+        (r"(?:my )?(?:tasks?|todos?|to-do|to do|what(?:'s| is) (?:on my )?list|"
+         r"pending|backlog|open issues?)",
+         "list_tasks"),
+        (r"(?:that was|you were|that(?:'s| is)) (?:wrong|right|too|not|off|correct|"
+         r"perfect|bad|good)|(?:i (?:disagree|agree|wouldn't|would)|"
+         r"too (?:aggressive|cautious|risky|safe|bold|timid)|"
+         r"next time (?:consider|weight|prioritise)|"
+         r"(?:more|less) (?:important|weight|focus))", "calibrate"),
+        (r"(?:how am i|calibration|what have you learned|"
+         r"how (?:accurate|well) (?:are you|is prism)|"
+         r"show (?:my )?feedback history)", "calibration_summary"),
         (r"help|what\.can|commands|options", "help"),
         (r"turn (?:on|off)|set (?:the )?(?:lights?|thermostat|temp)|"
          r"lock|unlock|what(?:'s| is) (?:on|off)|smart home|home assistant",
@@ -177,6 +207,29 @@ class PrismAgent:
         except Exception as e:
             logger.warning("PrismProactive not available: %s", e)
             self._proactive = None
+
+        self._config = {}
+        try:
+            import tomllib  # Python 3.11+
+        except ImportError:
+            try:
+                import tomli as tomllib
+            except ImportError:
+                tomllib = None
+        if tomllib:
+            try:
+                with open("prism_config.toml", "rb") as f:
+                    self._config = tomllib.load(f)
+            except Exception:
+                pass
+        self._search = PrismSearch.from_config(self._config)
+        self._push   = PrismPush.from_config(self._config)
+        if self._proactive:
+            self._proactive._push = self._push
+        self._contacts     = PrismContacts.from_config(self._config)
+        self._task_mgr     = PrismTasks.from_config(self._config)
+        self._calibration  = PrismCalibration()
+        self._last_decision: dict = {}
 
     def _handle_proactive_event(self, event) -> None:
         """Store proactive notification for chat UI polling."""
@@ -643,5 +696,130 @@ class PrismAgent:
                 + (f"\n\nI also need a few answers:\n{q_text}" if q_text else "")
             )
             return text_card(body, f"Connecting: {service_name}")
+
+        if intent == "web_search":
+            results = self._search.search(message, n=5)
+            if not results:
+                answer = self._search.quick_answer(message)
+                if answer:
+                    return text_card(answer, "Search result")
+                return text_card("No results found.", "Search")
+            router = getattr(self, '_router', None)
+            if router and results:
+                context_str = "\n".join(
+                    f"{r.title}: {r.snippet}" for r in results[:4])
+                prompt  = (f"Answer this query using the search results below.\n"
+                           f"Query: {message}\nResults:\n{context_str}\n"
+                           f"Give a concise factual answer in 2-3 sentences.")
+                answer, _ = router.call(
+                    prompt, min_capability=1, max_tokens=300,
+                    conversation_history=self._chat_history[-4:])
+                body = answer or "\n".join(
+                    f"• {r.title}  {r.url}" for r in results[:4])
+            else:
+                body = "\n".join(
+                    f"• {r.title}\n  {r.snippet}\n  {r.url}"
+                    for r in results[:4])
+            return text_card(body, f"Search · {self._search.status_summary()['provider']}")
+
+        if intent == "send_push":
+            if not self._push.configured:
+                return text_card(
+                    "Push not configured. Add topic to prism_config.toml [push]. "
+                    "Get the free ntfy app at ntfy.sh — no account needed.",
+                    "Push notifications")
+            self._push.alert(message)
+            return text_card("Notification sent to your device.", "Push")
+
+        if intent == "contacts":
+            query = message.lower().replace("find","").replace(
+                "contact","").replace("who is","").strip()
+            contacts = self._contacts.search(query)
+            if not contacts:
+                return text_card(f"No contact found for '{query}'.", "Contacts")
+            c = contacts[0]
+            lines = [f"{c.name}"]
+            if c.organisation: lines.append(f"  {c.role} at {c.organisation}")
+            if c.emails:  lines.append(f"  Email: {', '.join(c.emails)}")
+            if c.phones:  lines.append(f"  Phone: {', '.join(c.phones)}")
+            if c.notes:   lines.append(f"  Notes: {c.notes[:200]}")
+            return text_card("\n".join(lines),
+                              f"Contact · {c.source}")
+
+        if intent == "add_task":
+            router = getattr(self, '_router', None)
+            parsed = None
+            if router:
+                prompt = (f"Extract task details from: '{message}'. "
+                          f"Return JSON: {{\"title\":\"...\",\"notes\":\"...\","
+                          f"\"due_date\":\"YYYY-MM-DD or empty\","
+                          f"\"priority\":1}}")
+                raw, _ = router.call(prompt, min_capability=1, max_tokens=200,
+                                      json_mode=True)
+                try:
+                    import json as _j
+                    clean = raw.strip().lstrip("```json").rstrip("```").strip()
+                    parsed = _j.loads(clean)
+                except Exception: pass
+            if parsed:
+                task = self._task_mgr.add(
+                    title    = parsed.get("title", message[:80]),
+                    notes    = parsed.get("notes",""),
+                    due_date = parsed.get("due_date",""),
+                    priority = parsed.get("priority",1),
+                )
+                return text_card(
+                    f"Added: {task.title}"
+                    + (f"  Due: {task.due_date}" if task.due_date else ""),
+                    f"Task added · {task.source}")
+            task = self._task_mgr.add(title=message[:80])
+            return text_card(f"Added: {task.title}", "Task added")
+
+        if intent == "list_tasks":
+            tasks = self._task_mgr.list_tasks(done=False)
+            if not tasks:
+                return text_card("No open tasks.", "Tasks")
+            provider = self._task_mgr._resolve_provider()
+            lines = "\n".join(
+                f"{'⚡' if t.priority>=3 else '·'} {t.title}"
+                + (f"  (due {t.due_date})" if t.due_date else "")
+                for t in tasks[:15])
+            return text_card(lines, f"Tasks ({len(tasks)}) · {provider}")
+
+        if intent == "calibrate":
+            direction = self._calibration.detect(message)
+            if not direction:
+                return text_card(
+                    "I didn't quite catch that as feedback. "
+                    "Try: 'that was too aggressive' or 'good call' "
+                    "or 'next time weight cost more heavily'.",
+                    "Calibration")
+            event = self._calibration.process(
+                message       = message,
+                direction     = direction,
+                last_decision = self._last_decision,
+                beam          = self._last_beam if hasattr(self,'_last_beam') else None,
+                llm_router    = getattr(self, '_router', None),
+            )
+            direction_text = {
+                "too_aggressive":  "noted — I'll be more conservative next time",
+                "too_conservative":"noted — I'll be bolder next time",
+                "wrong":           "understood — adjusting the model",
+                "correct":         "glad that worked — reinforcing this approach",
+            }.get(event.direction, "feedback recorded")
+            return text_card(
+                f"Calibration {direction_text}.\n"
+                f"Factor adjusted: {event.factor_id}  "
+                f"by {event.adjustment:+.3f}\n"
+                f"{self._calibration.summary()}",
+                "Model updated")
+
+        if intent == "calibration_summary":
+            summary = self._calibration.summary()
+            history = self._calibration.history(n=10)
+            lines   = "\n".join(
+                f"  [{e.domain}] {e.direction}: {e.message[:60]}"
+                for e in history[:8])
+            return text_card(f"{summary}\n\n{lines}", "Calibration history")
 
         return text_card("I'm not sure how to help with that. Try: 'help'")

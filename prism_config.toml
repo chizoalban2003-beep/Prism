@@ -53,3 +53,24 @@ ical_url    = ""                # paste a webcal:// or https:// .ics URL here
 caldav_url  = ""
 username    = ""
 password    = ""
+
+[search]
+provider      = "auto"
+brave_api_key = ""
+serp_api_key  = ""
+
+[push]
+topic    = ""
+server   = "https://ntfy.sh"
+priority = "default"
+
+[contacts]
+google_token = ""
+auto_extract = true
+
+[tasks]
+provider       = "auto"
+todoist_token  = ""
+github_token   = ""
+github_repo    = ""
+linear_api_key = ""

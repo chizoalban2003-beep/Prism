@@ -49,6 +49,7 @@ class PrismProactive:
         poll_seconds:int = 60,
     ):
         self._on_event    = on_event or (lambda e: None)
+        self._push = None
         self._db          = Path(db_path).expanduser()
         self._db.parent.mkdir(parents=True, exist_ok=True)
         self._poll        = poll_seconds
@@ -98,6 +99,8 @@ class PrismProactive:
                         event = ProactiveEvent(trigger.trigger_id, msg)
                         self._store(event)
                         self._on_event(event)
+                        if getattr(self, '_push', None) and self._push.configured:
+                            self._push.alert(event.message)
                         trigger.last_fired = now
                 except Exception as e:
                     logger.debug("Trigger %s error: %s", trigger.trigger_id, e)
@@ -176,5 +179,27 @@ def build_default_triggers(
             "budget_warning","Budget warning",
             check_every=1800, condition=check_budget,
             message=msg_budget, cooldown=86400))
+
+    def check_calibration():
+        from prism_calibration import PrismCalibration
+        cal    = PrismCalibration()
+        events = cal.history(n=1)
+        if not events:
+            return True
+        return (time.time() - events[0].timestamp) > 86400 * 3
+
+    def msg_calibration():
+        return ("How are my recent recommendations feeling? "
+                "Say 'that was too aggressive' or 'good call' "
+                "to help me learn your preferences.")
+
+    triggers.append(ProactiveTrigger(
+        "calibration_prompt", "Calibration check",
+        check_every=3600,
+        condition=check_calibration,
+        message=msg_calibration,
+        cooldown=86400 * 3,
+        enabled=True,
+    ))
 
     return triggers
