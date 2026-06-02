@@ -1,5 +1,5 @@
 from __future__ import annotations
-import json, logging, subprocess, urllib.parse, urllib.request
+import json, logging, re, subprocess, urllib.parse, urllib.request
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -150,9 +150,10 @@ class PrismMessaging:
     def _imessage_send(self, to: str, message: str) -> bool:
         if not self._is_macos():
             return False
+        safe_to  = re.sub(r'[^\d\+\-\s@\.]', '', to)
         safe_msg = message.replace('"', '\\"').replace("'", "\\'")
         script   = (f'tell application "Messages" to send '
-                    f'"{safe_msg}" to buddy "{to}" '
+                    f'"{safe_msg}" to buddy "{safe_to}" '
                     f'of (1st service whose service type is iMessage)')
         result   = subprocess.run(["osascript","-e",script],
                                    capture_output=True, text=True)

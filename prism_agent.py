@@ -45,6 +45,8 @@ class PrismAgent:
     Returns PrismCard for every request. Never raises.
     """
 
+    _PHONE_RE = r'\+?[\d\s\-]{7,}'
+
     INTENTS = [
         (r"plan|morning|daily|today|schedule", "plan"),
         (r"how (?:do|can|should) i|plan (?:for|to)|strategy for|help me (?:with|plan)|"
@@ -692,7 +694,7 @@ class PrismAgent:
             return text_card(lines, f"Documents ({len(docs)} found)")
 
         if intent == "make_call":
-            num = re.search(r'\+?[\d\s\-]{7,}', message)
+            num = re.search(self._PHONE_RE, message)
             if not num:
                 return text_card("Please include a phone number to call.", "Calls")
             if not self._calls.configured:
@@ -711,7 +713,7 @@ class PrismAgent:
                 return text_card(
                     "Messaging not configured. Add telegram_token to "
                     "prism_config.toml [messaging] to enable.", "Messaging")
-            num = re.search(r'\+?[\d\s\-]{7,}', message)
+            num = re.search(self._PHONE_RE, message)
             if "telegram" in message.lower() or (not num and "telegram" in platforms):
                 ok = self._messages.send_to_self(message)
                 return text_card("Sent to Telegram." if ok else "Send failed.", "Message")

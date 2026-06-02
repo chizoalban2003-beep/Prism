@@ -108,4 +108,4 @@ telegram_chat_id = ""
 # WhatsApp via Twilio (same credentials as [calls] if configured)
 twilio_whatsapp_sid   = ""
 twilio_whatsapp_token = ""
-twilio_whatsapp_from  = "whatsapp:+14155238886"  # Twilio sandbox default
+twilio_whatsapp_from  = "whatsapp:+14155238886"  # Twilio sandbox default — replace with your WhatsApp Business number for production

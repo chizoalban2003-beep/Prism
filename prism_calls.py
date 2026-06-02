@@ -1,5 +1,5 @@
 from __future__ import annotations
-import json, logging, os, subprocess, urllib.request, urllib.parse
+import json, logging, os, re, subprocess, urllib.request, urllib.parse
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -115,7 +115,8 @@ class PrismCalls:
         """Dial via iPhone Continuity on macOS."""
         if not self._is_macos():
             return CallResult(False, error="macOS Continuity not available")
-        script = f'tell application "FaceTime" to call "{to}"'
+        safe_to = re.sub(r'[^\d\+\-\s]', '', to)
+        script = f'tell application "FaceTime" to call "{safe_to}"'
         result = subprocess.run(["osascript","-e",script],
                                  capture_output=True, text=True)
         return CallResult(
