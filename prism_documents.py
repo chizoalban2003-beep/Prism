@@ -103,7 +103,8 @@ class PrismDocuments:
     # ── Google Drive ─────────────────────────────────────────────────────
 
     def _gdrive_search(self, query: str, n: int) -> list[Document]:
-        q   = urllib.parse.quote(f"fullText contains '{query}' and trashed=false")
+        safe_query = query.replace("'", "\\'")
+        q   = urllib.parse.quote(f"fullText contains '{safe_query}' and trashed=false")
         url = (f"https://www.googleapis.com/drive/v3/files"
                f"?q={q}&pageSize={n}"
                f"&fields=files(id,name,webViewLink,mimeType,modifiedTime,size)")
