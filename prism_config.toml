@@ -85,6 +85,7 @@ gdrive_token       = ""   # OAuth2 access token
 
 # Notion — create integration at notion.so/my-integrations
 notion_token       = ""   # "secret_..."
+notion_parent_id   = ""   # page UUID to use as parent for new pages
 
 # Dropbox — create app at dropbox.com/developers/apps
 dropbox_token      = ""   # long-lived access token

@@ -36,18 +36,21 @@ class PrismDocuments:
       dropbox_token      = ""   # long-lived access token
     """
 
-    def __init__(self, gdrive_token="", notion_token="", dropbox_token=""):
-        self._gdrive   = gdrive_token
-        self._notion   = notion_token
-        self._dropbox  = dropbox_token
+    def __init__(self, gdrive_token="", notion_token="", dropbox_token="",
+                 notion_parent_id=""):
+        self._gdrive          = gdrive_token
+        self._notion          = notion_token
+        self._dropbox         = dropbox_token
+        self._notion_parent   = notion_parent_id
 
     @classmethod
     def from_config(cls, config: dict) -> "PrismDocuments":
         d = config.get("documents", {})
         return cls(
-            gdrive_token  = d.get("gdrive_token",""),
-            notion_token  = d.get("notion_token",""),
-            dropbox_token = d.get("dropbox_token",""),
+            gdrive_token     = d.get("gdrive_token",""),
+            notion_token     = d.get("notion_token",""),
+            dropbox_token    = d.get("dropbox_token",""),
+            notion_parent_id = d.get("notion_parent_id",""),
         )
 
     @property
@@ -195,8 +198,12 @@ class PrismDocuments:
         return "\n".join(lines)[:5000]
 
     def _notion_create(self, title: str, content: str) -> Optional[Document]:
+        if not self._notion_parent:
+            logger.warning("Notion parent_id not configured; cannot create page. "
+                           "Set notion_parent_id in prism_config.toml [documents].")
+            return None
         payload = json.dumps({
-            "parent": {"type":"page_id","page_id":"root"},
+            "parent": {"type":"page_id","page_id": self._notion_parent},
             "properties": {"title":{"title":[{"text":{"content":title}}]}},
             "children": [{"object":"block","type":"paragraph",
                            "paragraph":{"rich_text":[{"text":{"content":content[:2000]}}]}}]

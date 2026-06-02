@@ -81,7 +81,7 @@ def test_dropbox_to_doc_extracts_name():
     assert doc.provider == "dropbox"
     assert doc.doc_id == "/report.pdf"
     assert doc.size_bytes == 204800
-    assert "dropbox.com" in doc.url
+    assert doc.url.startswith("https://dropbox.com/home/")
 
 
 def test_status_summary():
