@@ -61,7 +61,7 @@ class PrismProactive:
         poll_seconds:int = 60,
     ):
         self._on_event    = on_event or (lambda e: None)
-        self._push = None
+        self._push = None  # type: Optional[PrismPush] — set by PrismAgent after init
         self._db          = Path(db_path).expanduser()
         self._db.parent.mkdir(parents=True, exist_ok=True)
         self._poll        = poll_seconds

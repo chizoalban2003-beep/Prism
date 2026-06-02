@@ -281,10 +281,11 @@ class PrismAgent:
             task_queue    = self._queue,
         )
         self._chain = PrismChain(
-            llm_router   = self._router,
-            policy_engine= getattr(self, '_policy', None),
-            push         = self._push,
-            autonomous   = self._autonomous,
+            llm_router    = self._router,
+            policy_engine = getattr(self, '_policy', None),
+            push          = self._push,
+            autonomous    = self._autonomous,
+            memory        = self._memory,
         )
 
         # Re-construct email/calendar/smarthome with the real config now that
@@ -988,6 +989,15 @@ class PrismAgent:
                 "No chain execution in recent history. "
                 "Ask me something complex to trigger the chain.",
                 "Chain history")
+
+        if intent == "autonomous":
+            task_id = self._autonomous.execute_async(message, ctx)
+            notify  = " I'll push a notification when done." if (
+                self._push and self._push.configured) else ""
+            return text_card(
+                f"Working on it autonomously in the background.\n"
+                f"Task ID: `{task_id}`{notify}",
+                "Autonomous task started")
 
         # Unknown intent — behave like a real PA
         return self._handle_unknown(intent, message, ctx)

@@ -389,7 +389,7 @@ except Exception as e:
                 })
                 self._tools[tool.tool_id] = tool
             except Exception as e:
-                logger.debug("Failed to load cached tool %s: %s", path, e)
+                logger.debug("Failed to load cached tool %s: %s", path.name, e)
         logger.info("[autonomous] Loaded %d cached tools", len(self._tools))
 
     def list_tools(self) -> list[AcquiredTool]:

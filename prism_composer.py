@@ -200,6 +200,7 @@ Rules:
         for s in steps_data:
             logic = s.get("logic", "")
             if logic not in LOGIC_REGISTRY:
+                logger.info("Unknown logic '%s' in decomposition plan → autonomous", logic)
                 logic = "autonomous"   # unknown logic → autonomous engine
             steps.append(CompositionStep(
                 step_id     = s.get("step_id", str(uuid.uuid4())[:4]),

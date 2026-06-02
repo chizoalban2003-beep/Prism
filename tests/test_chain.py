@@ -1,6 +1,8 @@
 import json
+import tempfile
+import pathlib
 from unittest.mock import MagicMock, call
-from prism_chain import PrismChain, ChainState, ChainStep, LLMDecision
+from prism_chain import PrismChain, ChainState, ChainStep, LLMDecision, BranchResult
 from prism_responses import text_card
 
 
@@ -121,7 +123,6 @@ def test_chain_hits_max_steps_gracefully():
         "next_message": "keep searching",
         "reasoning": "need more info"
     })
-    synth = ("Final synthesised answer.", {})
     c = _make_chain([always_continue] * 20)
     # Override router for synthesis call
     c._router.call.side_effect = None
@@ -136,3 +137,126 @@ def test_chain_accumulates_state():
     state.accumulated = "\n[Step 1 — web_search]\nAsked: search x\nGot: found y"
     assert "web_search" in state.accumulated
     assert "found y" in state.accumulated
+
+
+# ── Branching ─────────────────────────────────────────────────────────────────
+
+def test_llm_node_returns_branch_decision():
+    branch_resp = json.dumps({
+        "done": False,
+        "is_branch": True,
+        "branches": [
+            {"logic": "web_search", "message": "search for X"},
+            {"logic": "email_read", "message": "check email for X"},
+        ],
+        "reasoning": "ambiguous — try both"
+    })
+    c = _make_chain([branch_resp])
+    state = ChainState("b1", "find info about X from web and email", "find X")
+    decision = c._llm_node(state, 1)
+    assert decision is not None
+    assert decision.is_branch
+    assert len(decision.branches) == 2
+    assert decision.branches[0]["logic"] == "web_search"
+
+def test_execute_branch_runs_parallel():
+    c = _make_chain()
+    branches = [
+        {"logic": "web_search", "message": "search A"},
+        {"logic": "calendar_read", "message": "check calendar"},
+    ]
+    results = c._execute_branch(branches, _agent, {})
+    assert len(results) == 2
+    assert all(r.success for r in results)
+
+def test_execute_branch_unknown_logic_becomes_autonomous():
+    c = _make_chain()
+    branches = [{"logic": "totally_unknown_xyz", "message": "do thing"}]
+    results = c._execute_branch(branches, _agent, {})
+    assert len(results) == 1
+    # Should have executed (autonomous fallback)
+    assert results[0].branch_id == "branch_1"
+
+def test_execute_branch_max_three():
+    c = _make_chain()
+    branches = [{"logic": "web_search", "message": f"search {i}"}
+                for i in range(5)]
+    results = c._execute_branch(branches, _agent, {})
+    assert len(results) <= 3
+
+def test_chain_with_branch_accumulates():
+    branch_resp = json.dumps({
+        "done": False,
+        "is_branch": True,
+        "branches": [
+            {"logic": "web_search", "message": "search for news"},
+            {"logic": "email_read", "message": "check emails"},
+        ],
+        "reasoning": "need both"
+    })
+    done_resp = json.dumps({
+        "done": True,
+        "answer": "Found info from web and email.",
+        "reasoning": "complete"
+    })
+    c = _make_chain([branch_resp, done_resp])
+    card = c.run("get latest news and check my email", _agent, {})
+    assert card is not None
+    assert "PARALLEL BRANCH" in card.body or card.body
+
+
+# ── Branch dataclass ──────────────────────────────────────────────────────────
+
+def test_branch_result_dataclass():
+    br = BranchResult("branch_1", "web_search", "found stuff", True, 123.4)
+    assert br.branch_id == "branch_1"
+    assert br.logic == "web_search"
+    assert br.success is True
+
+def test_llm_decision_has_branch_fields():
+    d = LLMDecision(done=False, next_logic="web_search", next_message="go",
+                    reasoning="test")
+    assert d.is_branch is False
+    assert d.branches == []
+
+def test_llm_decision_branch_mode():
+    d = LLMDecision(done=False, next_logic="", next_message="",
+                    reasoning="branching", is_branch=True,
+                    branches=[{"logic": "web_search", "message": "search"}])
+    assert d.is_branch is True
+    assert len(d.branches) == 1
+
+
+# ── Chain persistence ─────────────────────────────────────────────────────────
+
+def test_chain_persists_to_db():
+    step1 = json.dumps({
+        "done": False,
+        "next_logic": "web_search",
+        "next_message": "search python",
+        "reasoning": "need info"
+    })
+    done = json.dumps({
+        "done": True,
+        "answer": "Python is great.",
+        "reasoning": "done"
+    })
+    c = _make_chain([step1, done])
+    c._db = pathlib.Path(tempfile.mktemp(suffix=".db"))
+    c._init_db()
+    card = c.run("tell me about python", _agent, {})
+    recent = c.recent_chains()
+    assert len(recent) >= 1
+    assert "python" in recent[0]["original"].lower()
+
+def test_recent_chains_empty_db():
+    c = _make_chain()
+    c._db = pathlib.Path(tempfile.mktemp(suffix=".db"))
+    c._init_db()
+    recent = c.recent_chains()
+    assert recent == []
+
+def test_chain_no_router_returns_none():
+    c = PrismChain()   # no router
+    result = c.run("some message", _agent, {})
+    assert result is None

@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 import uuid
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
@@ -44,11 +46,25 @@ class LLMDecision:
     What the LLM decides after seeing a logic+policy result.
     This is the output of every LLM node in the alternating chain.
     """
-    done:        bool           # True = chain is complete
-    next_logic:  str            # which logic to invoke next (if not done)
-    next_message:str            # what to send to that logic
-    reasoning:   str            # LLM's reasoning (for transparency)
-    answer:      str = ""       # final answer if done=True
+    done:         bool           # True = chain is complete
+    next_logic:   str            # single next logic (simple case)
+    next_message: str
+    reasoning:    str            # LLM's reasoning (for transparency)
+    answer:       str = ""       # final answer if done=True
+    # Branching: when ambiguous, LLM spawns multiple parallel paths
+    branches:     list[dict] = field(default_factory=list)
+    # branches = [{"logic": "web_search", "message": "..."}, ...]
+    is_branch:    bool = False   # True when branches is populated
+
+
+@dataclass
+class BranchResult:
+    """Results from a parallel branch execution."""
+    branch_id:   str
+    logic:       str
+    result:      str
+    success:     bool
+    duration_ms: float
 
 
 class PrismChain:
@@ -58,6 +74,7 @@ class PrismChain:
     Architecture per iteration:
       1. LLM node: receives current state + last result
                    decides: done? or next_logic + reframed message
+                   OR: branch into multiple parallel logics
       2. Logic node: executes chosen logic via agent._execute()
       3. Policy node: checks result against policy engine
       4. State update: accumulates result into chain working memory
@@ -67,9 +84,14 @@ class PrismChain:
     results rather than being fixed upfront. Each LLM sees actual
     logic output and can change direction based on what it finds.
 
+    Branching: when genuinely ambiguous, the LLM can spawn up to 3
+    parallel logic executions and merge their results before the next
+    LLM node.  This turns the spine into a tree.
+
     Limits:
       MAX_STEPS = 8  (prevents runaway chains)
       30s per logic step (inherited from autonomous engine timeout)
+      45s per branch (per branch thread join timeout)
     """
 
     MAX_STEPS = 8
@@ -81,13 +103,27 @@ After each module runs, you evaluate its output and decide what to do next.
 Available logics:
 {registry}
 
-Your response must ALWAYS be valid JSON:
+Your response must ALWAYS be valid JSON.
+
+Single logic (most common):
 {{
   "done": false,
   "next_logic": "<logic name from list>",
   "next_message": "<exact instruction for that logic, incorporating relevant context from prior results>",
   "reasoning": "<1-2 sentences: why this logic, what you expect it to return>"
 }}
+
+When the task is ambiguous or two different logics might both be needed simultaneously, you may branch:
+{{
+  "done": false,
+  "is_branch": true,
+  "branches": [
+    {{"logic": "<logic1>", "message": "<instruction for logic1>"}},
+    {{"logic": "<logic2>", "message": "<instruction for logic2>"}}
+  ],
+  "reasoning": "<why you are branching>"
+}}
+Maximum 3 branches. Only branch when genuinely uncertain which path is better, or when two logics are truly independent and both needed.
 
 OR if the task is complete:
 {{
@@ -105,16 +141,27 @@ Rules:
 """
 
     def __init__(self, llm_router=None, policy_engine=None,
-                  push=None, autonomous=None):
+                  push=None, autonomous=None, memory=None):
         self._router     = llm_router
         self._policy     = policy_engine
         self._push       = push
         self._autonomous = autonomous
+        self._memory     = memory
+
+        # Thread-safety note: _state_lock protects the internal results list
+        # in _execute_branch. The append to state.steps happens in run() which
+        # is single-threaded; only the local `results` accumulation needs a lock.
+        self._state_lock = threading.Lock()
 
         from prism_composer import LOGIC_REGISTRY
         self._registry = LOGIC_REGISTRY
         self._registry_str = "\n".join(
             f"  {k}: {v}" for k, v in self._registry.items())
+
+        # Chain persistence DB
+        self._db = Path("~/.prism/chains.db").expanduser()
+        self._db.parent.mkdir(parents=True, exist_ok=True)
+        self._init_db()
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -162,6 +209,7 @@ Rules:
         from prism_responses import text_card
 
         if not self._router:
+            logger.debug("PrismChain: no router, skipping chain")
             return None   # caller falls back to normal routing
 
         state = ChainState(
@@ -187,40 +235,130 @@ Rules:
                             state.chain_id, step_num - 1)
                 break
 
-            # ── LOGIC NODE: execute chosen logic ──────────────────────────────
-            t0 = time.time()
-            logic_result = self._logic_node(
-                decision.next_logic, decision.next_message,
-                base_ctx, agent_execute_fn)
-            elapsed = (time.time() - t0) * 1000
+            # ── Handle branch or single logic ─────────────────────────────────
+            if decision.is_branch and decision.branches:
+                branch_results = self._execute_branch(
+                    decision.branches, agent_execute_fn, base_ctx)
 
-            # ── POLICY NODE: check result ─────────────────────────────────────
-            policy_note = self._policy_node(
-                decision.next_logic, logic_result, base_ctx)
+                # Policy check on each branch; accumulate text for next LLM node
+                branch_text = ""
+                for br in branch_results:
+                    policy_note = self._policy_node(br.logic, br.result, base_ctx)
+                    branch_text += (
+                        f"\n\n[Branch {br.branch_id} — {br.logic}]\n"
+                        f"Got: {br.result[:300]}"
+                        + (f"\nPolicy: {policy_note}" if policy_note else ""))
+                    step = ChainStep(
+                        step_num    = step_num,
+                        logic       = f"{br.logic}[{br.branch_id}]",
+                        message_in  = next((b.get("message", "") for b in decision.branches
+                                            if b.get("logic") == br.logic), "")[:200],
+                        result_out  = br.result[:400],
+                        policy_note = policy_note,
+                        duration_ms = br.duration_ms,
+                    )
+                    state.steps.append(step)
 
-            # ── STATE UPDATE ──────────────────────────────────────────────────
-            step = ChainStep(
-                step_num    = step_num,
-                logic       = decision.next_logic,
-                message_in  = decision.next_message[:200],
-                result_out  = logic_result[:400],
-                policy_note = policy_note,
-                duration_ms = elapsed,
-            )
-            state.steps.append(step)
-            # Accumulate: the growing context the next LLM node will see
-            state.accumulated += (
-                f"\n\n[Step {step_num} — {decision.next_logic}]\n"
-                f"Asked: {decision.next_message[:150]}\n"
-                f"Got: {logic_result[:350]}"
-                + (f"\nPolicy: {policy_note}" if policy_note else "")
-            )
-            logger.info("[chain %s] Step %d (%s) done in %.0fms",
-                        state.chain_id, step_num,
-                        decision.next_logic, elapsed)
+                state.accumulated += f"\n\n[Step {step_num} — PARALLEL BRANCH]{branch_text}"
+                logger.info("[chain %s] Step %d branched into %d parallel logics",
+                            state.chain_id, step_num, len(branch_results))
+
+            else:
+                # ── Single logic (existing behaviour) ─────────────────────────
+                t0 = time.time()
+                logic_result = self._logic_node(
+                    decision.next_logic, decision.next_message,
+                    base_ctx, agent_execute_fn)
+                elapsed = (time.time() - t0) * 1000
+
+                # ── POLICY NODE: check result ─────────────────────────────────
+                policy_note = self._policy_node(
+                    decision.next_logic, logic_result, base_ctx)
+
+                # ── STATE UPDATE ──────────────────────────────────────────────
+                step = ChainStep(
+                    step_num    = step_num,
+                    logic       = decision.next_logic,
+                    message_in  = decision.next_message[:200],
+                    result_out  = logic_result[:400],
+                    policy_note = policy_note,
+                    duration_ms = elapsed,
+                )
+                state.steps.append(step)
+                # Accumulate: the growing context the next LLM node will see
+                state.accumulated += (
+                    f"\n\n[Step {step_num} — {decision.next_logic}]\n"
+                    f"Asked: {decision.next_message[:150]}\n"
+                    f"Got: {logic_result[:350]}"
+                    + (f"\nPolicy: {policy_note}" if policy_note else "")
+                )
+                logger.info("[chain %s] Step %d (%s) done in %.0fms",
+                            state.chain_id, step_num,
+                            decision.next_logic, elapsed)
 
         # ── Build final card ──────────────────────────────────────────────────
-        return self._build_card(state)
+        card = self._build_card(state)
+
+        # ── Persist to SQLite ─────────────────────────────────────────────────
+        try:
+            self._save_state(state)
+        except Exception as e:
+            logger.debug("[chain] Failed to persist state: %s", e)
+
+        # ── Store chain result in memory for future retrieval ─────────────────
+        if self._memory and state.final_answer:
+            try:
+                self._memory.ingest_conversation(
+                    "assistant",
+                    f"Chain {state.chain_id}: {state.original}\n"
+                    f"Result: {state.final_answer[:300]}")
+            except Exception:
+                pass
+
+        return card
+
+    # ── Branch execution ──────────────────────────────────────────────────────
+
+    def _execute_branch(self, branches: list[dict],
+                         agent_execute_fn, ctx: dict) -> list[BranchResult]:
+        """
+        Execute multiple logic branches in parallel.
+        Results are merged into a single context string for the next LLM node.
+
+        Thread-safety note: each branch thread appends to the local `results`
+        list protected by self._state_lock.  The append to state.steps happens
+        in run() which is single-threaded, so no lock is needed there.
+        """
+        results = []
+        lock    = self._state_lock
+
+        def run_branch(b: dict, bid: str):
+            logic   = b.get("logic", "autonomous")
+            if logic not in self._registry:
+                logic = "autonomous"
+            message = b.get("message", "")
+            t0      = time.time()
+            try:
+                card    = agent_execute_fn(logic, message, ctx)
+                result  = getattr(card, "body", str(card)) or ""
+                success = True
+            except Exception as e:
+                result  = f"Branch failed: {e}"
+                success = False
+            elapsed = (time.time() - t0) * 1000
+            with lock:
+                results.append(BranchResult(bid, logic, result[:400], success, elapsed))
+
+        threads = []
+        for i, b in enumerate(branches[:3]):   # max 3 branches
+            bid = f"branch_{i+1}"
+            t   = threading.Thread(target=run_branch, args=(b, bid))
+            threads.append(t)
+            t.start()
+        for t in threads:
+            t.join(timeout=45)
+
+        return results
 
     # ── LLM node ─────────────────────────────────────────────────────────────
 
@@ -229,7 +367,7 @@ Rules:
         """
         The LLM reasoning layer between logic steps.
         Sees: original goal + all prior step results.
-        Produces: done flag OR (next_logic + reframed message).
+        Produces: done flag OR (next_logic + reframed message) OR branch.
         """
         system = self.SYSTEM_PROMPT.format(registry=self._registry_str)
 
@@ -267,6 +405,23 @@ Rules:
                 answer      = data.get("answer",""),
             )
 
+        # ── Branching path ────────────────────────────────────────────────────
+        if data.get("is_branch") and data.get("branches"):
+            branches = data["branches"]
+            # Validate each branch has logic + message
+            valid = [b for b in branches
+                     if isinstance(b, dict) and b.get("logic") and b.get("message")]
+            if valid:
+                return LLMDecision(
+                    done         = False,
+                    next_logic   = "",
+                    next_message = "",
+                    reasoning    = data.get("reasoning", ""),
+                    is_branch    = True,
+                    branches     = valid,
+                )
+
+        # ── Single logic path (existing behaviour) ────────────────────────────
         logic = data.get("next_logic","")
         if logic not in self._registry:
             logic = "autonomous"
@@ -313,6 +468,39 @@ Rules:
             except Exception:
                 pass
         return ""
+
+    # ── Chain persistence ─────────────────────────────────────────────────────
+
+    def _init_db(self):
+        import sqlite3
+        with sqlite3.connect(self._db) as c:
+            c.execute("""CREATE TABLE IF NOT EXISTS chains(
+                chain_id TEXT PRIMARY KEY,
+                original TEXT, goal TEXT,
+                accumulated TEXT, done INTEGER,
+                final_answer TEXT, n_steps INTEGER,
+                created_at REAL, updated_at REAL)""")
+
+    def _save_state(self, state: ChainState):
+        import sqlite3
+        with sqlite3.connect(self._db) as c:
+            c.execute("""INSERT OR REPLACE INTO chains VALUES(
+                ?,?,?,?,?,?,?,?,?)""", (
+                state.chain_id, state.original, state.goal,
+                state.accumulated, int(state.done),
+                state.final_answer, len(state.steps),
+                state.steps[0].timestamp if state.steps else time.time(),
+                time.time()))
+
+    def recent_chains(self, n: int = 5) -> list[dict]:
+        import sqlite3
+        with sqlite3.connect(self._db) as c:
+            rows = c.execute(
+                "SELECT chain_id,original,n_steps,done,final_answer,updated_at "
+                "FROM chains ORDER BY updated_at DESC LIMIT ?", (n,)).fetchall()
+        return [{"chain_id": r[0], "original": r[1], "n_steps": r[2],
+                 "done": bool(r[3]), "summary": r[4][:80] if r[4] else "",
+                 "updated_at": r[5]} for r in rows]
 
     # ── Output builder ────────────────────────────────────────────────────────
 

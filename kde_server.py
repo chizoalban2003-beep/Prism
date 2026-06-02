@@ -795,6 +795,25 @@ class KDEHandler(BaseHTTPRequestHandler):
                 else:
                     self._json_response({"count": 0, "services": []})
 
+            elif path == '/chain/recent':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_chain'):
+                    chains = agent._chain.recent_chains(n=int(qs.get('n', '5')))
+                    self._json_response({"chains": chains})
+                else:
+                    self._json_response({"chains": []})
+
+            elif path == '/chain/status':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_chain'):
+                    self._json_response({
+                        "max_steps":    agent._chain.MAX_STEPS,
+                        "db":           str(agent._chain._db),
+                        "recent_count": len(agent._chain.recent_chains(50)),
+                    })
+                else:
+                    self._json_response({"configured": False})
+
             elif path.startswith('/search'):
                 params = self._qs(parsed)
                 q      = params.get('q','')
