@@ -9,6 +9,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
+# Evaluator prompt reused from expert chain — narrow, single-responsibility role
+from prism_chain_expert import EVALUATOR_PROMPT
+
 logger = logging.getLogger(__name__)
 
 
@@ -21,6 +24,7 @@ class ChainStep:
     result_out:  str        # what the logic returned
     policy_note: str        # any policy annotation
     duration_ms: float
+    eval_score:  Optional[int] = None   # 1-5 from Evaluator node, None = not scored
     timestamp:   float = field(default_factory=time.time)
 
 
@@ -34,10 +38,11 @@ class ChainState:
     chain_id:     str
     original:     str           # user's original message, never changed
     goal:         str           # LLM's parsed goal, may be refined
-    steps:        list[ChainStep] = field(default_factory=list)
-    accumulated:  str = ""      # growing answer/context across steps
-    done:         bool = False
-    final_answer: str = ""
+    steps:          list[ChainStep] = field(default_factory=list)
+    accumulated:    str = ""      # growing answer/context across steps
+    done:           bool = False
+    final_answer:   str = ""
+    eval_scores:    list[int] = field(default_factory=list)  # per-step evaluator scores
 
 
 @dataclass
@@ -141,12 +146,14 @@ Rules:
 """
 
     def __init__(self, llm_router=None, policy_engine=None,
-                  push=None, autonomous=None, memory=None):
-        self._router     = llm_router
-        self._policy     = policy_engine
-        self._push       = push
-        self._autonomous = autonomous
-        self._memory     = memory
+                  push=None, autonomous=None, memory=None,
+                  use_evaluator: bool = True):
+        self._router        = llm_router
+        self._policy        = policy_engine
+        self._push          = push
+        self._autonomous    = autonomous
+        self._memory        = memory
+        self._use_evaluator = use_evaluator
 
         # Thread-safety note: _state_lock protects the internal results list
         # in _execute_branch. The append to state.steps happens in run() which
@@ -275,6 +282,10 @@ Rules:
                 policy_note = self._policy_node(
                     decision.next_logic, logic_result, base_ctx)
 
+                # ── EVALUATOR NODE: quality gate ──────────────────────────────
+                eval_score, sufficient, gap = self._evaluator_node(
+                    state.original, decision.next_logic, logic_result)
+
                 # ── STATE UPDATE ──────────────────────────────────────────────
                 step = ChainStep(
                     step_num    = step_num,
@@ -283,18 +294,39 @@ Rules:
                     result_out  = logic_result[:400],
                     policy_note = policy_note,
                     duration_ms = elapsed,
+                    eval_score  = eval_score,
                 )
                 state.steps.append(step)
+                state.eval_scores.append(eval_score)
                 # Accumulate: the growing context the next LLM node will see
+                eval_note = f"\nEval: {eval_score}/5" + (f" — still missing: {gap}" if gap else "")
                 state.accumulated += (
                     f"\n\n[Step {step_num} — {decision.next_logic}]\n"
                     f"Asked: {decision.next_message[:150]}\n"
                     f"Got: {logic_result[:350]}"
                     + (f"\nPolicy: {policy_note}" if policy_note else "")
+                    + eval_note
                 )
-                logger.info("[chain %s] Step %d (%s) done in %.0fms",
+                logger.info("[chain %s] Step %d (%s) eval=%d/5 done in %.0fms",
                             state.chain_id, step_num,
-                            decision.next_logic, elapsed)
+                            decision.next_logic, eval_score, elapsed)
+
+                # Early exit: evaluator says result is sufficient (score ≥ 4)
+                if sufficient:
+                    logger.info("[chain %s] Evaluator early exit at step %d (score %d)",
+                                state.chain_id, step_num, eval_score)
+                    state.done = True
+                    # Let the synthesiser build the final answer from accumulated context
+                    if self._router:
+                        synth_prompt = (
+                            f"Task: '{state.original}'\n\n"
+                            f"Evidence:\n{state.accumulated}\n\n"
+                            "Write a concise final answer (2-4 sentences).")
+                        state.final_answer, _ = self._router.call(
+                            synth_prompt, min_capability=1, max_tokens=250)
+                    else:
+                        state.final_answer = logic_result
+                    break
 
         # ── Build final card ──────────────────────────────────────────────────
         card = self._build_card(state)
@@ -469,6 +501,37 @@ Rules:
                 pass
         return ""
 
+    # ── Evaluator node ────────────────────────────────────────────────────────
+
+    def _evaluator_node(self, goal: str, logic: str,
+                         result: str) -> tuple[int, bool, str]:
+        """
+        Post-step quality gate using the Expert chain's EVALUATOR_PROMPT.
+        Returns (score 1-5, sufficient bool, gap description).
+        If LLM call fails, returns (3, False, "") — chain continues normally.
+        """
+        if not self._router or not self._use_evaluator:
+            return 3, False, ""
+
+        prompt = (
+            EVALUATOR_PROMPT + "\n\n"
+            f"Goal: {goal}\n"
+            f"Logic that ran: {logic}\n"
+            f"Output:\n{result[:500]}"
+        )
+        try:
+            raw, _ = self._router.call(
+                prompt, min_capability=1, max_tokens=120, json_mode=True)
+            clean = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+            data  = json.loads(clean)
+            score      = int(data.get("score", 3))
+            sufficient = bool(data.get("sufficient", False))
+            gap        = str(data.get("gap", ""))
+            return score, sufficient, gap
+        except Exception as e:
+            logger.debug("[chain] Evaluator parse failed: %s", e)
+            return 3, False, ""
+
     # ── Chain persistence ─────────────────────────────────────────────────────
 
     def _init_db(self):
@@ -479,16 +542,20 @@ Rules:
                 original TEXT, goal TEXT,
                 accumulated TEXT, done INTEGER,
                 final_answer TEXT, n_steps INTEGER,
+                avg_eval_score REAL,
                 created_at REAL, updated_at REAL)""")
 
     def _save_state(self, state: ChainState):
         import sqlite3
+        avg_score = (sum(state.eval_scores) / len(state.eval_scores)
+                     if state.eval_scores else None)
         with sqlite3.connect(self._db) as c:
             c.execute("""INSERT OR REPLACE INTO chains VALUES(
-                ?,?,?,?,?,?,?,?,?)""", (
+                ?,?,?,?,?,?,?,?,?,?)""", (
                 state.chain_id, state.original, state.goal,
                 state.accumulated, int(state.done),
                 state.final_answer, len(state.steps),
+                avg_score,
                 state.steps[0].timestamp if state.steps else time.time(),
                 time.time()))
 
@@ -496,11 +563,12 @@ Rules:
         import sqlite3
         with sqlite3.connect(self._db) as c:
             rows = c.execute(
-                "SELECT chain_id,original,n_steps,done,final_answer,updated_at "
+                "SELECT chain_id,original,n_steps,done,final_answer,"
+                "avg_eval_score,updated_at "
                 "FROM chains ORDER BY updated_at DESC LIMIT ?", (n,)).fetchall()
         return [{"chain_id": r[0], "original": r[1], "n_steps": r[2],
                  "done": bool(r[3]), "summary": r[4][:80] if r[4] else "",
-                 "updated_at": r[5]} for r in rows]
+                 "avg_eval_score": r[5], "updated_at": r[6]} for r in rows]
 
     # ── Output builder ────────────────────────────────────────────────────────
 
@@ -529,8 +597,11 @@ Rules:
             body = "Chain produced no results."
 
         logics_used = " → ".join(s.logic for s in state.steps)
+        avg_score   = (sum(state.eval_scores) / len(state.eval_scores)
+                       if state.eval_scores else None)
+        score_tag   = f" · eval {avg_score:.1f}/5" if avg_score is not None else ""
         title = (f"Chain {chain_id} · {n_steps} steps · "
-                 f"{total_ms/1000:.1f}s"
+                 f"{total_ms/1000:.1f}s{score_tag}"
                  + (f" · {logics_used}" if logics_used else ""))
 
         return text_card(body, title)

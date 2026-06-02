@@ -10,7 +10,15 @@ def _make_chain(llm_responses=None):
     router = MagicMock()
     responses = llm_responses or []
     router.call.side_effect = [(r, {}) for r in responses]
-    return PrismChain(llm_router=router)
+    return PrismChain(llm_router=router, use_evaluator=False)
+
+
+def _make_chain_eval(llm_responses=None):
+    """Chain with evaluator enabled — responses must include eval JSON slots."""
+    router = MagicMock()
+    responses = llm_responses or []
+    router.call.side_effect = [(r, {}) for r in responses]
+    return PrismChain(llm_router=router, use_evaluator=True)
 
 
 def _agent(intent, message, ctx):
@@ -260,3 +268,131 @@ def test_chain_no_router_returns_none():
     c = PrismChain()   # no router
     result = c.run("some message", _agent, {})
     assert result is None
+
+
+# ── Evaluator bolt-on ─────────────────────────────────────────────────────────
+
+def test_evaluator_disabled_returns_defaults():
+    c = _make_chain()   # use_evaluator=False
+    score, sufficient, gap = c._evaluator_node("goal", "web_search", "some result")
+    assert score == 3
+    assert sufficient is False
+    assert gap == ""
+
+
+def test_evaluator_node_sufficient():
+    eval_resp = json.dumps({"score": 5, "sufficient": True, "gap": "", "reasoning": "perfect"})
+    c = _make_chain_eval([eval_resp])
+    score, sufficient, gap = c._evaluator_node("find X", "web_search", "Found X clearly.")
+    assert score == 5
+    assert sufficient is True
+
+
+def test_evaluator_node_insufficient():
+    eval_resp = json.dumps({"score": 2, "sufficient": False,
+                             "gap": "missing date", "reasoning": "incomplete"})
+    c = _make_chain_eval([eval_resp])
+    score, sufficient, gap = c._evaluator_node("find X", "web_search", "vague result")
+    assert score == 2
+    assert not sufficient
+    assert "date" in gap
+
+
+def test_evaluator_node_bad_json_defaults():
+    c = _make_chain_eval(["not json at all"])
+    score, sufficient, gap = c._evaluator_node("goal", "logic", "result")
+    assert score == 3
+    assert not sufficient
+
+
+def test_evaluator_early_exit():
+    """Chain exits early when evaluator returns sufficient=True."""
+    step_resp = json.dumps({
+        "done": False, "next_logic": "web_search",
+        "next_message": "search it", "reasoning": "need info"
+    })
+    eval_resp = json.dumps({"score": 5, "sufficient": True, "gap": "", "reasoning": "done"})
+    synth_resp = "Here is the synthesised answer."
+
+    c = _make_chain_eval([step_resp, eval_resp, synth_resp])
+    c._db = pathlib.Path(tempfile.mktemp(suffix=".db"))
+    c._init_db()
+
+    card = c.run("find something", _agent, {})
+    assert card is not None
+    assert len(c._router.call.call_args_list) == 3  # LLM + eval + synth
+
+
+def test_evaluator_no_early_exit_on_score_3():
+    """Chain continues when evaluator score=3 (sufficient=False)."""
+    step_resp = json.dumps({
+        "done": False, "next_logic": "web_search",
+        "next_message": "search", "reasoning": "need info"
+    })
+    eval_resp = json.dumps({"score": 3, "sufficient": False,
+                             "gap": "more detail needed", "reasoning": "partial"})
+    done_resp = json.dumps({"done": True, "answer": "Final answer.", "reasoning": "done"})
+
+    c = _make_chain_eval([step_resp, eval_resp, done_resp])
+    c._db = pathlib.Path(tempfile.mktemp(suffix=".db"))
+    c._init_db()
+
+    card = c.run("find something", _agent, {})
+    assert card is not None
+    # Chain should have gone to step 2 LLM node after eval score=3
+    assert len(c._router.call.call_args_list) == 3  # LLM step1 + eval + LLM done
+
+
+def test_evaluator_score_stored_in_step():
+    step_resp = json.dumps({
+        "done": False, "next_logic": "web_search",
+        "next_message": "search", "reasoning": "need"
+    })
+    eval_resp = json.dumps({"score": 4, "sufficient": True, "gap": "", "reasoning": "good"})
+    synth_resp = "Answer."
+
+    c = _make_chain_eval([step_resp, eval_resp, synth_resp])
+    c._db = pathlib.Path(tempfile.mktemp(suffix=".db"))
+    c._init_db()
+
+    card = c.run("test", _agent, {})
+    assert card is not None
+    # ChainState eval_scores should have a 4
+    # We check via the card title which includes eval score
+    assert "eval" in card.title.lower() or "4" in card.title
+
+
+def test_evaluator_avg_score_in_recent_chains():
+    step_resp = json.dumps({
+        "done": False, "next_logic": "web_search",
+        "next_message": "search", "reasoning": "need"
+    })
+    eval_resp = json.dumps({"score": 4, "sufficient": True, "gap": "", "reasoning": "good"})
+    synth_resp = "Answer."
+
+    c = _make_chain_eval([step_resp, eval_resp, synth_resp])
+    c._db = pathlib.Path(tempfile.mktemp(suffix=".db"))
+    c._init_db()
+
+    c.run("test eval persistence", _agent, {})
+    recent = c.recent_chains()
+    assert len(recent) >= 1
+    assert recent[0]["avg_eval_score"] == 4.0
+
+
+def test_evaluator_chain_step_has_eval_score():
+    step = ChainStep(
+        step_num=1, logic="web_search",
+        message_in="search", result_out="result",
+        policy_note="", duration_ms=100.0, eval_score=4
+    )
+    assert step.eval_score == 4
+
+
+def test_evaluator_step_default_none():
+    step = ChainStep(
+        step_num=1, logic="web_search",
+        message_in="search", result_out="result",
+        policy_note="", duration_ms=100.0
+    )
+    assert step.eval_score is None
