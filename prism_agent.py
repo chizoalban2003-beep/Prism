@@ -41,6 +41,7 @@ from prism_contacts import PrismContacts
 from prism_tasks    import PrismTasks
 from prism_calibration import PrismCalibration
 from prism_autonomous import PrismAutonomous
+from prism_composer import PrismComposer, LOGIC_REGISTRY
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +137,10 @@ class PrismAgent:
         (r"(?:what tools|learned tools|acquired tools|"
          r"what can you now do|new capabilities|tool list)",
          "list_tools"),
+        (r"how did you do that|what steps did you take|"
+         r"explain (?:your )?(?:steps?|process|plan)|"
+         r"show (?:me )?(?:the )?steps",
+         "explain_composition"),
         (r"help|what\.can|commands|options", "help"),
         (r"turn (?:on|off)|set (?:the )?(?:lights?|thermostat|temp)|"
          r"lock|unlock|what(?:'s| is) (?:on|off)|smart home|home assistant",
@@ -265,6 +270,12 @@ class PrismAgent:
             push         = self._push,
             task_queue   = self._queue,
         )
+        self._composer = PrismComposer(
+            llm_router    = self._router,
+            policy_engine = getattr(self, '_policy', None),
+            push          = self._push,
+            task_queue    = self._queue,
+        )
 
         # Re-construct email/calendar/smarthome with the real config now that
         # prism_config.toml has been loaded.  The initial construction above
@@ -365,8 +376,24 @@ class PrismAgent:
                     pass
 
             # 7. Route intent and execute
-            intent = self._route(message or "")
-            card = self._execute(intent, message or "", context)
+            # First: check if this is a multi-step request needing composition
+            card = None
+            if (message and len(message.split()) > 6
+                    and self._composer.should_compose(message)):
+                try:
+                    plan = self._composer.decompose(message)
+                    if plan:
+                        logger.info("Composing %d-step plan %s",
+                                    len(plan.steps), plan.plan_id)
+                        card = self._composer.execute(
+                            plan, self._execute, context)
+                except Exception as e:
+                    logger.debug("Composition failed, falling back: %s", e)
+                    card = None
+
+            if card is None:
+                intent = self._route(message or "")
+                card   = self._execute(intent, message or "", context)
 
             # 8. Store response in history
             if hasattr(card, 'body') and card.body:
@@ -920,6 +947,19 @@ class PrismAgent:
                 f"• **{t.name}** — {t.description} (used {t.use_count}×)"
                 for t in tools[:15])
             return text_card(lines, f"Learned tools ({len(tools)})")
+
+        if intent == "explain_composition":
+            # Show last composition plan from history
+            last = next(
+                (m["content"] for m in reversed(self._chat_history)
+                 if "step" in m.get("content","").lower()
+                 and m["role"] == "assistant"), None)
+            if last:
+                return text_card(last[:1000], "Last composition")
+            return text_card(
+                "No recent composition to explain. "
+                "Give me a multi-step request to see the chain in action.",
+                "Composition")
 
         # Unknown intent — behave like a real PA
         return self._handle_unknown(intent, message, ctx)
