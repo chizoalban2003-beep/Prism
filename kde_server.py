@@ -11,39 +11,96 @@ SECURITY: This server binds to 127.0.0.1 ONLY by design.
           All data is local. No external connections are made by this server.
 
 Routes:
-  GET  /status                 → agent.status()
-  GET  /policy                 → policy JSON for a user
-  GET  /plan                   → today's daily plan (JSON)
-  GET  /tools/find             → tool discovery JSON
-  GET  /policy/spend           → policy spend summary JSON
-  POST /ask                    → body: {"prompt":"..."} → TaskResult
-  POST /policy/set             → set one policy allocation
-  POST /policy/update_from_chat→ parse/update policy from chat text
-  GET  /predict/match          → MatchPrediction JSON
-  GET  /predict/injury         → InjuryRiskPrediction JSON
-  GET  /predict/performance    → PerformancePrediction JSON
-  GET  /predict/transfer       → TransferPrediction JSON
-  GET  /predict/brief          → full pre-match brief JSON
-  GET  /history                → plan history JSON
-  POST /rate                   → {"date":"...","rating":4.0,"notes":"..."}
-  POST /session                → {rpe, session_type, notes, video_folder}
-  GET  /reflect                → learned state JSON
-  GET  /devices                → connected devices list
-  POST /device/sync            → trigger device sync
-  GET  /llm/status             → LLM router status (available models, best)
-  GET  /tasks                  → recent background tasks list (?n=10)
-  GET  /tasks/<id>             → single task progress by task_id
-  GET  /horizon/goals          → list all horizon goals (?status=watching|triggered|…)
-  GET  /horizon/status         → horizon planner summary
-  POST /horizon/goal           → {"intent","trigger_condition","completion_condition","expires_in_days"}
+  GET  /status                      → agent.status()
+  GET  /policy                      → policy JSON for a user
+  GET  /plan                        → today's daily plan (JSON)
+  POST /plan                        → regenerate daily plan {force:bool}
+  GET  /tools/find                  → tool discovery JSON
+  GET  /policy/spend                → policy spend summary JSON
+  POST /ask                         → body: {"prompt":"..."} → TaskResult
+  POST /chat                        → {"message":"..."} → chat response JSON
+  POST /policy/set                  → set one policy allocation
+  POST /policy/update_from_chat     → parse/update policy from chat text
+  GET  /predict/match               → MatchPrediction JSON
+  GET  /predict/injury              → InjuryRiskPrediction JSON
+  GET  /predict/performance         → PerformancePrediction JSON
+  GET  /predict/transfer            → TransferPrediction JSON
+  GET  /predict/brief               → full pre-match brief JSON
+  GET  /history                     → plan history JSON
+  POST /rate                        → {"date":"...","rating":4.0,"notes":"..."}
+  POST /session                     → {rpe, session_type, notes, video_folder}
+  GET  /reflect                     → learned state JSON
+  GET  /identity                    → digital identity JSON
+  GET  /identity/domains            → identity domains list
+  POST /identity/observe            → observe an identity event
+  POST /identity/reset              → reset identity state
+  GET  /artifacts                   → list recent artifacts
+  POST /artifacts/rate              → rate an artifact {artifact_id, rating}
+  GET  /devices                     → connected devices list
+  GET  /device/capabilities         → device capabilities JSON
+  POST /device/sync                 → trigger device sync
+  POST /device/approve              → approve a pending device action
+  POST /device/execute              → execute a device command directly
+  GET  /llm/status                  → LLM router status (available models, best)
+  GET  /tasks                       → recent background tasks list (?n=10)
+  GET  /tasks/<id>                  → single task progress by task_id
+  GET  /domain/list                 → list domain decision models
+  GET  /domain/profiles             → profiles for a domain
+  GET  /domain/evaluate             → evaluate a prompt against a domain
+  GET  /domain/sensitivity          → sensitivity factors for a domain
+  POST /domain/validate             → validate domain data
+  GET  /moment/configs              → list moment configurations
+  GET  /moment/analyze              → analyze a moment
+  GET  /moment/history              → moment analysis history
+  GET  /moment/player_stats         → player stats for a moment
+  POST /moment/calibrate            → calibrate moment model
+  POST /moment/live_frame           → feed a live video frame
+  GET  /duel/network                → duel network graph
+  GET  /duel/player                 → player duel stats
+  GET  /duel/summary                → duel summary for a match
+  POST /duel/add_match              → add a match to duel history
+  GET  /perception/status           → perception service status
+  POST /perception/ingest           → ingest perception data
+  POST /perception/enable           → enable/disable perception
+  GET  /memory/search               → search long-term memory (?q=…)
+  POST /memory/ingest               → ingest text into long-term memory
+  GET  /proactive                   → proactive suggestions list
+  GET  /proactive/pending           → pending proactive actions
+  GET  /smarthome/status            → smart home device status
+  POST /smarthome                   → issue a smart home command
+  GET  /email/status                → email service status
+  GET  /email/inbox                 → email inbox messages
+  GET  /email/unread                → unread email count and summaries
+  POST /email/send                  → send an email {to, subject, body}
+  GET  /calendar/status             → calendar service status
+  GET  /calendar/today              → today's calendar events
+  GET  /browser/status              → browser agent status
+  GET  /instructions                → current prism instructions
+  POST /instructions                → update instructions {text}
+  GET  /discovery/services          → discovered local services
+  POST /discovery/build             → rebuild service discovery
+  GET  /chain/recent                → recent chain runs
+  GET  /chain/expert/recent         → recent expert chain runs
+  GET  /chain/status                → chain planner status
+  GET  /push/status                 → push notification config status
+  GET  /search                      → web search (?q=…&n=5)
+  POST /voice/transcribe            → transcribe audio {audio_b64}
+  POST /voice/status                → voice service status
+  POST /tts                         → text-to-speech {text}
+  POST /tts/speak                   → speak text aloud {text}
+  GET  /horizon/goals               → list all horizon goals (?status=watching|triggered|…)
+  GET  /horizon/status              → horizon planner summary
+  POST /horizon/goal                → {"intent","trigger_condition","completion_condition","expires_in_days"}
   POST /horizon/goal/<id>/complete  → mark goal completed {"notes":"…"}
   POST /horizon/goal/<id>/abandon   → abandon goal {"reason":"…"}
   POST /horizon/goal/<id>/context   → update accumulated context {key:value,…}
-  GET  /organs                 → list loaded organ intents and descriptions
-  GET  /mobile                 → PWA mobile companion (HTML)
-  GET  /manifest.json          → Web App Manifest (JSON)
-  GET  /sw.js                  → Service Worker (JS)
-  GET  /icon.svg               → PRISM icon (SVG)
+  GET  /organs                      → list loaded organ intents and descriptions
+  GET  /organ_bus/history           → recent inter-engine signals (?n=20)
+  GET  /organ_bus/subscribers       → registered organ subscriptions
+  GET  /mobile                      → PWA mobile companion (HTML)
+  GET  /manifest.json               → Web App Manifest (JSON)
+  GET  /sw.js                       → Service Worker (JS)
+  GET  /icon.svg                    → PRISM icon (SVG)
 
 All responses: Content-Type: application/json (except PWA assets)
 Error format:  {"error": "message", "status": 4xx}
@@ -155,9 +212,10 @@ class KDEHandler(BaseHTTPRequestHandler):
                 return
 
             elif path == "/status":
-                import urllib.request as _ur
                 import json as _j
-                ollama_ok = False; ollama_model = ""
+                import urllib.request as _ur
+                ollama_ok = False
+                ollama_model = ""
                 try:
                     r = _ur.urlopen("http://localhost:11434/api/tags", timeout=2)
                     tags = _j.loads(r.read())
@@ -905,6 +963,33 @@ class KDEHandler(BaseHTTPRequestHandler):
                     self._json_response({"organs": ol.known_intents(),
                                          "count": len(ol.list_organs())})
 
+            # ── OrganBus ─────────────────────────────────────────────────
+            elif path == '/organ_bus/history':
+                agent = getattr(self.server, 'prism_agent', None)
+                ob = getattr(agent, '_organ_bus', None) if agent else None
+                n = int(qs.get('n', 20))
+                if ob is None:
+                    self._json_response({"signals": [], "available": False})
+                else:
+                    self._json_response({"signals": ob.history(n=n),
+                                         "available": True})
+
+            elif path == '/organ_bus/subscribers':
+                agent = getattr(self.server, 'prism_agent', None)
+                ob = getattr(agent, '_organ_bus', None) if agent else None
+                if ob is None:
+                    self._json_response({"subscribers": [], "available": False})
+                else:
+                    with ob._lock:
+                        subs = [
+                            {"organ": s.organ_name,
+                             "signal_types": s.signal_types,
+                             "vocabulary": s.vocabulary[:120]}
+                            for s in ob._subscribers
+                        ]
+                    self._json_response({"subscribers": subs, "count": len(subs),
+                                         "available": True})
+
             # ── PWA mobile companion ──────────────────────────────────────
             elif path == '/mobile':
                 from prism_pwa import get_mobile_html
@@ -967,8 +1052,10 @@ class KDEHandler(BaseHTTPRequestHandler):
             if path == "/voice/transcribe":
                 # Accept either JSON {"path": "/tmp/clip.wav"} or raw audio bytes
                 # with Content-Type: audio/wav | audio/mpeg | audio/flac
+                import os as _os
+                import tempfile
+
                 from prism_agent import PrismAgent
-                import tempfile, os as _os
                 agent = getattr(self.server, 'prism_agent', None) or PrismAgent()
                 audio_path = None
                 if isinstance(body, dict):

@@ -10,9 +10,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-
 from kde_dashboard import HTMLReportGenerator, TerminalDashboard
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -20,7 +18,12 @@ from kde_dashboard import HTMLReportGenerator, TerminalDashboard
 
 def _make_platform_mock():
     """Create a mock PredictionPlatform."""
-    from prediction_engine import PredictionPlatform, InjuryRiskPrediction, MatchPrediction, TacticalPrediction
+    from prediction_engine import (
+        InjuryRiskPrediction,
+        MatchPrediction,
+        PredictionPlatform,
+        TacticalPrediction,
+    )
     platform = MagicMock(spec=PredictionPlatform)
 
     # injury predictor

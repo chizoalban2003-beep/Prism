@@ -1,5 +1,7 @@
 import tempfile
+
 from prism_calibration import PrismCalibration
+
 
 def _tmp_cal():
     tmp = tempfile.mktemp(suffix=".db")

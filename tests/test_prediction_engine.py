@@ -1,7 +1,7 @@
 """Tests for prediction_engine.py"""
 from prediction_engine import (
-    MatchPredictor,
     InjuryRiskPredictor,
+    MatchPredictor,
     PerformancePredictor,
     PredictionPlatform,
 )

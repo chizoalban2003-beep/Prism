@@ -244,7 +244,10 @@ class VisionAnalyzer:
                 data.get("technique_notes", "")
             )
         else:
-            quality = 0.0; tags = []; positions = {}; technique = ""
+            quality = 0.0
+            tags = []
+            positions = {}
+            technique = ""
 
         return FrameAnalysis(
             frame_id        = frame_id,

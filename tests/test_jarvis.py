@@ -4,21 +4,22 @@ tests/test_jarvis.py
 Unit tests for ksa_jarvis.py — JarvisAgent, ThinkResult, ActResult, Artifact.
 """
 
-import pytest
-import sys
 import os
+import sys
+
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from ksa_executor import FileIndexExecutor, LocalSearchExecutor, ShellExecutor
 from ksa_jarvis import (
-    Artifact,
     ActResult,
+    Artifact,
     JarvisAgent,
     ThinkResult,
     _infer_content_type,
 )
 from ksa_lever import ThreeBarSystem
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

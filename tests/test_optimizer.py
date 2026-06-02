@@ -4,16 +4,17 @@ tests/test_optimizer.py
 Unit tests for ksa_optimizer.py — KineticOptimizer.
 """
 
-import pytest
-import sys
 import os
+import sys
+
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from ksa_lever import ThreeBarSystem
-from ksa_registry import PerformanceMetrics, SnapshotRegistry
 from ksa_executor import ExecutionOutcome
+from ksa_lever import ThreeBarSystem
 from ksa_optimizer import KineticOptimizer
-
+from ksa_registry import PerformanceMetrics, SnapshotRegistry
 
 # ---------------------------------------------------------------------------
 # Fixtures

@@ -31,7 +31,6 @@ PWA features
 """
 from __future__ import annotations
 
-
 # ---------------------------------------------------------------------------
 # SVG icon (served at /icon.svg, referenced by manifest and <link> tags)
 # ---------------------------------------------------------------------------

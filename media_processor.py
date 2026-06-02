@@ -411,7 +411,8 @@ class MediaProcessor:
             R  = 6371000.0
             la1, lo1 = math.radians(p1[0]), math.radians(p1[1])
             la2, lo2 = math.radians(p2[0]), math.radians(p2[1])
-            dla = la2 - la1; dlo = lo2 - lo1
+            dla = la2 - la1
+            dlo = lo2 - lo1
             a   = math.sin(dla/2)**2 + math.cos(la1)*math.cos(la2)*math.sin(dlo/2)**2
             return R * 2 * math.asin(math.sqrt(a))
 

@@ -7,10 +7,11 @@ ORGAN_META = {
 
 
 def execute(intent: str, message: str, ctx: dict):
-    from prism_responses import text_card
-    import urllib.request
-    import urllib.parse
     import json as _json
+    import urllib.parse
+    import urllib.request
+
+    from prism_responses import text_card
 
     # Extract location from message or ctx
     location = ctx.get("location") or message.strip() or "London"

@@ -29,12 +29,12 @@ Usage:
 
 from __future__ import annotations
 
-import re
-import sys
-import os
-import time
 import json
 import logging
+import os
+import re
+import sys
+import time
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
@@ -417,8 +417,8 @@ class MasterFulcrum:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    import tempfile
     import os
+    import tempfile
 
     print("=== KSA Master Fulcrum Demo ===\n")
 

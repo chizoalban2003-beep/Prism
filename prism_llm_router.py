@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import json
 import logging
 import os
@@ -22,7 +23,8 @@ def parse_llm_json(raw: str) -> Optional[dict]:
         return json.loads(clean.strip())
     except Exception:
         try:
-            start = clean.index("{"); end = clean.rindex("}") + 1
+            start = clean.index("{")
+            end = clean.rindex("}") + 1
             return json.loads(clean[start:end])
         except Exception:
             return None
@@ -86,8 +88,8 @@ class LLMRouter:
                     claude_api_key: str = "") -> "LLMRouter":
         """Load LLM preferences from prism_config.toml [llm] section."""
         try:
-            from pathlib import Path
             import tomllib
+            from pathlib import Path
             path = Path(config_path).expanduser()
             if path.exists():
                 data = tomllib.loads(path.read_text())
@@ -289,7 +291,8 @@ class LLMRouter:
         msgs = list(history or [])
         msgs.append({"role": "user", "content": prompt})
         body: dict = {"model":opt.model,"max_tokens":max_tokens,"messages":msgs}
-        if system: body["system"] = system
+        if system:
+            body["system"] = system
         payload = json.dumps(body).encode()
         req = urllib.request.Request(
             "https://api.anthropic.com/v1/messages", data=payload,
@@ -311,7 +314,8 @@ class LLMRouter:
         else:
             full_prompt = prompt
         body: dict = {"model":opt.model,"prompt":full_prompt,"stream":False}
-        if json_mode: body["format"] = "json"
+        if json_mode:
+            body["format"] = "json"
         payload = json.dumps(body).encode()
         req = urllib.request.Request(f"{opt.endpoint}/api/generate",
             data=payload,headers={"Content-Type":"application/json"})
@@ -324,11 +328,13 @@ class LLMRouter:
         api_key = (self._config.get("openai_api_key")
                    or os.environ.get("OPENAI_API_KEY",""))
         msgs = []
-        if system: msgs.append({"role":"system","content":system})
+        if system:
+            msgs.append({"role":"system","content":system})
         msgs.extend(history or [])
         msgs.append({"role":"user","content":prompt})
         body: dict = {"model":"gpt-4o-mini","max_tokens":max_tokens,"messages":msgs}
-        if json_mode: body["response_format"] = {"type":"json_object"}
+        if json_mode:
+            body["response_format"] = {"type":"json_object"}
         payload = json.dumps(body).encode()
         req = urllib.request.Request(f"{opt.endpoint}/v1/chat/completions",
             data=payload,

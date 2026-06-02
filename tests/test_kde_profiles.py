@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 from kde_profiles import ROLE_CAPABILITIES, UserProfile, UserRole, from_toml
 
 

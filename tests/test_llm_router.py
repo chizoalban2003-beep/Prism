@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from prism_llm_router import LLMRouter, LLMOption
+from prism_llm_router import LLMOption, LLMRouter
 
 
 def test_discover_non_empty():

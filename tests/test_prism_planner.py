@@ -5,15 +5,13 @@ import urllib.error
 import urllib.request
 from unittest.mock import patch
 
-
+from prism_llm_router import parse_llm_json
 from prism_planner import (
     ActionStep,
     PlanOfAction,
     PrismPlanner,
     StrategyPlan,
 )
-from prism_llm_router import parse_llm_json
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -447,7 +445,7 @@ def test_call_llm_routes_to_ollama_when_no_key():
 # ---------------------------------------------------------------------------
 
 def test_plan_of_action_card_structure():
-    from prism_responses import plan_of_action_card, PrismCard
+    from prism_responses import PrismCard, plan_of_action_card
 
     strategies = [
         StrategyPlan(

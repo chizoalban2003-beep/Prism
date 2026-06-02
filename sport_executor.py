@@ -23,9 +23,14 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from ksa_executor import ExecutionContext, ExecutionOutcome, TaskExecutor, _ResourceSampler
-from ksa_registry import PerformanceMetrics, SnapshotRegistry
 from device_hub import DeviceHub, MediaType
+from ksa_executor import (
+    ExecutionContext,
+    ExecutionOutcome,
+    TaskExecutor,
+    _ResourceSampler,
+)
+from ksa_registry import PerformanceMetrics, SnapshotRegistry
 from media_processor import MediaProcessor
 from vision_analyzer import VisionAnalyzer
 
@@ -102,7 +107,8 @@ class VideoAnalysisExecutor(TaskExecutor):
         self._role     = role
 
     def primary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         try:
             sport  = ctx.payload.get("sport", self._sport)
@@ -139,7 +145,8 @@ class VideoAnalysisExecutor(TaskExecutor):
             return _outcome(ctx, "primary", 1, "", str(exc), elapsed, sampler)
 
     def secondary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         try:
             videos = self._hub.list_files(media_type=MediaType.VIDEO, since_days=2)
@@ -163,7 +170,8 @@ class VideoAnalysisExecutor(TaskExecutor):
             return _outcome(ctx, "secondary", 1, "", str(exc), elapsed, sampler)
 
     def safe(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         videos = self._hub.list_files(media_type=MediaType.VIDEO, since_days=7)
         summary = [{"path": v.path, "size_mb": round(v.size_bytes / 1e6, 1)} for v in videos]
@@ -202,7 +210,8 @@ class HighlightReelExecutor(TaskExecutor):
         self._out_dir.mkdir(parents=True, exist_ok=True)
 
     def primary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         try:
             n_days  = ctx.payload.get("days", 7)
@@ -245,7 +254,8 @@ class HighlightReelExecutor(TaskExecutor):
             return _outcome(ctx, "primary", 1, "", str(exc), elapsed, sampler)
 
     def secondary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         n_days = ctx.payload.get("days", 7)
         videos = self._hub.list_files(media_type=MediaType.VIDEO, since_days=n_days)
@@ -256,7 +266,8 @@ class HighlightReelExecutor(TaskExecutor):
         return _outcome(ctx, "secondary", 0, out, "", elapsed, sampler)
 
     def safe(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         n_days = ctx.payload.get("days", 7)
         videos = self._hub.list_files(media_type=MediaType.VIDEO, since_days=n_days)
@@ -295,7 +306,8 @@ class PerformanceReportExecutor(TaskExecutor):
         self._out_dir.mkdir(parents=True, exist_ok=True)
 
     def primary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         try:
             days    = ctx.payload.get("days", 7)
@@ -326,7 +338,8 @@ class PerformanceReportExecutor(TaskExecutor):
             return _outcome(ctx, "primary", 1, "", str(exc), elapsed, sampler)
 
     def secondary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         days   = ctx.payload.get("days", 7)
         videos = self._hub.list_files(media_type=MediaType.VIDEO, since_days=days)
@@ -342,7 +355,8 @@ class PerformanceReportExecutor(TaskExecutor):
         return _outcome(ctx, "secondary", 0, out, "", elapsed, sampler)
 
     def safe(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         days = ctx.payload.get("days", 7)
         sources = {
@@ -409,7 +423,8 @@ class FilmStudyExecutor(TaskExecutor):
         self._sport    = sport
 
     def primary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         try:
             sport  = ctx.payload.get("sport", self._sport)
@@ -447,7 +462,8 @@ class FilmStudyExecutor(TaskExecutor):
             return _outcome(ctx, "primary", 1, "", str(exc), elapsed, sampler)
 
     def secondary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         try:
             videos = self._hub.list_files(media_type=MediaType.VIDEO, since_days=14)
@@ -473,7 +489,8 @@ class FilmStudyExecutor(TaskExecutor):
             return _outcome(ctx, "secondary", 1, "", str(exc), elapsed, sampler)
 
     def safe(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         videos = self._hub.list_files(media_type=MediaType.VIDEO, since_days=14)
         out = json.dumps({"files": [v.path for v in videos]})
@@ -506,7 +523,8 @@ class WearableSyncExecutor(TaskExecutor):
         self._registry = registry
 
     def primary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         try:
             devices  = self._hub.list_devices()
@@ -532,7 +550,8 @@ class WearableSyncExecutor(TaskExecutor):
             return _outcome(ctx, "primary", 1, "", str(exc), elapsed, sampler)
 
     def secondary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         try:
             devices = self._hub.list_devices()
@@ -556,7 +575,8 @@ class WearableSyncExecutor(TaskExecutor):
             return _outcome(ctx, "secondary", 1, "", str(exc), elapsed, sampler)
 
     def safe(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         devices = self._hub.list_devices()
         out = json.dumps({
@@ -602,7 +622,8 @@ class SessionLogExecutor(TaskExecutor):
         self._role     = role
 
     def primary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         try:
             sport        = ctx.payload.get("sport", self._sport)
@@ -670,7 +691,8 @@ class SessionLogExecutor(TaskExecutor):
             return _outcome(ctx, "primary", 1, "", str(exc), elapsed, sampler)
 
     def secondary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         record_data = {
             "session_id":   str(uuid.uuid4()),
@@ -686,7 +708,8 @@ class SessionLogExecutor(TaskExecutor):
         return _outcome(ctx, "secondary", 0, out, "", elapsed, sampler)
 
     def safe(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         videos = self._hub.list_files(media_type=MediaType.VIDEO, since_days=1)
         gps    = self._hub.list_files(media_type=MediaType.GPS,   since_days=1)

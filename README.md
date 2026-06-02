@@ -634,6 +634,7 @@ PRISM/
 ├── KDE platform
 │   ├── kde_agent.py            KDEAgent — unified sports + domain agent
 │   ├── kde_server.py           Local REST API (stdlib http.server)
+│   ├── prism_pwa.py            PWA mobile companion — installable app at /mobile
 │   ├── kde_dashboard.py        HTML reports + terminal dashboard
 │   ├── kde_cli.py              CLI entry point
 │   ├── kde_config.py           Config loader
@@ -684,6 +685,8 @@ PRISM/
 ├── Autonomous execution
 │   ├── prism_autonomous.py     Tool synthesis (AST safety + subprocess sandbox + cache)
 │   ├── prism_horizon.py        Cross-session long-horizon goal persistence (SQLite)
+│   ├── prism_organ_bus.py          LLM-mediated pub/sub bus between PRISM logic engines
+│   ├── prism_organ_bus_experiment.py  Experimental organ bus extensions
 │   └── organs/                 Cached synthesised organ modules (JSON, auto-populated)
 │
 ├── Personal assistant
@@ -715,7 +718,7 @@ PRISM/
 │   ├── domain_configs.py       Medical · Financial · Legal · HR · Supply Chain · Climate
 │   └── domain_validator.py     Expert-label accuracy validation
 │
-└── tests/                      957 pytest tests — all passing
+└── tests/                      992 pytest tests — all passing
 ```
 
 ---
@@ -741,7 +744,7 @@ PRISM/
 
 ```bash
 python -m pytest tests/ -q
-# 957 tests pass in ~90 seconds
+# 992 tests pass in ~100 seconds
 ```
 
 ---
@@ -822,7 +825,7 @@ All major gaps from the initial build have been bridged. The table below reflect
 | Multi-user support | **Working** | Scoped by `[user].name` in config; run separate instances for isolation |
 | Adaptive reasoning chains | **Working** | LLM↔Logic+Policy alternating spine with Evaluator quality gate |
 | Autonomous tool synthesis | **Working** | AST safety + subprocess sandbox + pip auto-install + cache |
-| iOS / Android companion | **PWA in progress** | Push via ntfy.sh works bidirectionally; native app would add rich UI |
+| iOS / Android companion | **Working (PWA)** | `prism_pwa.py` — installable PWA at `/mobile`; push via ntfy.sh; no app store needed |
 | Token refresh for Google OAuth | **Working** | Auto-refresh via `google_creds.json` — stores `access_token`, `refresh_token`, `client_id`, `client_secret`, `expiry` |
 | Horizon goals | `prism_horizon.py` | **Working** — cross-session goal watching; say "watch for X when Y" in chat |
 | Organ registry | `prism_organ_loader.py` | **Working** — synthesised tools persist; say "what organs do you have" |

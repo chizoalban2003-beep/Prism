@@ -5,13 +5,13 @@ Unit tests for ksa_executor.py — ExecutorRegistry, TaskExecutor,
 FileIndexExecutor, LocalSearchExecutor, ShellExecutor.
 """
 
-import pytest
-import sys
 import os
+import sys
+
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from ksa_lever import ThreeBarSystem, TiltDirection, EquilibriumResult, LeverState
-from ksa_registry import SnapshotRegistry
 from ksa_executor import (
     ExecutionContext,
     ExecutorRegistry,
@@ -20,7 +20,8 @@ from ksa_executor import (
     ShellExecutor,
     TaskExecutor,
 )
-
+from ksa_lever import EquilibriumResult, LeverState, ThreeBarSystem, TiltDirection
+from ksa_registry import SnapshotRegistry
 
 # ---------------------------------------------------------------------------
 # Helpers

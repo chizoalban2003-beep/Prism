@@ -8,21 +8,26 @@ import urllib.request
 from pathlib import Path
 from typing import Optional
 
-from prism_llm_router import LLMRouter
-from prism_task_queue import TaskQueue
 from domain_configs import ALL_DOMAINS, DomainDecisionModel
-from prism_device_agent import PrismDeviceAgent
-from prism_planner import PrismPlanner
-from prism_perception import PrismPerception
-from prism_memory import PrismMemory
-from prism_tts import PrismTTS
-from prism_proactive import PrismProactive, build_default_triggers
-from prism_smart_home import PrismSmartHome
-from prism_email    import PrismEmail
-from prism_calendar import PrismCalendar
+from prism_autonomous import PrismAutonomous
 from prism_browser_agent import PrismBrowserAgent
+from prism_calendar import PrismCalendar
+from prism_calibration import PrismCalibration
+from prism_chain import PrismChain
+from prism_chain_expert import PrismChainExpert
+from prism_chain_theory import InterceptorPolicy
+from prism_composer import PrismComposer
+from prism_contacts import PrismContacts
+from prism_device_agent import PrismDeviceAgent
+from prism_email import PrismEmail
 from prism_instructions import PrismInstructions
-from prism_service_discovery import PrismServiceDiscovery
+from prism_llm_router import LLMRouter
+from prism_memory import PrismMemory
+from prism_organ_loader import OrganLoader
+from prism_perception import PrismPerception
+from prism_planner import PrismPlanner
+from prism_proactive import PrismProactive, build_default_triggers
+from prism_push import PrismPush
 from prism_responses import (
     PrismCard,
     domain_card,
@@ -34,19 +39,13 @@ from prism_responses import (
     squad_card,
     text_card,
 )
-
 from prism_search import PrismSearch
-from prism_push   import PrismPush
-from prism_contacts import PrismContacts
-from prism_tasks    import PrismTasks
-from prism_calibration import PrismCalibration
-from prism_autonomous import PrismAutonomous
-from prism_composer import PrismComposer
-from prism_chain import PrismChain
-from prism_chain_expert import PrismChainExpert
-from prism_chain_theory import InterceptorPolicy
+from prism_service_discovery import PrismServiceDiscovery
+from prism_smart_home import PrismSmartHome
+from prism_task_queue import TaskQueue
+from prism_tasks import PrismTasks
+from prism_tts import PrismTTS
 from prism_voice import PrismVoice
-from prism_organ_loader import OrganLoader
 
 logger = logging.getLogger(__name__)
 
@@ -368,6 +367,15 @@ class PrismAgent:
             logger.warning("HorizonPlanner not available: %s", e)
             self._horizon = None
 
+        # OrganBus — LLM-mediated inter-engine communication bus
+        try:
+            from prism_organ_bus import OrganBus
+            self._organ_bus = OrganBus(llm_router=self._router)
+            self._register_organ_subscriptions()
+        except Exception as e:
+            logger.warning("OrganBus not available: %s", e)
+            self._organ_bus = None
+
     def stop(self) -> None:
         """Gracefully shut down all background subsystems."""
         if getattr(self, '_horizon', None) is not None:
@@ -385,6 +393,77 @@ class PrismAgent:
                 self._perception.stop()
             except Exception:
                 pass
+
+    def _register_organ_subscriptions(self) -> None:
+        """Wire PRISM subsystems into the OrganBus as subscribers."""
+        if not self._organ_bus:
+            return
+
+        # Policy engine receives load / risk signals and adjusts allowances
+        if getattr(self, '_policy', None):
+            def _policy_handler(payload: dict):
+                try:
+                    if hasattr(self._policy, 'on_organ_signal'):
+                        self._policy.on_organ_signal(payload)
+                except Exception:
+                    pass
+            self._organ_bus.register(
+                organ_name   = "policy_engine",
+                signal_types = ["injury_risk_elevated", "performance_plateau",
+                                 "load_adjustment_needed"],
+                handler      = _policy_handler,
+                vocabulary   = (
+                    "Understands: adjustment (str: reduce_training_load|rest|continue), "
+                    "factor (float 0-1), duration_days (int), reason (str), "
+                    "flag_for_physio (bool)"
+                ),
+            )
+
+        # Calendar receives scheduling-relevant signals
+        if getattr(self, '_calendar', None):
+            def _calendar_handler(payload: dict):
+                try:
+                    if hasattr(self._calendar, 'on_organ_signal'):
+                        self._calendar.on_organ_signal(payload)
+                except Exception:
+                    pass
+            self._organ_bus.register(
+                organ_name   = "calendar_engine",
+                signal_types = ["injury_risk_elevated", "recovery_complete",
+                                 "session_scheduled"],
+                handler      = _calendar_handler,
+                vocabulary   = (
+                    "Understands: message (str notification text), "
+                    "action (str: reschedule_heavy_session|cancel|add_rest_day), "
+                    "days_to_defer (int), notify_coach (bool)"
+                ),
+            )
+
+        # Horizon planner watches for recovery/long-horizon signals
+        if getattr(self, '_horizon', None):
+            def _horizon_handler(payload: dict):
+                try:
+                    intent = payload.get("intent", "")
+                    trigger = payload.get("trigger_condition", "")
+                    completion = payload.get("completion_condition", "")
+                    if intent:
+                        self._horizon.add(
+                            intent=intent,
+                            trigger_condition=trigger or "condition met",
+                            completion_condition=completion,
+                        )
+                except Exception:
+                    pass
+            self._organ_bus.register(
+                organ_name   = "horizon_planner",
+                signal_types = ["injury_risk_elevated", "long_term_goal_detected"],
+                handler      = _horizon_handler,
+                vocabulary   = (
+                    "Understands: intent (str: full goal description), "
+                    "trigger_condition (str: condition to watch for), "
+                    "completion_condition (str: what done looks like)"
+                ),
+            )
 
     def _handle_proactive_event(self, event) -> None:
         """Store proactive notification for chat UI polling."""
@@ -625,8 +704,8 @@ class PrismAgent:
                 result = self._kde.ask(message)
                 output = getattr(result, 'output', result)
                 try:
+                    from prediction_engine import InjuryRiskPrediction, MatchPrediction
                     from sports_pro import DailyPlan
-                    from prediction_engine import MatchPrediction, InjuryRiskPrediction
                 except Exception:
                     DailyPlan = MatchPrediction = InjuryRiskPrediction = None
                 if DailyPlan and isinstance(output, DailyPlan):
@@ -927,10 +1006,14 @@ class PrismAgent:
                 return text_card(f"No contact found for '{query}'.", "Contacts")
             c = contacts[0]
             lines = [f"{c.name}"]
-            if c.organisation: lines.append(f"  {c.role} at {c.organisation}")
-            if c.emails:  lines.append(f"  Email: {', '.join(c.emails)}")
-            if c.phones:  lines.append(f"  Phone: {', '.join(c.phones)}")
-            if c.notes:   lines.append(f"  Notes: {c.notes[:200]}")
+            if c.organisation:
+                lines.append(f"  {c.role} at {c.organisation}")
+            if c.emails:
+                lines.append(f"  Email: {', '.join(c.emails)}")
+            if c.phones:
+                lines.append(f"  Phone: {', '.join(c.phones)}")
+            if c.notes:
+                lines.append(f"  Notes: {c.notes[:200]}")
             return text_card("\n".join(lines),
                               f"Contact · {c.source}")
 
@@ -948,7 +1031,8 @@ class PrismAgent:
                     import json as _j
                     clean = raw.strip().lstrip("```json").rstrip("```").strip()
                     parsed = _j.loads(clean)
-                except Exception: pass
+                except Exception:
+                    pass
             if parsed:
                 task = self._task_mgr.add(
                     title    = parsed.get("title", message[:80]),

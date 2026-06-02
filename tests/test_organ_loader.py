@@ -7,13 +7,12 @@ synthesis, and agent wiring.
 from __future__ import annotations
 
 import json
-import textwrap
 import tempfile
+import textwrap
 from pathlib import Path
 from unittest.mock import MagicMock
 
 from prism_organ_loader import OrganLoader, _is_safe
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -101,7 +100,8 @@ def test_loads_valid_organ_from_bundled_dir():
     with tempfile.TemporaryDirectory() as d:
         bundled = Path(d) / "bundled"
         user    = Path(d) / "user"
-        bundled.mkdir(); user.mkdir()
+        bundled.mkdir()
+        user.mkdir()
         _write_organ(bundled, "test_organ.py", VALID_ORGAN)
         loader = OrganLoader(bundled_dir=bundled, user_dir=user)
         assert "test_organ" in loader.known_intents()
@@ -111,7 +111,8 @@ def test_loads_valid_organ_from_user_dir():
     with tempfile.TemporaryDirectory() as d:
         bundled = Path(d) / "bundled"
         user    = Path(d) / "user"
-        bundled.mkdir(); user.mkdir()
+        bundled.mkdir()
+        user.mkdir()
         _write_organ(user, "test_organ.py", VALID_ORGAN)
         loader = OrganLoader(bundled_dir=bundled, user_dir=user)
         assert "test_organ" in loader.known_intents()
@@ -121,7 +122,8 @@ def test_skips_unsafe_organ():
     with tempfile.TemporaryDirectory() as d:
         bundled = Path(d) / "bundled"
         user    = Path(d) / "user"
-        bundled.mkdir(); user.mkdir()
+        bundled.mkdir()
+        user.mkdir()
         _write_organ(bundled, "bad_organ.py", UNSAFE_ORGAN)
         loader = OrganLoader(bundled_dir=bundled, user_dir=user)
         assert "bad" not in loader.known_intents()
@@ -131,7 +133,8 @@ def test_skips_organ_with_no_execute():
     with tempfile.TemporaryDirectory() as d:
         bundled = Path(d) / "bundled"
         user    = Path(d) / "user"
-        bundled.mkdir(); user.mkdir()
+        bundled.mkdir()
+        user.mkdir()
         _write_organ(bundled, "no_fn.py", NO_EXECUTE_ORGAN)
         loader = OrganLoader(bundled_dir=bundled, user_dir=user)
         assert "no_fn" not in loader.known_intents()
@@ -141,7 +144,8 @@ def test_skips_underscore_files():
     with tempfile.TemporaryDirectory() as d:
         bundled = Path(d) / "bundled"
         user    = Path(d) / "user"
-        bundled.mkdir(); user.mkdir()
+        bundled.mkdir()
+        user.mkdir()
         _write_organ(bundled, "__init__.py", VALID_ORGAN)
         loader = OrganLoader(bundled_dir=bundled, user_dir=user)
         assert loader.known_intents() == {}
@@ -151,7 +155,8 @@ def test_get_returns_callable_for_loaded_organ():
     with tempfile.TemporaryDirectory() as d:
         bundled = Path(d) / "bundled"
         user    = Path(d) / "user"
-        bundled.mkdir(); user.mkdir()
+        bundled.mkdir()
+        user.mkdir()
         _write_organ(bundled, "test_organ.py", VALID_ORGAN)
         loader = OrganLoader(bundled_dir=bundled, user_dir=user)
         fn = loader.get("test_organ")
@@ -162,7 +167,8 @@ def test_get_returns_none_for_unknown():
     with tempfile.TemporaryDirectory() as d:
         bundled = Path(d) / "bundled"
         user    = Path(d) / "user"
-        bundled.mkdir(); user.mkdir()
+        bundled.mkdir()
+        user.mkdir()
         loader = OrganLoader(bundled_dir=bundled, user_dir=user)
         assert loader.get("nonexistent_xyz") is None
 
@@ -171,7 +177,8 @@ def test_organ_execute_returns_card():
     with tempfile.TemporaryDirectory() as d:
         bundled = Path(d) / "bundled"
         user    = Path(d) / "user"
-        bundled.mkdir(); user.mkdir()
+        bundled.mkdir()
+        user.mkdir()
         _write_organ(bundled, "test_organ.py", VALID_ORGAN)
         loader = OrganLoader(bundled_dir=bundled, user_dir=user)
         fn     = loader.get("test_organ")
@@ -186,7 +193,8 @@ def test_user_dir_organ_overrides_bundled():
     with tempfile.TemporaryDirectory() as d:
         bundled = Path(d) / "bundled"
         user    = Path(d) / "user"
-        bundled.mkdir(); user.mkdir()
+        bundled.mkdir()
+        user.mkdir()
         _write_organ(bundled, "test_organ.py", VALID_ORGAN)
         _write_organ(user,    "test_organ.py", user_organ)
         loader = OrganLoader(bundled_dir=bundled, user_dir=user)
@@ -198,7 +206,8 @@ def test_known_intents_returns_descriptions():
     with tempfile.TemporaryDirectory() as d:
         bundled = Path(d) / "bundled"
         user    = Path(d) / "user"
-        bundled.mkdir(); user.mkdir()
+        bundled.mkdir()
+        user.mkdir()
         _write_organ(bundled, "test_organ.py", VALID_ORGAN)
         loader = OrganLoader(bundled_dir=bundled, user_dir=user)
         intents = loader.known_intents()
@@ -215,7 +224,8 @@ def test_synthesize_succeeds_and_registers():
     with tempfile.TemporaryDirectory() as d:
         bundled = Path(d) / "bundled"
         user    = Path(d) / "user"
-        bundled.mkdir(); user.mkdir()
+        bundled.mkdir()
+        user.mkdir()
         router = _make_router(_synth_payload(
             "stock_price",
             "returns stock price",
@@ -232,7 +242,8 @@ def test_synthesize_saves_to_user_dir():
     with tempfile.TemporaryDirectory() as d:
         bundled = Path(d) / "bundled"
         user    = Path(d) / "user"
-        bundled.mkdir(); user.mkdir()
+        bundled.mkdir()
+        user.mkdir()
         router = _make_router(_synth_payload(
             "stock_price", "stock price",
             VALID_ORGAN.replace("test_organ", "stock_price"),
@@ -246,7 +257,8 @@ def test_synthesize_blocks_unsafe_code():
     with tempfile.TemporaryDirectory() as d:
         bundled = Path(d) / "bundled"
         user    = Path(d) / "user"
-        bundled.mkdir(); user.mkdir()
+        bundled.mkdir()
+        user.mkdir()
         router = _make_router(_synth_payload(
             "bad_organ", "bad", UNSAFE_ORGAN))
         loader = OrganLoader(bundled_dir=bundled, user_dir=user, llm_router=router)
@@ -260,7 +272,8 @@ def test_synthesize_fails_without_router():
     with tempfile.TemporaryDirectory() as d:
         bundled = Path(d) / "bundled"
         user    = Path(d) / "user"
-        bundled.mkdir(); user.mkdir()
+        bundled.mkdir()
+        user.mkdir()
         loader = OrganLoader(bundled_dir=bundled, user_dir=user, llm_router=None)
         ok = loader.synthesize("something", "do something")
         assert not ok
@@ -270,7 +283,8 @@ def test_synthesize_fails_on_bad_json():
     with tempfile.TemporaryDirectory() as d:
         bundled = Path(d) / "bundled"
         user    = Path(d) / "user"
-        bundled.mkdir(); user.mkdir()
+        bundled.mkdir()
+        user.mkdir()
         router = MagicMock()
         router.call.return_value = ("this is not json", {})
         loader = OrganLoader(bundled_dir=bundled, user_dir=user, llm_router=router)
@@ -282,7 +296,8 @@ def test_synthesize_fails_on_missing_execute():
     with tempfile.TemporaryDirectory() as d:
         bundled = Path(d) / "bundled"
         user    = Path(d) / "user"
-        bundled.mkdir(); user.mkdir()
+        bundled.mkdir()
+        user.mkdir()
         router = _make_router({
             "intent": "broken",
             "description": "broken",
@@ -297,7 +312,8 @@ def test_synthesize_fails_on_llm_error():
     with tempfile.TemporaryDirectory() as d:
         bundled = Path(d) / "bundled"
         user    = Path(d) / "user"
-        bundled.mkdir(); user.mkdir()
+        bundled.mkdir()
+        user.mkdir()
         router = MagicMock()
         router.call.side_effect = RuntimeError("LLM down")
         loader = OrganLoader(bundled_dir=bundled, user_dir=user, llm_router=router)
@@ -313,7 +329,8 @@ def test_new_organ_added_to_logic_registry():
     with tempfile.TemporaryDirectory() as d:
         bundled = Path(d) / "bundled"
         user    = Path(d) / "user"
-        bundled.mkdir(); user.mkdir()
+        bundled.mkdir()
+        user.mkdir()
         # Use an intent name unlikely to already exist
         unique_intent = "zzztest_unique_organ_xyz"
         code = VALID_ORGAN.replace("test_organ", unique_intent)

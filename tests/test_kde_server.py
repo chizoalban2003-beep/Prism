@@ -12,9 +12,7 @@ import time
 import urllib.request
 from unittest.mock import MagicMock
 
-
 from kde_server import KDEServer
-
 
 # ---------------------------------------------------------------------------
 # Helpers

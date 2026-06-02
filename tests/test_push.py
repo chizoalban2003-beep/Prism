@@ -1,5 +1,6 @@
 from prism_push import PrismPush
 
+
 def test_not_configured_when_no_topic():
     assert not PrismPush().configured
 

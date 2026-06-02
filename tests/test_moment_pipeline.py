@@ -9,13 +9,11 @@ from __future__ import annotations
 import math
 from typing import Optional
 
-
 from moment_analyzer import MomentAnalyzer
 from moment_pipeline import (
     LiveMomentPipeline,
     StatsBombMomentPipeline,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers / factories

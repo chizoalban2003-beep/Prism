@@ -9,12 +9,11 @@ import json
 from dataclasses import fields
 from unittest.mock import MagicMock
 
-from prism_responses import text_card
 from prism_chain_theory import (
-    SubChainLogic,
-    SoftLogic,
     InterceptorPolicy,
     PolicyIntercept,
+    SoftLogic,
+    SubChainLogic,
 )
 from prism_chain_theory_bench import (
     ExperimentResult,
@@ -22,7 +21,7 @@ from prism_chain_theory_bench import (
     run_experiment_2_vertical,
     run_experiment_3_interceptor,
 )
-
+from prism_responses import text_card
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
 
@@ -255,9 +254,10 @@ def test_interceptor_returns_policy_intercept_dataclass():
 
 def test_prismchain_interceptor_fires_in_run():
     """PrismChain.run() must execute substitute logic when intercept fires."""
-    from prism_chain import PrismChain
     import pathlib
     import tempfile
+
+    from prism_chain import PrismChain
 
     policy = InterceptorPolicy()
 
@@ -293,9 +293,10 @@ def test_prismchain_interceptor_fires_in_run():
 
 def test_prismchain_no_interceptor_baseline():
     """PrismChain with interceptor_policy=None must run without interception."""
-    from prism_chain import PrismChain
     import pathlib
     import tempfile
+
+    from prism_chain import PrismChain
 
     step_resp = json.dumps({
         "done": False,

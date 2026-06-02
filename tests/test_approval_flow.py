@@ -18,10 +18,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from prism_device_agent import CapabilityMap, PrismDeviceAgent
 from prism_device_executor import DeviceTaskResult
-from prism_device_agent import PrismDeviceAgent, CapabilityMap
 from prism_responses import CardType, approval_card, device_result_card
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -166,11 +165,10 @@ def test_normal_result_not_approval_card():
 
 def _start_server_for_approval(port: int):
     """Start a minimal KDEServer for testing the /device/approve endpoint."""
-    from kde_server import KDEServer
-
     # Build a minimal agent
     from kde_agent import KDEAgent, KDEConfig
-    from sports_pro import SportsProProfile, Role
+    from kde_server import KDEServer
+    from sports_pro import Role, SportsProProfile
     try:
         cfg     = KDEConfig()
         profile = SportsProProfile(name="Tester", role=Role.ATHLETE,

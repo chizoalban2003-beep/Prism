@@ -28,39 +28,44 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Optional
 
-from sports_pro import SportsProAssistant, SportsProProfile, Role
-from device_hub import DeviceHub, Device, DeviceType
+from artifact_store import Artifact, ArtifactStore
+from daily_workflow import DailyWorkflow, EveningReview, MorningBrief, SessionLog
+from device_hub import Device, DeviceHub, DeviceType
+from digital_identity import CrystallisationEngine
+from domain_configs import ALL_DOMAINS, DomainDecisionModel
+from identity_bus import IdentityBus
+from kde_profiles import UserProfile, UserRole, from_toml
+from ksa_executor import (
+    ExecutionContext,
+    ExecutionOutcome,
+    TaskExecutor,
+    _ResourceSampler,
+)
+from ksa_fixes import GroundTruthOptimizer, LiveWeightInjector
+from ksa_registry import PerformanceMetrics, SnapshotRegistry
+from ksa_router import MasterFulcrum
 from media_processor import MediaProcessor
-from vision_analyzer import VisionAnalyzer
+from prediction_engine import PredictionPlatform
 from sport_executor import (
-    VideoAnalysisExecutor,
+    FilmStudyExecutor,
     HighlightReelExecutor,
     PerformanceReportExecutor,
-    FilmStudyExecutor,
-    WearableSyncExecutor,
     SessionLogExecutor,
+    VideoAnalysisExecutor,
+    WearableSyncExecutor,
 )
-from daily_workflow import DailyWorkflow, MorningBrief, SessionLog, EveningReview
-from kde_profiles import UserProfile, UserRole, from_toml
-from ksa_router import MasterFulcrum
-from ksa_registry import PerformanceMetrics, SnapshotRegistry
-from ksa_fixes import LiveWeightInjector, GroundTruthOptimizer
 from sport_tasks import (
-    TrainingPlanTask,
-    MatchReportTask,
-    ScoutingReportTask,
-    NutritionPlanTask,
-    SocialMediaTask,
     EmailDraftTask,
+    MatchReportTask,
+    NutritionPlanTask,
     PerformanceDashboardTask,
     PredictionReportTask,
+    ScoutingReportTask,
+    SocialMediaTask,
+    TrainingPlanTask,
 )
-from prediction_engine import PredictionPlatform
-from domain_configs import ALL_DOMAINS, DomainDecisionModel
-from ksa_executor import ExecutionContext, ExecutionOutcome, TaskExecutor, _ResourceSampler
-from artifact_store import Artifact, ArtifactStore
-from digital_identity import CrystallisationEngine
-from identity_bus import IdentityBus
+from sports_pro import Role, SportsProAssistant, SportsProProfile
+from vision_analyzer import VisionAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +170,8 @@ class DomainEvaluateExecutor(TaskExecutor):
         return factors
 
     def primary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         prompt = str(ctx.payload.get("prompt", ""))
         try:
@@ -219,7 +225,8 @@ class DomainEvaluateExecutor(TaskExecutor):
             return _domain_outcome(ctx, "primary", 1, "", str(exc), elapsed, sampler)
 
     def secondary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         data = {
             domain: [profile.name for profile in model.config.profiles]
@@ -230,7 +237,8 @@ class DomainEvaluateExecutor(TaskExecutor):
         return _domain_outcome(ctx, "secondary", 0, json.dumps(data), "", elapsed, sampler)
 
     def safe(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         prompt = str(ctx.payload.get("prompt", ""))
         domain = self._extract_domain(prompt)

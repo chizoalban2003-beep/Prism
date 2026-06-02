@@ -1,6 +1,7 @@
 """Shared pytest fixtures for the PRISM test suite."""
-import sys
 import pathlib
+import sys
+
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
 import pytest

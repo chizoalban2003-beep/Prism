@@ -48,7 +48,12 @@ from typing import Any, Optional
 
 import psutil
 
-from ksa_executor import ExecutionContext, ExecutionOutcome, ExecutorRegistry, TaskExecutor
+from ksa_executor import (
+    ExecutionContext,
+    ExecutionOutcome,
+    ExecutorRegistry,
+    TaskExecutor,
+)
 from ksa_lever import ThreeBarSystem
 from ksa_optimizer import KineticOptimizer
 from ksa_registry import SnapshotRegistry

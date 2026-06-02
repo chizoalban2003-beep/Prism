@@ -1,5 +1,10 @@
 from __future__ import annotations
-import json, logging, sqlite3, urllib.parse, urllib.request
+
+import json
+import logging
+import sqlite3
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -179,7 +184,8 @@ class PrismTasks:
             method="POST")
         try:
             urllib.request.urlopen(req, timeout=8)
-        except Exception: pass
+        except Exception:
+            pass
 
     def _github_add(self, task: Task) -> Optional[int]:
         payload = json.dumps({
@@ -229,7 +235,8 @@ class PrismTasks:
             method="PATCH")
         try:
             urllib.request.urlopen(req, timeout=8)
-        except Exception: pass
+        except Exception:
+            pass
 
     def _linear_add(self, task: Task) -> Optional[str]:
         """Create a Linear issue via GraphQL API."""
@@ -309,9 +316,12 @@ class PrismTasks:
     def _resolve_provider(self) -> str:
         if self._provider != "auto":
             return self._provider
-        if self._todoist: return "todoist"
-        if self._github and self._repo: return "github"
-        if self._linear:  return "linear"
+        if self._todoist:
+            return "todoist"
+        if self._github and self._repo:
+            return "github"
+        if self._linear:
+            return "linear"
         return "local"
 
     def _store(self, task: Task) -> None:

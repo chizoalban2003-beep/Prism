@@ -397,8 +397,8 @@ class VoiceChannel(PerceptionChannel):
         If wake word detected: trigger on_transcript callback.
         """
         try:
-            import pyaudio
             import numpy as np
+            import pyaudio
         except ImportError:
             time.sleep(60.0)
             return
@@ -412,7 +412,9 @@ class VoiceChannel(PerceptionChannel):
             if self._stop.is_set():
                 break
             frames.append(stream.read(1024, exception_on_overflow=False))
-        stream.stop_stream(); stream.close(); pa.terminate()
+        stream.stop_stream()
+        stream.close()
+        pa.terminate()
 
         if not frames:
             return

@@ -29,7 +29,12 @@ from datetime import date
 from pathlib import Path
 from typing import Optional
 
-from ksa_executor import ExecutionContext, ExecutionOutcome, TaskExecutor, _ResourceSampler
+from ksa_executor import (
+    ExecutionContext,
+    ExecutionOutcome,
+    TaskExecutor,
+    _ResourceSampler,
+)
 from ksa_registry import PerformanceMetrics, SnapshotRegistry
 
 logger = logging.getLogger(__name__)
@@ -159,7 +164,8 @@ class TrainingPlanTask(TaskExecutor):
         )
 
     def primary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         try:
             content = _ollama_text(self._build_prompt(ctx, days=7),
@@ -167,35 +173,43 @@ class TrainingPlanTask(TaskExecutor):
             filename = f"training_plan_{_now_date()}.md"
             path     = _save_artifact(content, filename, self._output_dir)
             out = json.dumps({"path": path, "plan": content})
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "primary", 0, out, "", elapsed, sampler)
         except ConnectionError as exc:
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "primary", 1, "", str(exc), elapsed, sampler)
         except Exception as exc:
             logger.exception("TrainingPlanTask.primary failed")
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "primary", 1, "", str(exc), elapsed, sampler)
 
     def secondary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         try:
             content = _ollama_text(self._build_prompt(ctx, days=3),
                                    self._text_model, self._ollama_host)
             out = json.dumps({"plan": content, "days": 3})
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "secondary", 0, out, "", elapsed, sampler)
         except ConnectionError as exc:
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "secondary", 1, "", str(exc), elapsed, sampler)
         except Exception as exc:
             logger.exception("TrainingPlanTask.secondary failed")
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "secondary", 1, "", str(exc), elapsed, sampler)
 
     def safe(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         template = {
             "structure": ["Day 1: High-intensity training", "Day 2: Technical work",
@@ -206,7 +220,8 @@ class TrainingPlanTask(TaskExecutor):
             "note":      "Run primary() to generate full LLM-powered plan",
         }
         out = json.dumps(template)
-        elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+        elapsed = (time.perf_counter() - t0) * 1000
+        sampler.stop()
         return _make_outcome(ctx, "safe", 0, out, "", elapsed, sampler)
 
 
@@ -257,42 +272,51 @@ class MatchReportTask(TaskExecutor):
         )
 
     def primary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         try:
             content = _ollama_text(self._build_prompt(ctx), self._text_model, self._ollama_host)
             filename = f"match_report_{_now_date()}.md"
             path     = _save_artifact(content, filename, self._output_dir)
             out = json.dumps({"path": path, "report": content})
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "primary", 0, out, "", elapsed, sampler)
         except ConnectionError as exc:
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "primary", 1, "", str(exc), elapsed, sampler)
         except Exception as exc:
             logger.exception("MatchReportTask.primary failed")
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "primary", 1, "", str(exc), elapsed, sampler)
 
     def secondary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         try:
             content = _ollama_text(self._build_prompt(ctx, summary_only=True),
                                    self._text_model, self._ollama_host)
             out = json.dumps({"summary": content})
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "secondary", 0, out, "", elapsed, sampler)
         except ConnectionError as exc:
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "secondary", 1, "", str(exc), elapsed, sampler)
         except Exception as exc:
             logger.exception("MatchReportTask.secondary failed")
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "secondary", 1, "", str(exc), elapsed, sampler)
 
     def safe(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         sources = {
             "data_sources": ["session_log", "match_prediction_vs_actual",
@@ -301,7 +325,8 @@ class MatchReportTask(TaskExecutor):
             "note":         "Run primary() to generate full LLM-powered report",
         }
         out = json.dumps(sources)
-        elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+        elapsed = (time.perf_counter() - t0) * 1000
+        sampler.stop()
         return _make_outcome(ctx, "safe", 0, out, "", elapsed, sampler)
 
 
@@ -364,7 +389,8 @@ class ScoutingReportTask(TaskExecutor):
         )
 
     def primary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         try:
             content  = _ollama_text(self._build_prompt(ctx), self._text_model, self._ollama_host)
@@ -372,35 +398,43 @@ class ScoutingReportTask(TaskExecutor):
             filename = f"scouting_{opponent}_{_now_date()}.md"
             path     = _save_artifact(content, filename, self._output_dir)
             out = json.dumps({"path": path, "report": content})
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "primary", 0, out, "", elapsed, sampler)
         except ConnectionError as exc:
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "primary", 1, "", str(exc), elapsed, sampler)
         except Exception as exc:
             logger.exception("ScoutingReportTask.primary failed")
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "primary", 1, "", str(exc), elapsed, sampler)
 
     def secondary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         try:
             content = _ollama_text(self._build_prompt(ctx, section_only="key_players"),
                                    self._text_model, self._ollama_host)
             out = json.dumps({"key_players": content})
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "secondary", 0, out, "", elapsed, sampler)
         except ConnectionError as exc:
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "secondary", 1, "", str(exc), elapsed, sampler)
         except Exception as exc:
             logger.exception("ScoutingReportTask.secondary failed")
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "secondary", 1, "", str(exc), elapsed, sampler)
 
     def safe(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         template = {
             "sections": ["Team Overview", "Key Players", "Tactical Tendencies",
@@ -408,7 +442,8 @@ class ScoutingReportTask(TaskExecutor):
             "note":     "Run primary() to generate full LLM-powered scouting report",
         }
         out = json.dumps(template)
-        elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+        elapsed = (time.perf_counter() - t0) * 1000
+        sampler.stop()
         return _make_outcome(ctx, "safe", 0, out, "", elapsed, sampler)
 
 
@@ -467,42 +502,51 @@ class NutritionPlanTask(TaskExecutor):
         )
 
     def primary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         try:
             content  = _ollama_text(self._build_prompt(ctx), self._text_model, self._ollama_host)
             filename = f"nutrition_plan_{_now_date()}.md"
             path     = _save_artifact(content, filename, self._output_dir)
             out = json.dumps({"path": path, "plan": content})
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "primary", 0, out, "", elapsed, sampler)
         except ConnectionError as exc:
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "primary", 1, "", str(exc), elapsed, sampler)
         except Exception as exc:
             logger.exception("NutritionPlanTask.primary failed")
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "primary", 1, "", str(exc), elapsed, sampler)
 
     def secondary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         try:
             content = _ollama_text(self._build_prompt(ctx, pre_post_only=True),
                                    self._text_model, self._ollama_host)
             out = json.dumps({"pre_post_nutrition": content})
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "secondary", 0, out, "", elapsed, sampler)
         except ConnectionError as exc:
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "secondary", 1, "", str(exc), elapsed, sampler)
         except Exception as exc:
             logger.exception("NutritionPlanTask.secondary failed")
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "secondary", 1, "", str(exc), elapsed, sampler)
 
     def safe(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         framework = {
             "timing_framework": {
@@ -515,7 +559,8 @@ class NutritionPlanTask(TaskExecutor):
             "note": "Run primary() to generate personalised LLM-powered plan",
         }
         out = json.dumps(framework)
-        elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+        elapsed = (time.perf_counter() - t0) * 1000
+        sampler.stop()
         return _make_outcome(ctx, "safe", 0, out, "", elapsed, sampler)
 
 
@@ -578,7 +623,8 @@ class SocialMediaTask(TaskExecutor):
         )
 
     def primary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         try:
             posts: dict = {}
@@ -593,18 +639,22 @@ class SocialMediaTask(TaskExecutor):
                 posts[plat] = content
 
             out = json.dumps(posts)
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "primary", 0, out, "", elapsed, sampler)
         except ConnectionError as exc:
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "primary", 1, "", str(exc), elapsed, sampler)
         except Exception as exc:
             logger.exception("SocialMediaTask.primary failed")
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "primary", 1, "", str(exc), elapsed, sampler)
 
     def secondary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         try:
             content = _ollama_text(
@@ -612,18 +662,22 @@ class SocialMediaTask(TaskExecutor):
                 self._text_model, self._ollama_host,
             )
             out = json.dumps({"caption": content})
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "secondary", 0, out, "", elapsed, sampler)
         except ConnectionError as exc:
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "secondary", 1, "", str(exc), elapsed, sampler)
         except Exception as exc:
             logger.exception("SocialMediaTask.secondary failed")
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "secondary", 1, "", str(exc), elapsed, sampler)
 
     def safe(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         template = {
             "twitter":   "Just completed a [session_type] session in [sport]. [highlight]. #[sport] #training",
@@ -632,7 +686,8 @@ class SocialMediaTask(TaskExecutor):
             "note":      "Run primary() to generate LLM-powered posts",
         }
         out = json.dumps(template)
-        elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+        elapsed = (time.perf_counter() - t0) * 1000
+        sampler.stop()
         return _make_outcome(ctx, "safe", 0, out, "", elapsed, sampler)
 
 
@@ -688,7 +743,8 @@ class EmailDraftTask(TaskExecutor):
         )
 
     def primary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         try:
             content    = _ollama_text(self._build_prompt(ctx), self._text_model, self._ollama_host)
@@ -696,39 +752,48 @@ class EmailDraftTask(TaskExecutor):
             filename   = f"{email_type}_{_now_date()}.txt"
             path       = _save_artifact(content, filename, self._output_dir)
             out = json.dumps({"path": path, "draft": content})
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "primary", 0, out, "", elapsed, sampler)
         except ConnectionError as exc:
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "primary", 1, "", str(exc), elapsed, sampler)
         except Exception as exc:
             logger.exception("EmailDraftTask.primary failed")
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "primary", 1, "", str(exc), elapsed, sampler)
 
     def secondary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         try:
             content = _ollama_text(self._build_prompt(ctx, bullets_only=True),
                                    self._text_model, self._ollama_host)
             out = json.dumps({"outline": content})
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "secondary", 0, out, "", elapsed, sampler)
         except ConnectionError as exc:
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "secondary", 1, "", str(exc), elapsed, sampler)
         except Exception as exc:
             logger.exception("EmailDraftTask.secondary failed")
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "secondary", 1, "", str(exc), elapsed, sampler)
 
     def safe(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         out = json.dumps({"available_types": self._TYPES,
                           "note": "Run primary() with email_type in payload"})
-        elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+        elapsed = (time.perf_counter() - t0) * 1000
+        sampler.stop()
         return _make_outcome(ctx, "safe", 0, out, "", elapsed, sampler)
 
 
@@ -815,22 +880,26 @@ Generated by KDE Sports Agent • Local processing only
         return html
 
     def primary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         try:
             html     = self._build_html(ctx)
             filename = f"dashboard_{_now_date()}.html"
             path     = _save_artifact(html, filename, self._output_dir)
             out = json.dumps({"path": path})
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "primary", 0, out, "", elapsed, sampler)
         except Exception as exc:
             logger.exception("PerformanceDashboardTask.primary failed")
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "primary", 1, "", str(exc), elapsed, sampler)
 
     def secondary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         try:
             p       = ctx.payload
@@ -841,15 +910,18 @@ Generated by KDE Sports Agent • Local processing only
                 lines.append(f"- **{k}**: {v}")
             content = "\n".join(lines)
             out = json.dumps({"report": content})
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "secondary", 0, out, "", elapsed, sampler)
         except Exception as exc:
             logger.exception("PerformanceDashboardTask.secondary failed")
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "secondary", 1, "", str(exc), elapsed, sampler)
 
     def safe(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         sources = {
             "data_sources": ["30-day load history", "session logs", "wearable trends",
@@ -857,7 +929,8 @@ Generated by KDE Sports Agent • Local processing only
             "note":         "Run primary() to generate full HTML dashboard",
         }
         out = json.dumps(sources)
-        elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+        elapsed = (time.perf_counter() - t0) * 1000
+        sampler.stop()
         return _make_outcome(ctx, "safe", 0, out, "", elapsed, sampler)
 
 
@@ -891,7 +964,8 @@ class PredictionReportTask(TaskExecutor):
         self._text_model  = text_model
 
     def primary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         try:
             p         = ctx.payload
@@ -982,16 +1056,19 @@ Generated by KDE Sports Agent • Local processing only
                 "confidence":      mp.confidence,
                 "matchup_summary": tp.matchup_summary,
             })
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "primary", 0, out, "", elapsed, sampler)
 
         except Exception as exc:
             logger.exception("PredictionReportTask.primary failed")
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "primary", 1, "", str(exc), elapsed, sampler)
 
     def secondary(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         try:
             p = ctx.payload
@@ -1020,15 +1097,18 @@ Generated by KDE Sports Agent • Local processing only
                 "p_away_win":  mp.p_away_win,
                 "confidence":  mp.confidence,
             })
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "secondary", 0, out, "", elapsed, sampler)
         except Exception as exc:
             logger.exception("PredictionReportTask.secondary failed")
-            elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+            elapsed = (time.perf_counter() - t0) * 1000
+            sampler.stop()
             return _make_outcome(ctx, "secondary", 1, "", str(exc), elapsed, sampler)
 
     def safe(self, ctx: ExecutionContext) -> ExecutionOutcome:
-        sampler = _ResourceSampler(); sampler.start()
+        sampler = _ResourceSampler()
+        sampler.start()
         t0 = time.perf_counter()
         info = {
             "would_include": ["match_prediction", "squad_risk", "tactical_analysis",
@@ -1036,7 +1116,8 @@ Generated by KDE Sports Agent • Local processing only
             "note":          "Run primary() to generate full HTML prediction report",
         }
         out = json.dumps(info)
-        elapsed = (time.perf_counter() - t0) * 1000; sampler.stop()
+        elapsed = (time.perf_counter() - t0) * 1000
+        sampler.stop()
         return _make_outcome(ctx, "safe", 0, out, "", elapsed, sampler)
 
 

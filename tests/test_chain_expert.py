@@ -1,10 +1,17 @@
 import json
+import pathlib
+import tempfile
 from unittest.mock import MagicMock
+
 from prism_chain_expert import (
-    PrismChainExpert, ExpertChainState, ROUTER_PROMPT, EVALUATOR_PROMPT, BRANCH_JUDGE_PROMPT, SYNTHESISER_PROMPT,
+    BRANCH_JUDGE_PROMPT,
+    EVALUATOR_PROMPT,
+    ROUTER_PROMPT,
+    SYNTHESISER_PROMPT,
+    ExpertChainState,
+    PrismChainExpert,
 )
 from prism_responses import text_card
-import tempfile, pathlib
 
 
 def _agent(intent, message, ctx):
@@ -26,7 +33,7 @@ def test_branch_judge_no_branch():
     e = _make_expert([resp])
     state = ExpertChainState("t1","find weather","find weather")
     result = e._branch_judge(state, 1)
-    assert result["branch"] == False
+    assert not result["branch"]
 
 
 def test_branch_judge_branches():
@@ -41,7 +48,7 @@ def test_branch_judge_branches():
     e = _make_expert([resp])
     state = ExpertChainState("t2","news and email","news and email")
     result = e._branch_judge(state, 1)
-    assert result["branch"] == True
+    assert result["branch"] is True
     assert len(result["paths"]) == 2
 
 
@@ -66,7 +73,7 @@ def test_evaluator_scores_result():
     state = ExpertChainState("t5","test","test")
     result = e._evaluator_node(state, "web_search", "some result", 1)
     assert result["score"] == 4
-    assert result["sufficient"] == True
+    assert result["sufficient"] is True
 
 
 def test_evaluator_identifies_gap():
@@ -74,7 +81,7 @@ def test_evaluator_identifies_gap():
     e = _make_expert([resp])
     state = ExpertChainState("t6","test","test")
     result = e._evaluator_node(state, "web_search", "partial result", 1)
-    assert result["sufficient"] == False
+    assert result["sufficient"] is False
     assert "date" in result["gap"]
 
 

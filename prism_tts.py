@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import logging
 import platform
 import subprocess
@@ -75,14 +76,17 @@ class PrismTTS:
             try:
                 if self._engine == "say":
                     args = ["say"]
-                    if self._voice: args += ["-v", self._voice]
-                    if self._rate:  args += ["-r", str(self._rate)]
+                    if self._voice:
+                        args += ["-v", self._voice]
+                    if self._rate:
+                        args += ["-r", str(self._rate)]
                     args.append(text[:500])
                     subprocess.run(args, timeout=30, check=False)
 
                 elif self._engine == "espeak-ng":
                     args = ["espeak-ng", "-s", str(self._rate)]
-                    if self._voice: args += ["-v", self._voice]
+                    if self._voice:
+                        args += ["-v", self._voice]
                     args.append(text[:500])
                     subprocess.run(args, timeout=30, check=False)
 

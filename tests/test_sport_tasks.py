@@ -13,18 +13,17 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from ksa_registry import SnapshotRegistry
 from ksa_executor import ExecutionContext
 from ksa_lever import EquilibriumResult, LeverState, TiltDirection
+from ksa_registry import SnapshotRegistry
 from sport_tasks import (
-    TrainingPlanTask,
     MatchReportTask,
-    SocialMediaTask,
     PredictionReportTask,
+    SocialMediaTask,
+    TrainingPlanTask,
     _ollama_text,
     _save_artifact,
 )
-
 
 # ---------------------------------------------------------------------------
 # Helpers

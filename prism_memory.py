@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import hashlib
 import json
 import math
@@ -6,6 +7,7 @@ import sqlite3
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+
 
 @dataclass
 class MemoryEntry:
@@ -156,7 +158,8 @@ class PrismMemory:
             window = lower[i:i+200]
             count  = sum(1 for t in terms if t in window)
             if count > best_count:
-                best_count = count; best_pos = i
+                best_count = count
+                best_pos = i
         start = max(0, best_pos)
         return content[start:start+max_len].strip()
 

@@ -1,8 +1,9 @@
 import json
-import tempfile
 import pathlib
+import tempfile
 from unittest.mock import MagicMock
-from prism_chain import PrismChain, ChainState, ChainStep, LLMDecision, BranchResult
+
+from prism_chain import BranchResult, ChainState, ChainStep, LLMDecision, PrismChain
 from prism_responses import text_card
 
 

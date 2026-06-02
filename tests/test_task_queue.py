@@ -1,8 +1,8 @@
 from __future__ import annotations
+
 import time
 
-
-from prism_task_queue import TaskQueue, TaskProgress, TaskStatus
+from prism_task_queue import TaskProgress, TaskQueue, TaskStatus
 
 
 def test_submit_returns_string(tmp_path):

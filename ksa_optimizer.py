@@ -30,9 +30,9 @@ import logging
 import random
 from typing import Optional
 
+from ksa_executor import ExecutionOutcome
 from ksa_lever import ThreeBarSystem
 from ksa_registry import SnapshotRegistry
-from ksa_executor import ExecutionOutcome
 
 logger = logging.getLogger(__name__)
 
@@ -254,13 +254,13 @@ class KineticOptimizer:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    import tempfile
     import os
+    import tempfile
 
     print("=== KSA Kinetic Optimizer Demo ===\n")
 
-    from ksa_registry import PerformanceMetrics
     from ksa_executor import ExecutionOutcome
+    from ksa_registry import PerformanceMetrics
 
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = f.name

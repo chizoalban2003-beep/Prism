@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 import json
 import logging
 import sqlite3
@@ -110,7 +111,8 @@ class TaskQueue:
                 steps_total=len(steps),result={"steps":results},
                 completed_at=time.time())
             self._write(final)
-            if on_complete: on_complete(final)
+            if on_complete:
+                on_complete(final)
 
         t = threading.Thread(target=_run, daemon=True, name=f"prism-{task_id}")
         self._threads[task_id] = t
@@ -133,7 +135,8 @@ class TaskQueue:
             row = c.execute(
                 "SELECT data_json FROM tasks WHERE id=?", (task_id,)
             ).fetchone()
-        if not row: return None
+        if not row:
+            return None
         d = json.loads(row[0])
         return TaskProgress(**{k:v for k,v in d.items()
                                if k in TaskProgress.__dataclass_fields__})
@@ -151,7 +154,8 @@ class TaskQueue:
                 d = json.loads(row[0])
                 out.append(TaskProgress(**{k:v for k,v in d.items()
                     if k in TaskProgress.__dataclass_fields__}))
-            except Exception: pass
+            except Exception:
+                pass
         return out
 
     def _write(self, p: TaskProgress) -> None:

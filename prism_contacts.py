@@ -1,5 +1,11 @@
 from __future__ import annotations
-import json, logging, sqlite3, time, urllib.parse, urllib.request
+
+import json
+import logging
+import sqlite3
+import time
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -104,7 +110,8 @@ class PrismContacts:
             for person in data.get("connections",[]):
                 names  = person.get("names",[{}])
                 name   = names[0].get("displayName","") if names else ""
-                if not name: continue
+                if not name:
+                    continue
                 emails = [e["value"] for e in
                           person.get("emailAddresses",[]) if "value" in e]
                 phones = [p["value"] for p in

@@ -30,20 +30,20 @@ Public API:
 from __future__ import annotations
 
 import json
+import os
 import sqlite3
+
+# Import the lever system from the same package
+# (assumes ksa_lever.py is on sys.path or in the same directory)
+import sys
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-# Import the lever system from the same package
-# (assumes ksa_lever.py is on sys.path or in the same directory)
-import sys
-import os
 sys.path.insert(0, os.path.dirname(__file__))
 from ksa_lever import ThreeBarSystem
-
 
 # ---------------------------------------------------------------------------
 # Data classes
@@ -484,8 +484,8 @@ class SnapshotRegistry:
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    import tempfile
     import os
+    import tempfile
 
     print("=== KSA Registry Demo ===\n")
 

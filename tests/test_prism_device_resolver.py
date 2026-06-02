@@ -15,8 +15,9 @@ def test_instantiation():
 
 def test_resolve_returns_result():
     """resolve() returns a ToolResolution for a known task type."""
-    from prism_device_resolver import CapabilityMap
     import sys
+
+    from prism_device_resolver import CapabilityMap
     resolver = ToolResolver()
     caps = CapabilityMap(
         cli_tools=set(),

@@ -1,5 +1,9 @@
 from __future__ import annotations
-import json, logging, urllib.parse, urllib.request
+
+import json
+import logging
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
@@ -77,8 +81,10 @@ class PrismSearch:
         if self._provider == "serp" and self._serp_key:
             return "serp"
         if self._provider == "auto":
-            if self._brave_key: return "brave"
-            if self._serp_key:  return "serp"
+            if self._brave_key:
+                return "brave"
+            if self._serp_key:
+                return "serp"
         return "ddg"
 
     def _brave_search(self, query: str, n: int) -> list[SearchResult]:
@@ -132,7 +138,8 @@ class PrismSearch:
             pattern = r'<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>([^<]+)</a>'
             for i, (url_raw, title) in enumerate(
                     re.findall(pattern, html)):
-                if i >= n: break
+                if i >= n:
+                    break
                 results.append(SearchResult(
                     title   = title.strip(),
                     url     = url_raw,

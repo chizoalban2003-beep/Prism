@@ -1,5 +1,5 @@
 """Tests for sports_pro.py"""
-from sports_pro import Role, SportsProProfile, DailyPlanner, SportsProAssistant
+from sports_pro import DailyPlanner, Role, SportsProAssistant, SportsProProfile
 
 
 def test_import():

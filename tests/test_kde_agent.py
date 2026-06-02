@@ -12,13 +12,12 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from sports_pro import Role
-from kde_agent import KDEAgent, KDEConfig, TaskResult
+from daily_workflow import EveningReview, MorningBrief, SessionLog
 from device_hub import DeviceHub, DeviceType
-from media_processor import MediaProcessor, VideoRecord, Frame, MediaMetrics
+from kde_agent import KDEAgent, KDEConfig, TaskResult
+from media_processor import Frame, MediaMetrics, MediaProcessor, VideoRecord
+from sports_pro import Role
 from vision_analyzer import VisionAnalyzer
-from daily_workflow import MorningBrief, SessionLog, EveningReview
-
 
 # ---------------------------------------------------------------------------
 # Helpers

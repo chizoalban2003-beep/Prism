@@ -149,8 +149,9 @@ class PrismVoice:
         return None
 
     def _record_sounddevice(self, seconds: float) -> str:
-        import sounddevice as sd
         import wave
+
+        import sounddevice as sd
 
         logger.debug("PrismVoice: recording %.1fs via sounddevice", seconds)
         audio = sd.rec(
@@ -169,8 +170,9 @@ class PrismVoice:
         return tmp.name
 
     def _record_pyaudio(self, seconds: float) -> str:
-        import pyaudio
         import wave
+
+        import pyaudio
 
         CHUNK = 1024
         logger.debug("PrismVoice: recording %.1fs via pyaudio", seconds)

@@ -13,7 +13,6 @@ import os
 from datetime import date, timedelta
 from pathlib import Path
 
-
 # ---------------------------------------------------------------------------
 # HTMLReportGenerator
 # ---------------------------------------------------------------------------

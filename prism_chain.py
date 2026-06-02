@@ -155,7 +155,8 @@ Rules:
                   push=None, autonomous=None, memory=None,
                   use_evaluator: bool = True,
                   interceptor_policy=None,
-                  use_soft_logic: bool = True):
+                  use_soft_logic: bool = True,
+                  horizon_planner=None):
         self._router             = llm_router
         self._policy             = policy_engine
         self._push               = push
@@ -164,14 +165,15 @@ Rules:
         self._use_evaluator      = use_evaluator
         self._interceptor_policy = interceptor_policy
         self._use_soft_logic     = use_soft_logic
+        self._horizon            = horizon_planner
 
         # Thread-safety note: _state_lock protects the internal results list
         # in _execute_branch. The append to state.steps happens in run() which
         # is single-threaded; only the local `results` accumulation needs a lock.
         self._state_lock = threading.Lock()
 
-        from prism_composer import LOGIC_REGISTRY
         from prism_chain_theory import SubChainLogic
+        from prism_composer import LOGIC_REGISTRY
         self._registry = LOGIC_REGISTRY
         self._registry_str = "\n".join(
             f"  {k}: {v}" for k, v in self._registry.items())
@@ -243,6 +245,18 @@ Rules:
 
         logger.info("[chain %s] Starting — '%s'", state.chain_id, message[:60])
 
+        # ── Memory anchor ─────────────────────────────────────────────────────────
+        _anchor_id: Optional[str] = None
+        if self._horizon is not None:
+            try:
+                _anchor_id = self._horizon.add_triggered(
+                    intent=f"chain:{state.chain_id}",
+                    completion_condition=message[:200],
+                    context={"original_message": message[:400], "step_count": 0},
+                )
+            except Exception as exc:
+                logger.debug("[chain] Anchor create failed: %s", exc)
+
         for step_num in range(1, self.MAX_STEPS + 1):
             # ── LLM NODE: decide what to do next ─────────────────────────────
             decision = self._llm_node(state, step_num)
@@ -281,6 +295,17 @@ Rules:
                         duration_ms = br.duration_ms,
                     )
                     state.steps.append(step)
+                    # Checkpoint step to horizon anchor
+                    if _anchor_id is not None:
+                        try:
+                            step_summary = (
+                                f"Step {step_num} [{step.logic if hasattr(step, 'logic') else 'branch'}]: "
+                                f"{(step.result_out if hasattr(step, 'result_out') else '')[:120]}"
+                            )
+                            self._horizon.record_step(_anchor_id, step_summary)
+                            self._horizon.update_context(_anchor_id, step_count=step_num)
+                        except Exception:
+                            pass
 
                 state.accumulated += f"\n\n[Step {step_num} — PARALLEL BRANCH]{branch_text}"
                 logger.info("[chain %s] Step %d branched into %d parallel logics",
@@ -314,6 +339,17 @@ Rules:
                             duration_ms = elapsed,
                         )
                         state.steps.append(orig_step)
+                        # Checkpoint step to horizon anchor
+                        if _anchor_id is not None:
+                            try:
+                                step_summary = (
+                                    f"Step {step_num} [{orig_step.logic if hasattr(orig_step, 'logic') else 'branch'}]: "
+                                    f"{(orig_step.result_out if hasattr(orig_step, 'result_out') else '')[:120]}"
+                                )
+                                self._horizon.record_step(_anchor_id, step_summary)
+                                self._horizon.update_context(_anchor_id, step_count=step_num)
+                            except Exception:
+                                pass
                         # Run substitute logic immediately
                         t_sub = time.time()
                         sub_result = self._logic_node(
@@ -330,6 +366,17 @@ Rules:
                             duration_ms = sub_elapsed,
                         )
                         state.steps.append(sub_step)
+                        # Checkpoint step to horizon anchor
+                        if _anchor_id is not None:
+                            try:
+                                step_summary = (
+                                    f"Step {step_num} [{sub_step.logic if hasattr(sub_step, 'logic') else 'branch'}]: "
+                                    f"{(sub_step.result_out if hasattr(sub_step, 'result_out') else '')[:120]}"
+                                )
+                                self._horizon.record_step(_anchor_id, step_summary)
+                                self._horizon.update_context(_anchor_id, step_count=step_num)
+                            except Exception:
+                                pass
                         state.accumulated += (
                             f"\n\n[Step {step_num} — INTERCEPTED {decision.next_logic}"
                             f" → {intercept.substitute_logic}]\n"
@@ -356,6 +403,17 @@ Rules:
                     eval_score  = eval_score,
                 )
                 state.steps.append(step)
+                # Checkpoint step to horizon anchor
+                if _anchor_id is not None:
+                    try:
+                        step_summary = (
+                            f"Step {step_num} [{step.logic if hasattr(step, 'logic') else 'branch'}]: "
+                            f"{(step.result_out if hasattr(step, 'result_out') else '')[:120]}"
+                        )
+                        self._horizon.record_step(_anchor_id, step_summary)
+                        self._horizon.update_context(_anchor_id, step_count=step_num)
+                    except Exception:
+                        pass
                 state.eval_scores.append(eval_score)
                 # Accumulate: the growing context the next LLM node will see
                 eval_note = f"\nEval: {eval_score}/5" + (f" — still missing: {gap}" if gap else "")
@@ -387,6 +445,23 @@ Rules:
                         state.final_answer = logic_result
                     break
 
+        # ── Finalise anchor ────────────────────────────────────────────────────────
+        if _anchor_id is not None:
+            try:
+                if state.done and state.final_answer:
+                    self._horizon.complete(
+                        _anchor_id,
+                        notes=state.final_answer[:300],
+                    )
+                elif not state.done:
+                    # Chain hit MAX_STEPS without completing — abandon the anchor
+                    self._horizon.abandon(
+                        _anchor_id,
+                        reason=f"chain hit MAX_STEPS ({self.MAX_STEPS}) without completing",
+                    )
+            except Exception as exc:
+                logger.debug("[chain] Anchor finalise failed: %s", exc)
+
         # ── Build final card ──────────────────────────────────────────────────
         card = self._build_card(state)
 
@@ -407,6 +482,136 @@ Rules:
                 pass
 
         return card
+
+    def resume(self, goal_id: str, agent_execute_fn, base_ctx: dict) -> "PrismCard":
+        """
+        Resume an interrupted chain from its last checkpoint.
+
+        Looks up a PAUSED chain anchor in HorizonPlanner by goal_id,
+        reconstructs ChainState from the recorded steps, and continues
+        the chain from where it left off.
+
+        Returns None if the goal is not found or not resumable.
+        """
+        if self._horizon is None:
+            logger.warning("[chain] resume() called but no horizon_planner")
+            return None
+
+        goal = self._horizon.get(goal_id)
+        if goal is None:
+            logger.warning("[chain] resume: goal %s not found", goal_id)
+            return None
+
+        # Extract chain_id from intent ("chain:abc12345" → "abc12345")
+        chain_id = goal.intent.split(":", 1)[-1] if ":" in goal.intent else goal.goal_id
+        original = goal.accumulated_context.get("original_message", goal.completion_condition)
+
+        # Reconstruct accumulated context from recorded steps
+        accumulated = "\n\n".join(
+            f"[Checkpoint {i+1}] {s}"
+            for i, s in enumerate(goal.completed_steps)
+        )
+
+        state = ChainState(
+            chain_id  = chain_id,
+            original  = original,
+            goal      = original,
+            accumulated = accumulated,
+        )
+
+        # Re-mark goal as TRIGGERED so on_session_end() checkpoints it again
+        # if this resume is also interrupted
+        try:
+            from prism_horizon import HorizonGoalStatus
+            with self._horizon._lock:
+                g = self._horizon._load_goal(goal_id)
+                if g and g.status == HorizonGoalStatus.PAUSED:
+                    g.status = HorizonGoalStatus.TRIGGERED
+                    self._horizon._upsert(g)
+        except Exception:
+            pass
+
+        logger.info(
+            "[chain] Resuming chain %s from %d checkpoints",
+            chain_id, len(goal.completed_steps),
+        )
+
+        # Continue from the next step (skip completed steps in the budget)
+        steps_done = goal.accumulated_context.get("step_count", len(goal.completed_steps))
+        remaining  = max(1, self.MAX_STEPS - steps_done)
+
+        # Re-run from the next step using remaining budget
+        _anchor_id = goal_id
+        for step_num in range(steps_done + 1, steps_done + remaining + 1):
+            decision = self._llm_node(state, step_num)
+            if decision is None:
+                break
+
+            if decision.done:
+                state.done         = True
+                state.final_answer = decision.answer
+                break
+
+            t0           = time.time()
+            logic_result = self._logic_node(
+                decision.next_logic, decision.next_message,
+                base_ctx, agent_execute_fn)
+            elapsed      = (time.time() - t0) * 1000
+
+            policy_note  = self._policy_node(decision.next_logic, logic_result, base_ctx)
+            eval_score, sufficient, gap = self._evaluator_node(
+                state.original, decision.next_logic, logic_result)
+
+            step = ChainStep(
+                step_num    = step_num,
+                logic       = decision.next_logic,
+                message_in  = decision.next_message[:200],
+                result_out  = logic_result[:400],
+                policy_note = policy_note,
+                duration_ms = elapsed,
+                eval_score  = eval_score,
+            )
+            state.steps.append(step)
+            state.eval_scores.append(eval_score)
+            state.accumulated += (
+                f"\n\n[Resumed Step {step_num} — {decision.next_logic}]\n"
+                f"Got: {logic_result[:300]}"
+            )
+
+            try:
+                self._horizon.record_step(
+                    _anchor_id,
+                    f"Resumed step {step_num} [{decision.next_logic}]: {logic_result[:120]}"
+                )
+                self._horizon.update_context(_anchor_id, step_count=step_num)
+            except Exception:
+                pass
+
+            if sufficient:
+                state.done = True
+                if self._router:
+                    synth_prompt = (
+                        f"Task: '{state.original}'\n\nEvidence:\n{state.accumulated}\n\n"
+                        "Write a concise final answer (2-4 sentences).")
+                    state.final_answer, _ = self._router.call(
+                        synth_prompt, min_capability=1, max_tokens=250)
+                else:
+                    state.final_answer = logic_result
+                break
+
+        if _anchor_id:
+            try:
+                if state.done and state.final_answer:
+                    self._horizon.complete(_anchor_id, notes=state.final_answer[:300])
+                else:
+                    self._horizon.abandon(
+                        _anchor_id,
+                        reason="resumed chain hit step limit without completing",
+                    )
+            except Exception:
+                pass
+
+        return self._build_card(state)
 
     # ── Branch execution ──────────────────────────────────────────────────────
 

@@ -9,9 +9,10 @@ ORGAN_META = {
 
 
 def execute(intent: str, message: str, ctx: dict):
-    from prism_responses import text_card
-    import urllib.request
     import json as _json
+    import urllib.request
+
+    from prism_responses import text_card
 
     # Parse "100 USD to EUR" or "convert 50 GBP to JPY"
     m = _re.search(

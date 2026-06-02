@@ -1,5 +1,7 @@
 import tempfile
+
 from prism_tasks import PrismTasks
+
 
 def _tmp_tasks():
     tmp = tempfile.mktemp(suffix=".db")

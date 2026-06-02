@@ -17,13 +17,12 @@ from dataclasses import dataclass, field
 from typing import Optional
 from unittest.mock import MagicMock
 
-from prism_responses import text_card
 from prism_chain_theory import (
-    SubChainLogic,
-    SoftLogic,
     InterceptorPolicy,
+    SoftLogic,
+    SubChainLogic,
 )
-
+from prism_responses import text_card
 
 # ── Shared mock helpers ───────────────────────────────────────────────────────
 

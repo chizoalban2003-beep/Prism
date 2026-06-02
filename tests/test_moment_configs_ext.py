@@ -9,8 +9,7 @@ from __future__ import annotations
 import pytest
 
 import moment_configs_ext as ext
-from moment_analyzer import ALL_MOMENT_CONFIGS, MomentAnalyzer, Moment
-
+from moment_analyzer import ALL_MOMENT_CONFIGS, Moment, MomentAnalyzer
 
 # ---------------------------------------------------------------------------
 # Fixtures

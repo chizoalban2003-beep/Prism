@@ -41,16 +41,15 @@ from pathlib import Path
 # Ensure the package directory is on the path when run as a script
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+from ksa_agent import KSAgent
 from ksa_config import KSAConfig
 from ksa_executor import (
     FileIndexExecutor,
     LocalSearchExecutor,
     ShellExecutor,
 )
-from ksa_agent import KSAgent
 from ksa_lever import ThreeBarSystem
 from ksa_registry import SnapshotRegistry
-
 
 # ---------------------------------------------------------------------------
 # Helpers

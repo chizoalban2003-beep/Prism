@@ -17,7 +17,6 @@ from __future__ import annotations
 
 from moment_analyzer import ALL_MOMENT_CONFIGS, MomentOption, MomentSportConfig
 
-
 # ── Tennis ────────────────────────────────────────────────────────────────────
 
 TENNIS_SERVE_DEUCE = MomentSportConfig(

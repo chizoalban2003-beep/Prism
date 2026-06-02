@@ -21,9 +21,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
 
-from ksa_lever import ThreeBarSystem, EquilibriumResult
+from ksa_lever import EquilibriumResult, ThreeBarSystem
 from ksa_registry import SnapshotRegistry
-
 
 # ---------------------------------------------------------------------------
 # Core prediction dataclasses
@@ -157,7 +156,9 @@ class MatchPredictor:
 
         # Normalise
         t = p_home + p_draw + p_away
-        p_home /= t; p_draw /= t; p_away /= t
+        p_home /= t
+        p_draw /= t
+        p_away /= t
 
         confidence  = _clamp(abs(p_home - p_away) + 0.3)
         risk        = _clamp(1.0 - confidence)

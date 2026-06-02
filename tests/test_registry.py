@@ -4,14 +4,15 @@ tests/test_registry.py
 Unit tests for ksa_registry.py — SnapshotRegistry, PerformanceMetrics.
 """
 
-import pytest
-import sys
 import os
+import sys
+
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from ksa_lever import ThreeBarSystem
 from ksa_registry import PerformanceMetrics, SnapshotRecord, SnapshotRegistry
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

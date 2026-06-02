@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import time
+
 import pytest
 
 from prism_proactive import (
     PrismProactive,
-    ProactiveTrigger,
     ProactiveEvent,
+    ProactiveTrigger,
     build_default_triggers,
 )
-
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 

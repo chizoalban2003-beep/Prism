@@ -1,5 +1,6 @@
 """Universal service integrator — researches, characterises, and builds integrations for any unknown service."""
 from __future__ import annotations
+
 import json
 import logging
 import sqlite3

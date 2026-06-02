@@ -1,6 +1,7 @@
 import json
 import tempfile
 from unittest.mock import MagicMock
+
 from prism_autonomous import PrismAutonomous, _is_safe_code
 
 

@@ -1,8 +1,12 @@
 import json
 from unittest.mock import MagicMock
+
 from prism_composer import (
-    PrismComposer, CompositionPlan, CompositionStep,
-    LogicResult, LOGIC_REGISTRY,
+    LOGIC_REGISTRY,
+    CompositionPlan,
+    CompositionStep,
+    LogicResult,
+    PrismComposer,
 )
 from prism_responses import text_card
 

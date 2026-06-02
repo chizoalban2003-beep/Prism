@@ -80,6 +80,8 @@ py-modules = [
     "prism_llm_router",
     "prism_horizon",
     "prism_memory",
+    "prism_organ_bus",
+    "prism_organ_bus_experiment",
     "prism_organ_loader",
     "prism_perception",
     "prism_pwa",

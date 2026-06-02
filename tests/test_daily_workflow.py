@@ -7,19 +7,24 @@ pytest + tmp_path. Mocks device hub, media processor, and vision analyzer.
 """
 from __future__ import annotations
 
-from datetime import date
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from sports_pro import (
-    SportsProAssistant, SportsProProfile, Role, DailyContext, WearableReader, DailyPlan, DailyTask,
-)
+from daily_workflow import DailyWorkflow, EveningReview, MorningBrief, SessionLog
 from device_hub import DeviceHub, MediaType
-from media_processor import MediaProcessor, VideoRecord, Frame, MediaMetrics
-from vision_analyzer import VisionAnalyzer, FrameAnalysis, SessionSummary
-from daily_workflow import DailyWorkflow, MorningBrief, SessionLog, EveningReview
-
+from media_processor import Frame, MediaMetrics, MediaProcessor, VideoRecord
+from sports_pro import (
+    DailyContext,
+    DailyPlan,
+    DailyTask,
+    Role,
+    SportsProAssistant,
+    SportsProProfile,
+    WearableReader,
+)
+from vision_analyzer import FrameAnalysis, SessionSummary, VisionAnalyzer
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -176,7 +181,7 @@ class TestEveningReview:
     def test_returns_evening_review(self, workflow):
         review = workflow.evening_review()
         assert isinstance(review, EveningReview)
-        assert review.date_str == date.today().isoformat()
+        assert review.date_str == datetime.now(tz=timezone.utc).date().isoformat()
         assert isinstance(review.recovery_protocol, list)
         assert isinstance(review.sleep_target_hrs, float)
         assert review.sleep_target_hrs >= 7.0

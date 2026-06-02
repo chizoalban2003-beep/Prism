@@ -1,10 +1,7 @@
 """Tests for prism_pwa — PWA asset generation."""
 import json
 
-import pytest
-
 from prism_pwa import get_icon_svg, get_manifest, get_mobile_html, get_service_worker
-
 
 # ── manifest ──────────────────────────────────────────────────────────────────
 

@@ -4,7 +4,12 @@ import json
 import sqlite3
 from pathlib import Path
 
-from prism_executor_agent import ExecutionPlan, ExecutorRecord, PrismExecutorAgent, ToolRegistry
+from prism_executor_agent import (
+    ExecutionPlan,
+    ExecutorRecord,
+    PrismExecutorAgent,
+    ToolRegistry,
+)
 
 
 def test_plan_exposes_executor_metadata_without_approval(tmp_path):

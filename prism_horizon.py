@@ -236,6 +236,44 @@ class HorizonPlanner:
         logger.info("HorizonPlanner: added goal %s — %r", goal_id, intent[:60])
         return goal_id
 
+    def add_triggered(
+        self,
+        intent: str,
+        completion_condition: str = "",
+        context: Optional[dict] = None,
+    ) -> str:
+        """Create a goal that is immediately TRIGGERED (used for active chains).
+
+        Unlike add(), this skips the WATCHING state — the goal is already
+        executing. The caller is responsible for recording steps and completing
+        or abandoning the goal.
+        """
+        goal_id = str(uuid.uuid4())[:8]
+        goal = HorizonGoal(
+            goal_id=goal_id,
+            intent=intent,
+            trigger_condition="immediate",
+            completion_condition=completion_condition,
+            status=HorizonGoalStatus.TRIGGERED,
+            triggered_at=time.time(),
+            accumulated_context=context or {},
+        )
+        with self._lock:
+            self._upsert(goal)
+        logger.info("HorizonPlanner: chain anchor created %s — %r", goal_id, intent[:60])
+        return goal_id
+
+    def resumable_chains(self) -> List[HorizonGoal]:
+        """Return PAUSED goals whose intent starts with 'chain:'.
+
+        These are chains that were interrupted mid-run and can be resumed
+        by PrismChain.resume().
+        """
+        return [
+            g for g in self.list_goals(status=HorizonGoalStatus.PAUSED)
+            if g.intent.startswith("chain:")
+        ]
+
     def register_probe(self, goal_id: str, probe: Callable[[dict], bool]) -> None:
         """Attach a probe function to an existing goal.
 

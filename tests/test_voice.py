@@ -1,11 +1,11 @@
 import os
-import sys
-import wave
 import struct
+import sys
 import tempfile
+import wave
 from unittest.mock import MagicMock, patch
-from prism_voice import PrismVoice
 
+from prism_voice import PrismVoice
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -121,8 +121,10 @@ def test_transcribe_whisper_exception_returns_empty():
 
 def test_transcribe_faster_whisper_success():
     v = _make_voice(backend="faster_whisper")
-    seg1 = MagicMock(); seg1.text = "fast "
-    seg2 = MagicMock(); seg2.text = "transcription"
+    seg1 = MagicMock()
+    seg1.text = "fast "
+    seg2 = MagicMock()
+    seg2.text = "transcription"
     mock_model = MagicMock()
     mock_model.transcribe.return_value = ([seg1, seg2], MagicMock())
     v._whisper = mock_model

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
-import time
 import threading
+import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -147,8 +147,8 @@ class PrismChainExpert:
 
     def run(self, message: str, agent_execute_fn,
              base_ctx: dict) -> Optional["PrismCard"]:
-        from prism_responses import text_card
         from prism_chain import ChainStep
+        from prism_responses import text_card
 
         if not self._router:
             return None
@@ -368,8 +368,10 @@ class PrismChainExpert:
 
         threads = [threading.Thread(target=run, args=(i, p))
                    for i, p in enumerate(paths)]
-        for t in threads: t.start()
-        for t in threads: t.join(timeout=45)
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=45)
         return results
 
     # ── Policy node (same as PrismChain) ─────────────────────────────────────

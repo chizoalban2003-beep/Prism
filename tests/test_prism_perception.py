@@ -13,12 +13,11 @@ from prism_perception import (
     ContextState,
     PerceptionChannel,
     PrismPerception,
+    ScreenContextChannel,
     SystemContextChannel,
     TypingPatternChannel,
     VoiceChannel,
-    ScreenContextChannel,
 )
-
 
 # ---------------------------------------------------------------------------
 # ContextSignal

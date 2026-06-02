@@ -46,10 +46,10 @@ import os
 from pathlib import Path
 from typing import Any
 
+from device_hub import DeviceType
 from kde_agent import KDEAgent, KDEConfig
 from kde_profiles import from_toml
 from sports_pro import Role
-from device_hub import DeviceType
 
 logger = logging.getLogger(__name__)
 

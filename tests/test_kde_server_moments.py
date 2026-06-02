@@ -12,11 +12,9 @@ import time
 import urllib.request
 from unittest.mock import MagicMock
 
-
-from kde_server import KDEServer, DEFAULT_HOST
-from moment_analyzer import MomentAnalyzer
 from duel_analyzer import DuelAnalyzer
-
+from kde_server import DEFAULT_HOST, KDEServer
+from moment_analyzer import MomentAnalyzer
 
 # ---------------------------------------------------------------------------
 # Helpers

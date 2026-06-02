@@ -20,14 +20,14 @@ from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Callable, Optional
 
-from sports_pro import (
-    SportsProAssistant,
-    DailyPlan,
-    WearableReading,
-    WearableReader,
-)
 from device_hub import DeviceHub, DeviceType, MediaType
 from media_processor import MediaProcessor
+from sports_pro import (
+    DailyPlan,
+    SportsProAssistant,
+    WearableReader,
+    WearableReading,
+)
 from vision_analyzer import VisionAnalyzer
 
 logger = logging.getLogger(__name__)
@@ -309,7 +309,7 @@ class DailyWorkflow:
         5. Calculate sleep target
         6. Return EveningReview
         """
-        date_str = date.today().isoformat()
+        date_str = datetime.now(tz=timezone.utc).date().isoformat()
 
         if day_rating is not None:
             try:

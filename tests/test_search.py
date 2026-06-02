@@ -1,5 +1,6 @@
 from prism_search import PrismSearch
 
+
 def test_always_configured():
     assert PrismSearch().configured
 

@@ -1,5 +1,8 @@
 from __future__ import annotations
-import logging, urllib.request, urllib.parse
+
+import logging
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)

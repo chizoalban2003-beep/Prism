@@ -3,6 +3,7 @@ Tests for PrismDeviceAgent._safe_path path sanitisation.
 """
 
 import os
+
 import pytest
 
 from prism_device_agent import PrismDeviceAgent

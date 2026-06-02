@@ -4,15 +4,16 @@ tests/test_router.py
 Unit tests for ksa_router.py — MasterFulcrum, RouteResult, IntentPattern.
 """
 
-import pytest
-import sys
 import os
+import sys
+
+import pytest
+
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from ksa_lever import ThreeBarSystem
 from ksa_registry import SnapshotRegistry
 from ksa_router import MasterFulcrum
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

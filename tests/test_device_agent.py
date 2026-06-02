@@ -10,7 +10,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-
 from prism_device_agent import (
     CapabilityMap,
     DeviceCapabilityScanner,
@@ -20,7 +19,6 @@ from prism_device_agent import (
 )
 from prism_device_resolver import ToolResolver as StandaloneToolResolver
 from prism_responses import PrismCard, device_result_card
-
 
 # ---------------------------------------------------------------------------
 # Helpers

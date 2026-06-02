@@ -18,7 +18,6 @@ from unittest.mock import MagicMock
 
 from prism_responses import text_card
 
-
 # ── Test cases ────────────────────────────────────────────────────────────────
 
 TEST_CASES = [
@@ -92,14 +91,16 @@ class BenchReport:
                 print(f"    LLM calls:    {g.n_llm_calls}")
                 print(f"    Duration:     {g.duration_ms:.0f}ms")
                 print(f"    Answer len:   {g.answer_len} chars")
-                if g.error: print(f"    Error:        {g.error}")
+                if g.error:
+                    print(f"    Error:        {g.error}")
             if e:
                 print("\n  EXPERT chain:")
                 print(f"    Logics used:  {e.logics_used}")
                 print(f"    LLM calls:    {e.n_llm_calls}")
                 print(f"    Duration:     {e.duration_ms:.0f}ms")
                 print(f"    Answer len:   {e.answer_len} chars")
-                if e.error: print(f"    Error:        {e.error}")
+                if e.error:
+                    print(f"    Error:        {e.error}")
 
         # Summary stats
         if general and expert:

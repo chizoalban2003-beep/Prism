@@ -1,5 +1,8 @@
-import tempfile, os
-from prism_contacts import PrismContacts, Contact
+import os
+import tempfile
+
+from prism_contacts import Contact, PrismContacts
+
 
 def _tmp_contacts():
     tmp = tempfile.mktemp(suffix=".db")

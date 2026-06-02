@@ -1,9 +1,11 @@
 """App and tool resolver — maps abstract task descriptions to installed executables and capabilities."""
 from __future__ import annotations
+
 import importlib.util
 import logging
 from dataclasses import dataclass
 from typing import Optional
+
 from prism_device_scanner import CapabilityMap
 
 logger = logging.getLogger(__name__)
