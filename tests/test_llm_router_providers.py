@@ -153,8 +153,9 @@ def test_best_skips_over_budget():
 
     best = router.best(min_capability=1)
     assert best is not None
-    # paid must be skipped because it is over budget
+    # paid must be skipped because it is over budget; free (ollama) should win
     assert best.provider != "openai", "Over-budget provider should be skipped"
+    assert best.provider == "ollama", "Free local provider should be selected as fallback"
 
 
 def test_gemini_call_structure():
@@ -207,7 +208,10 @@ def test_complexity_routing():
         endpoint="https://api.groq.com/openai", available=True,
         capability=2, cost_per_1k_in=0.00005, cost_per_1k_out=0.00008,
     )
-    stdlib_opt = LLMOption("stdlib", "stdlib", "", True, 0, 0)
+    stdlib_opt = LLMOption(
+        provider="stdlib", model="stdlib", endpoint="", available=True,
+        capability=0, latency_ms=0,
+    )
     router._options = [strong, fast, stdlib_opt]
     router._discovered = True
     router._last_scan = _time.time()  # mark cache as fresh
