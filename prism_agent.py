@@ -48,6 +48,7 @@ class PrismAgent:
     """
 
     _PHONE_RE = r'\+?[\d\s\-]{7,}'
+    _SEARCH_CONTEXT_TURNS = 4   # chat turns to include as context for search synthesis
 
     INTENTS = [
         (r"plan|morning|daily|today|schedule", "plan"),
@@ -628,7 +629,7 @@ class PrismAgent:
                            f"Give a concise factual answer in 2-3 sentences.")
                 answer, _ = router.call(
                     prompt, min_capability=1, max_tokens=300,
-                    conversation_history=self._chat_history[-4:])
+                    conversation_history=self._chat_history[-self._SEARCH_CONTEXT_TURNS:])
                 body = answer or "\n".join(
                     f"• {r.title}  {r.url}" for r in results[:4])
             else:

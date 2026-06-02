@@ -16,7 +16,7 @@ class PrismSearch:
     """
     Web search integration. Three providers in order of preference:
 
-    1. Brave Search API — £0/month free tier (2000 queries/month)
+    1. Brave Search API — $0/month free tier (2000 queries/month)
        Get key: api.search.brave.com
     2. SerpAPI — 100 free searches/month
        Get key: serpapi.com
