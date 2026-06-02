@@ -14,6 +14,47 @@ text_model   = "mistral"
 ffmpeg_path  = "ffmpeg"
 poll_interval = 30
 
+# ── LLM providers ─────────────────────────────────────────────────────────────
+# Configure one or more providers. PRISM will use the best available within budget.
+# API keys can also be set via environment variables (see comment on each key).
+[llm]
+# preferred = "anthropic/claude-haiku-4-5-20251001"  # override auto-selection
+# fallback  = ["groq", "ollama"]                     # ordered fallback chain
+ollama_host = "http://localhost:11434"
+
+# Anthropic Claude — set key here or via ANTHROPIC_API_KEY env variable
+# anthropic_api_key = ""
+# anthropic_model   = "claude-haiku-4-5-20251001"   # or "claude-sonnet-4-20250514"
+
+# OpenAI — set key here or via OPENAI_API_KEY env variable
+# openai_api_key = ""
+# openai_model   = "gpt-4o-mini"
+
+# Google Gemini — set key here or via GOOGLE_API_KEY env variable
+# google_api_key = ""
+# google_model   = "gemini-1.5-flash"
+
+# DeepSeek — set key here or via DEEPSEEK_API_KEY env variable
+# deepseek_api_key = ""
+# deepseek_model   = "deepseek-chat"
+
+# Mistral — set key here or via MISTRAL_API_KEY env variable
+# mistral_api_key = ""
+# mistral_model   = "mistral-small-latest"
+
+# Groq (fast Llama inference) — set key here or via GROQ_API_KEY env variable
+# groq_api_key = ""
+# groq_model   = "llama-3.1-8b-instant"
+
+# Together AI — set key here or via TOGETHER_API_KEY env variable
+# together_api_key = ""
+# together_model   = "mistralai/Mistral-7B-v0.1"
+
+# Custom OpenAI-compatible endpoint (e.g. vLLM, LM Studio, local llama.cpp)
+# custom_api_key = ""   # or set CUSTOM_LLM_API_KEY env variable
+# custom_host    = "http://localhost:8000"
+# custom_model   = "gpt-3.5-turbo"
+
 [[devices]]
 name       = "Apple Watch"
 type       = "apple_watch"

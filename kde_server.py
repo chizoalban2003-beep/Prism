@@ -30,7 +30,8 @@ Routes:
   GET  /reflect                → learned state JSON
   GET  /devices                → connected devices list
   POST /device/sync            → trigger device sync
-  GET  /llm/status             → LLM router status (available models, best)
+  GET  /llm/status             → LLM router status (available models, best, cost data)
+  POST /llm/set                → set preferred LLM {"preferred":"provider/model"}
   GET  /tasks                  → recent background tasks list (?n=10)
   GET  /tasks/<id>             → single task progress by task_id
 
@@ -574,7 +575,15 @@ class KDEHandler(BaseHTTPRequestHandler):
                 if self.llm_router is None:
                     self._json_response({"available": False, "note": "LLM router not initialised"})
                     return
-                self._json_response(self.llm_router.status_summary())
+                from prism_llm_router import PROVIDER_COSTS
+                status = self.llm_router.status_summary()
+                for opt_data in status.get("available", []):
+                    model = opt_data.get("model", "")
+                    costs = PROVIDER_COSTS.get(model, (0, 0))
+                    opt_data["cost_per_query_usd"] = round(
+                        (500 * costs[0] / 1000 + 500 * costs[1] / 1000), 5)
+                    opt_data["free"] = costs[0] == 0
+                self._json_response(status)
 
             elif path == "/tasks":
                 if self.task_queue is None:
@@ -1215,6 +1224,17 @@ class KDEHandler(BaseHTTPRequestHandler):
                         self._error("Service not found", 404)
                 else:
                     self._error("Discovery not initialised", 503)
+
+            elif path == '/llm/set':
+                router = getattr(self.server, 'llm_router', None)
+                if router:
+                    provider_model = body.get('preferred', '')
+                    router._preferred = provider_model
+                    router._config['preferred'] = provider_model
+                    self._json_response({"ok": True, "preferred": provider_model})
+                else:
+                    self._error("LLM router not initialised", 503)
+                return
 
             else:
                 self._error(f"Unknown route: {path}", 404)

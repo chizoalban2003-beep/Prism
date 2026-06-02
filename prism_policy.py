@@ -27,6 +27,12 @@ class ResourceAllocation:
     time_window: str = "any"
     notifications: str = "financial"
     notes: str = ""
+    # LLM-specific fields
+    llm_monthly_usd: float = 0.0           # 0 = unlimited
+    llm_auto_approve_usd: float = 0.10     # auto-use models under this cost/query
+    llm_preferred: str = ""                # e.g. "anthropic/claude-haiku"
+    llm_fallback_order: list[str] = field(default_factory=list)
+                                           # e.g. ["anthropic","groq","ollama"]
 
 
 @dataclass
@@ -354,5 +360,32 @@ class PolicyEngine:
             policy.allocations[category] = allocation
             self._save(user, policy)
             return f"✓ {category.title()} orders under £{amount:.2f} will auto-approve"
+
+        # "set my ai budget to $20 a month"
+        llm_budget_match = re.search(
+            r"(?:ai|llm|model) budget.*?\$?(\d+\.?\d*)", message, flags=re.IGNORECASE
+        )
+        if llm_budget_match:
+            amount = float(llm_budget_match.group(1))
+            policy = self.get_policy(user)
+            if "llm" not in policy.allocations:
+                policy.allocations["llm"] = ResourceAllocation(name="llm")
+            policy.allocations["llm"].llm_monthly_usd = amount
+            self._save(user, policy)
+            return f"✓ AI model budget set to ${amount:.2f}/month"
+
+        # "prefer claude for planning"
+        prefer_match = re.search(
+            r"prefer\s+(\w+)\s+for\s+(\w+)", message, flags=re.IGNORECASE
+        )
+        if prefer_match:
+            provider = prefer_match.group(1).lower()
+            task = prefer_match.group(2).lower()
+            policy = self.get_policy(user)
+            if "llm" not in policy.allocations:
+                policy.allocations["llm"] = ResourceAllocation(name="llm")
+            policy.allocations["llm"].llm_preferred = provider
+            self._save(user, policy)
+            return f"✓ Will prefer {provider} for {task} tasks"
 
         return None
