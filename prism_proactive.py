@@ -45,10 +45,12 @@ class PrismProactive:
     def __init__(
         self,
         on_event:    Callable[[ProactiveEvent], None] = None,
+        push=None,
         db_path:     str = "~/.prism/proactive.db",
         poll_seconds:int = 60,
     ):
         self._on_event    = on_event or (lambda e: None)
+        self._push        = push
         self._db          = Path(db_path).expanduser()
         self._db.parent.mkdir(parents=True, exist_ok=True)
         self._poll        = poll_seconds
@@ -98,6 +100,8 @@ class PrismProactive:
                         event = ProactiveEvent(trigger.trigger_id, msg)
                         self._store(event)
                         self._on_event(event)
+                        if self._push and self._push.configured:
+                            self._push.alert(event.message)
                         trigger.last_fired = now
                 except Exception as e:
                     logger.debug("Trigger %s error: %s", trigger.trigger_id, e)
@@ -143,11 +147,13 @@ def build_default_triggers(
         def msg_tasks():
             recent = task_queue.list_recent(3)
             done   = [t for t in recent
-                      if t.status in ("completed","failed")]
+                      if (t.status if isinstance(t.status,str)
+                          else t.status.value) in ("completed","failed")]
             if done:
-                t = done[0]
+                t      = done[0]
                 status = t.status if isinstance(t.status,str) else t.status.value
-                return f"Task complete: {t.title} ({status})"
+                msg    = f"Task {status}: {t.title}"
+                return msg
             return "Background task finished."
         triggers.append(ProactiveTrigger(
             "task_done","Task completed",

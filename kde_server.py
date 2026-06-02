@@ -30,7 +30,8 @@ Routes:
   GET  /reflect                → learned state JSON
   GET  /devices                → connected devices list
   POST /device/sync            → trigger device sync
-  GET  /llm/status             → LLM router status (available models, best)
+  GET  /llm/status             → LLM router status (available models, best, cost data)
+  POST /llm/set                → set preferred LLM {"preferred":"provider/model"}
   GET  /tasks                  → recent background tasks list (?n=10)
   GET  /tasks/<id>             → single task progress by task_id
 
@@ -574,7 +575,15 @@ class KDEHandler(BaseHTTPRequestHandler):
                 if self.llm_router is None:
                     self._json_response({"available": False, "note": "LLM router not initialised"})
                     return
-                self._json_response(self.llm_router.status_summary())
+                from prism_llm_router import PROVIDER_COSTS
+                status = self.llm_router.status_summary()
+                for opt_data in status.get("available", []):
+                    model = opt_data.get("model", "")
+                    costs = PROVIDER_COSTS.get(model, (0, 0))
+                    opt_data["cost_per_query_usd"] = round(
+                        (500 * costs[0] / 1000 + 500 * costs[1] / 1000), 5)
+                    opt_data["free"] = costs[0] == 0
+                self._json_response(status)
 
             elif path == "/tasks":
                 if self.task_queue is None:
@@ -794,6 +803,73 @@ class KDEHandler(BaseHTTPRequestHandler):
                                      for s in services]})
                 else:
                     self._json_response({"count": 0, "services": []})
+
+            elif path.startswith('/documents'):
+                agent = getattr(self.server, 'prism_agent', None)
+                if not agent or not hasattr(agent, '_docs'):
+                    self._json_response({"results": []})
+                    return
+                if 'q' in qs:
+                    docs = agent._docs.search(qs['q'], n=10)
+                else:
+                    docs = agent._docs.recent(n=10)
+                self._json_response({"results": [
+                    {"id": d.doc_id, "title": d.title, "url": d.url,
+                     "provider": d.provider, "modified": d.modified}
+                    for d in docs]})
+
+            elif path == '/calls/status':
+                from prism_calls import PrismCalls
+                agent = getattr(self.server, 'prism_agent', None)
+                calls = getattr(agent, '_calls', None) if agent else None
+                if calls is None:
+                    calls = PrismCalls()
+                self._json_response(calls.status_summary())
+
+            elif path == '/messages/status':
+                from prism_messaging import PrismMessaging
+                agent = getattr(self.server, 'prism_agent', None)
+                msgs = getattr(agent, '_messages', None) if agent else None
+                if msgs is None:
+                    msgs = PrismMessaging()
+                self._json_response(msgs.status_summary())
+
+            elif path.startswith('/search'):
+                agent  = getattr(self.server, 'prism_agent', None)
+                q      = qs.get('q', '')
+                if agent and hasattr(agent, '_search') and q:
+                    results = agent._search.search(q, n=8)
+                    self._json_response({"query": q, "results": [
+                        {"title": r.title, "url": r.url, "snippet": r.snippet}
+                        for r in results]})
+                else:
+                    self._json_response({"query": q, "results": []})
+
+            elif path == '/push/status':
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent and hasattr(agent, '_push'):
+                    self._json_response(agent._push.status_summary())
+                else:
+                    self._json_response({"configured": False})
+
+            elif path == '/contacts/search':
+                agent = getattr(self.server, 'prism_agent', None)
+                q = qs.get('q', '')
+                if not q:
+                    self._error("Query parameter 'q' is required", 400)
+                    return
+                if agent and hasattr(agent, '_contacts'):
+                    results = agent._contacts.search(q)
+                else:
+                    from prism_contacts import PrismContacts
+                    results = PrismContacts().search(q)
+                self._json_response({"query": q, "count": len(results),
+                    "contacts": [
+                        {"id": c.contact_id, "name": c.name,
+                         "emails": c.emails, "phones": c.phones,
+                         "organisation": c.organisation, "role": c.role,
+                         "source": c.source}
+                        for c in results]})
 
             else:
                 self._error(f"Unknown route: {path}", 404)
@@ -1215,6 +1291,43 @@ class KDEHandler(BaseHTTPRequestHandler):
                         self._error("Service not found", 404)
                 else:
                     self._error("Discovery not initialised", 503)
+
+            elif path == '/llm/set':
+                router = getattr(self.server, 'llm_router', None)
+                if router:
+                    provider_model = body.get('preferred', '')
+                    router.set_preferred(provider_model)
+                    self._json_response({"ok": True, "preferred": provider_model})
+                else:
+                    self._error("LLM router not initialised", 503)
+                return
+
+            elif path == '/tasks/add':
+                agent = getattr(self.server, 'prism_agent', None)
+                title = body.get('title', '')
+                if not title:
+                    self._error("'title' field required", 400)
+                    return
+                if agent and hasattr(agent, '_task_mgr'):
+                    task = agent._task_mgr.add(
+                        title    = title,
+                        notes    = body.get('notes', ''),
+                        due_date = body.get('due_date', ''),
+                        priority = int(body.get('priority', 1)),
+                        project  = body.get('project', ''),
+                        tags     = body.get('tags', []),
+                    )
+                else:
+                    from prism_tasks import PrismTasks
+                    task = PrismTasks().add(title=title)
+                self._json_response({
+                    "task_id":  task.task_id,
+                    "title":    task.title,
+                    "source":   task.source,
+                    "due_date": task.due_date,
+                    "priority": task.priority,
+                    "url":      task.url,
+                })
 
             else:
                 self._error(f"Unknown route: {path}", 404)
