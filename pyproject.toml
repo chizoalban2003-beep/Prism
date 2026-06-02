@@ -82,6 +82,7 @@ py-modules = [
     "prism_memory",
     "prism_organ_loader",
     "prism_perception",
+    "prism_pwa",
     "prism_planner",
     "prism_policy",
     "prism_proactive",

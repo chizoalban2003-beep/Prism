@@ -40,8 +40,12 @@ Routes:
   POST /horizon/goal/<id>/abandon   → abandon goal {"reason":"…"}
   POST /horizon/goal/<id>/context   → update accumulated context {key:value,…}
   GET  /organs                 → list loaded organ intents and descriptions
+  GET  /mobile                 → PWA mobile companion (HTML)
+  GET  /manifest.json          → Web App Manifest (JSON)
+  GET  /sw.js                  → Service Worker (JS)
+  GET  /icon.svg               → PRISM icon (SVG)
 
-All responses: Content-Type: application/json
+All responses: Content-Type: application/json (except PWA assets)
 Error format:  {"error": "message", "status": 4xx}
 CORS headers included for local web dashboard access.
 """
@@ -900,6 +904,27 @@ class KDEHandler(BaseHTTPRequestHandler):
                 else:
                     self._json_response({"organs": ol.known_intents(),
                                          "count": len(ol.list_organs())})
+
+            # ── PWA mobile companion ──────────────────────────────────────
+            elif path == '/mobile':
+                from prism_pwa import get_mobile_html
+                self._respond(get_mobile_html().encode('utf-8'), 200,
+                              'text/html; charset=utf-8')
+
+            elif path == '/manifest.json':
+                from prism_pwa import get_manifest
+                self._respond(get_manifest().encode('utf-8'), 200,
+                              'application/manifest+json')
+
+            elif path == '/sw.js':
+                from prism_pwa import get_service_worker
+                self._respond(get_service_worker().encode('utf-8'), 200,
+                              'application/javascript')
+
+            elif path == '/icon.svg':
+                from prism_pwa import get_icon_svg
+                self._respond(get_icon_svg().encode('utf-8'), 200,
+                              'image/svg+xml')
 
             else:
                 self._error(f"Unknown route: {path}", 404)
