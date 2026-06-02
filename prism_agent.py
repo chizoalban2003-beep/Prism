@@ -583,21 +583,19 @@ class PrismAgent:
             if not self._browser.available:
                 return text_card(
                     "Browser agent not available. "
-                    "Install with: pip install playwright && playwright install chromium",
+                    "Run: pip install playwright && playwright install chromium",
                     "Browser")
             queue = getattr(self, '_queue', None)
             if queue:
                 def run_browser():
-                    return self._browser.execute(message)
+                    return self._browser.execute_with_session(message)
                 task_id = queue.submit_single(f"Browser: {message[:40]}", run_browser)
                 return text_card(
-                    f"Browser task started. I'll let you know when done.\n"
-                    f"Task ID: {task_id}",
-                    "Browser Task")
-            else:
-                result = self._browser.execute(message)
-                body   = result.extracted[:500] if result.success else result.error
-                return text_card(body, "Browser Result")
+                    f"Browser task queued. Task ID: {task_id}\n"
+                    f"Check progress with: 'task status'", "Browser")
+            result = self._browser.execute_with_session(message)
+            body   = result.extracted[:500] if result.success else result.error
+            return text_card(body, "Browser result")
 
         if intent == "show_instructions":
             instrs = self._instructions.all_active()

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import time
+import urllib.request
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -27,6 +30,44 @@ class BrowserTaskResult:
     final_url:   str    = ""
     error:       str    = ""
     screenshot:  str    = ""    # base64 PNG of final state (optional)
+
+
+class PersistentBrowserContext:
+    """
+    Manages a persistent browser context with saved cookies/sessions.
+    Saves login state so the user only logs into sites once.
+    """
+    SESSION_DIR = Path.home() / ".prism" / "browser_sessions"
+
+    def __init__(self):
+        self.SESSION_DIR.mkdir(parents=True, exist_ok=True)
+
+    def session_path(self, domain: str) -> str:
+        """Path to saved session for a domain."""
+        safe = domain.replace("://", "_").replace("/", "_").replace(".", "_")
+        return str(self.SESSION_DIR / f"{safe}_session")
+
+    def has_session(self, domain: str) -> bool:
+        return Path(self.session_path(domain)).exists()
+
+    def launch_with_session(self, p, domain: str, headless: bool = True):
+        """Launch browser with saved session if available."""
+        session_path = self.session_path(domain)
+        if self.has_session(domain):
+            context = p.chromium.launch_persistent_context(
+                session_path, headless=headless,
+                args=["--no-sandbox", "--disable-dev-shm-usage"])
+        else:
+            browser = p.chromium.launch(headless=headless)
+            context = browser.new_context()
+        return context
+
+    def save_session(self, context, domain: str) -> None:
+        """Save current session state."""
+        try:
+            context.storage_state(path=self.session_path(domain))
+        except Exception:
+            pass
 
 
 class PrismBrowserAgent:
@@ -58,6 +99,7 @@ class PrismBrowserAgent:
         screenshot:  bool = False,
     ):
         self._router     = llm_router
+        self._llm_router = llm_router
         self._headless   = headless
         self._max_steps  = max_steps
         self._screenshot = screenshot
@@ -204,7 +246,6 @@ class PrismBrowserAgent:
                 url = target if target.startswith("http") else f"https://{target}"
                 page.goto(url, wait_until="domcontentloaded",
                           timeout=self.PAGE_TIMEOUT)
-                return BrowserStep(action, target, description, True)
 
             elif action == "click":
                 # Try multiple strategies to find and click the element
@@ -216,18 +257,16 @@ class PrismBrowserAgent:
                     except Exception:
                         page.locator(target).first.click(timeout=3000)
                 page.wait_for_load_state("networkidle", timeout=5000)
-                return BrowserStep(action, target, description, True)
 
             elif action == "type":
                 # Find the focused or first visible input and type
                 page.keyboard.type(target)
                 page.keyboard.press("Enter")
                 page.wait_for_load_state("networkidle", timeout=5000)
-                return BrowserStep(action, target[:50], description, True)
+                target = target[:50]
 
             elif action == "scroll":
                 page.evaluate("window.scrollBy(0, 500)")
-                return BrowserStep(action, target, description, True)
 
             elif action == "extract":
                 text = self._extract_page_text(page)
@@ -236,6 +275,28 @@ class PrismBrowserAgent:
             else:
                 return BrowserStep(action, target,
                                    f"Unknown action: {action}", False)
+
+            # Check if we hit a login wall
+            page_text = self._extract_page_text(page)
+            login_indicators = ["sign in", "log in", "create account",
+                                 "password", "email address", "username"]
+            if sum(1 for w in login_indicators if w in page_text.lower()) >= 3:
+                # Login wall detected
+                logger.info("Login wall detected at %s", page.url)
+                from urllib.parse import urlparse
+                domain = urlparse(page.url).netloc
+                self._last_login_domain = domain
+                return BrowserStep(
+                    action="login_required",
+                    target=domain,
+                    description=f"Login required for {domain}",
+                    success=False,
+                    result=f"Login wall detected. If you have credentials for {domain}, "
+                           f"add them to prism_config.toml [browser_credentials] "
+                           f"or complete the login manually."
+                )
+
+            return BrowserStep(action, target, description, True)
 
         except Exception as e:
             return BrowserStep(action, target, description, False, str(e)[:200])
@@ -269,6 +330,115 @@ class PrismBrowserAgent:
             """)[:3000]
         except Exception:
             return ""
+
+    def _understand_page_vision(self, page,
+                                ollama_host: str = "http://localhost:11434") -> str:
+        """
+        Take a screenshot and send to Ollama LLaVA for visual understanding.
+        More reliable than text extraction for complex pages.
+        Returns plain text description of what's on the page.
+        """
+        try:
+            screenshot = page.screenshot(type="jpeg", quality=50)
+            b64        = base64.b64encode(screenshot).decode()
+            prompt     = (
+                "Describe what is on this web page in 3-5 sentences. "
+                "What is the main content? What actions are available? "
+                "Is there a login form, error message, or CAPTCHA?"
+            )
+            payload = json.dumps({
+                "model": "llava",
+                "prompt": prompt,
+                "images": [b64],
+                "stream": False,
+            }).encode()
+            req  = urllib.request.Request(
+                f"{ollama_host}/api/generate", data=payload,
+                headers={"Content-Type": "application/json"})
+            resp = urllib.request.urlopen(req, timeout=20)
+            return json.loads(resp.read()).get("response", "")
+        except Exception as e:
+            logger.debug("Vision page understanding failed: %s", e)
+            return self._extract_page_text(page)
+
+    def execute_with_session(
+        self,
+        goal:       str,
+        start_url:  str = "https://www.google.com",
+        domain:     str = None,
+    ) -> BrowserTaskResult:
+        """
+        Execute with persistent session management.
+        Reuses saved cookies/sessions from previous logins.
+        Saves new sessions after successful completion.
+        """
+        if not self.available:
+            return BrowserTaskResult(goal=goal, success=False, steps=[],
+                error="Playwright not installed.")
+
+        ctx_manager = PersistentBrowserContext()
+        inferred_domain = domain or (start_url.split("/")[2] if "/" in start_url else start_url)
+
+        steps = []
+        try:
+            from playwright.sync_api import sync_playwright
+            with sync_playwright() as p:
+                if ctx_manager.has_session(inferred_domain):
+                    browser = p.chromium.launch(headless=self._headless)
+                    context = browser.new_context(storage_state=
+                        ctx_manager.session_path(inferred_domain))
+                    logger.info("Using saved session for %s", inferred_domain)
+                else:
+                    browser = p.chromium.launch(headless=self._headless)
+                    context = browser.new_context()
+
+                page = context.new_page()
+                page.set_default_timeout(self.PAGE_TIMEOUT)
+                page.goto(start_url)
+                steps.append(BrowserStep("navigate", start_url,
+                                          f"Opened {start_url}", True))
+
+                for step_num in range(self._max_steps):
+                    # Try vision understanding for complex pages
+                    if step_num % 3 == 0 and self._llm_router:
+                        try:
+                            page_desc = self._understand_page_vision(page)
+                        except Exception:
+                            page_desc = self._extract_page_text(page)
+                    else:
+                        page_desc = self._extract_page_text(page)
+
+                    action_json = self._decide_action(
+                        goal, page.url, page_desc, steps)
+                    if action_json is None:
+                        break
+
+                    if action_json.get("done"):
+                        extracted = action_json.get("result", page_desc[:2000])
+                        ctx_manager.save_session(context, inferred_domain)
+                        browser.close()
+                        return BrowserTaskResult(goal=goal, success=True,
+                            steps=steps, extracted=extracted, final_url=page.url)
+
+                    step = self._execute_action(page, action_json)
+                    steps.append(step)
+                    if step.action == "login_required":
+                        browser.close()
+                        return BrowserTaskResult(goal=goal, success=False,
+                            steps=steps, error=step.result)
+
+                    time.sleep(0.5)
+
+                ctx_manager.save_session(context, inferred_domain)
+                final = self._extract_page_text(page)
+                browser.close()
+                return BrowserTaskResult(goal=goal, success=False, steps=steps,
+                    extracted=final[:2000], final_url=page.url,
+                    error="Max steps reached")
+
+        except Exception as e:
+            return BrowserTaskResult(goal=goal, success=False,
+                steps=steps, error=str(e)[:300])
 
     def status(self) -> dict:
         return {
