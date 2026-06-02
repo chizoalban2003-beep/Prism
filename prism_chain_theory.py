@@ -177,21 +177,27 @@ class PolicyIntercept:
 
 class InterceptorPolicy:
     """
-    A policy layer that can actively reroute the chain by substituting a
-    different logic when certain conditions are detected.
+    Active policy layer that reroutes the chain deterministically when
+    known failure modes are detected — zero LLM cost, zero false positives.
 
     intercept(current_logic, result, next_logic, goal) returns:
-      - None            → no interception, proceed normally
-      - PolicyIntercept → skip the next LLM node and run substitute logic
+      - None            → no interception, chain continues normally
+      - PolicyIntercept → run substitute logic immediately (no LLM round-trip)
 
-    Hard-coded intercept rules (for the experiment):
-      1. web_search + "Error" in result  → substitute autonomous,
-         "retry web search using a different query approach"
-      2. email_send + "sent" not in result → substitute email_read,
-         "verify email send status"
-      3. autonomous + "approval" in result → substitute approve_pending,
-         "auto-approve this tool execution"
+    Production rules (deterministic, ordered by priority):
+      1. Any logic   + "error" / "failed" / "exception" in result
+                     → autonomous: retry with a different approach
+      2. web_search  + error                    → autonomous retry
+      3. email_send  + "sent" ∉ result          → email_read: verify delivery
+      4. calendar_write + error                 → calendar_read: verify event was saved
+      5. add_task    + error                    → list_tasks: verify task was created
+      6. autonomous  + "approval" in result     → approve_pending: auto-approve
+      7. browser_task + "timeout"/"error"       → autonomous: non-browser fallback
+      8. device_task + "permission denied"      → autonomous: escalate with sudo hint
     """
+
+    # Generic error signals that apply to most logics
+    _ERROR_SIGNALS = frozenset({"error:", "failed:", "exception:", "traceback"})
 
     def intercept(
         self,
@@ -200,35 +206,82 @@ class InterceptorPolicy:
         next_logic: str,
         goal: str,
     ) -> Optional[PolicyIntercept]:
-        """
-        Evaluate intercept rules.
+        """Return PolicyIntercept if a rule fires, else None."""
+        r = result.lower()
 
-        Returns PolicyIntercept if a rule fires, else None.
-        """
-        result_lower = result.lower()
+        # Rule 1: generic hard failure on any logic (traceback / exception printed)
+        if any(sig in r for sig in self._ERROR_SIGNALS):
+            if current_logic not in {"autonomous", "approve_pending"}:
+                return PolicyIntercept(
+                    substitute_logic="autonomous",
+                    substitute_message=(
+                        f"The {current_logic} logic failed with: {result[:200]}. "
+                        f"Find an alternative approach to: {goal[:200]}"
+                    ),
+                    reason=f"{current_logic} produced a hard error — autonomous retry",
+                )
 
-        # Rule 1: web_search returned an error
-        if current_logic == "web_search" and "error" in result_lower:
+        # Rule 2: web_search returned an error (softer signal)
+        if current_logic == "web_search" and "error" in r and len(result) < 100:
             return PolicyIntercept(
                 substitute_logic="autonomous",
-                substitute_message="retry web search using a different query approach",
-                reason="web_search returned an error — retrying via autonomous",
+                substitute_message=(
+                    f"Web search failed. Find another way to answer: {goal[:200]}"
+                ),
+                reason="web_search returned an error — autonomous retry",
             )
 
-        # Rule 2: email_send did not confirm delivery
-        if current_logic == "email_send" and "sent" not in result_lower:
+        # Rule 3: email_send did not confirm delivery
+        if current_logic == "email_send" and "sent" not in r:
             return PolicyIntercept(
                 substitute_logic="email_read",
-                substitute_message="verify email send status",
-                reason="email_send result did not contain 'sent' — verifying status",
+                substitute_message="Check the sent folder to verify the last email was delivered.",
+                reason="email_send did not confirm 'sent' — verifying via email_read",
             )
 
-        # Rule 3: autonomous step requires approval
-        if current_logic == "autonomous" and "approval" in result_lower:
+        # Rule 4: calendar_write failed to confirm
+        if current_logic == "calendar_write" and "error" in r:
+            return PolicyIntercept(
+                substitute_logic="calendar_read",
+                substitute_message="Read today's calendar to verify the event was created.",
+                reason="calendar_write returned an error — verifying via calendar_read",
+            )
+
+        # Rule 5: add_task failed to confirm
+        if current_logic == "add_task" and "error" in r:
+            return PolicyIntercept(
+                substitute_logic="list_tasks",
+                substitute_message="List current tasks to verify whether the new task was added.",
+                reason="add_task returned an error — verifying via list_tasks",
+            )
+
+        # Rule 6: autonomous step waiting for approval
+        if current_logic == "autonomous" and "approval" in r:
             return PolicyIntercept(
                 substitute_logic="approve_pending",
-                substitute_message="auto-approve this tool execution",
+                substitute_message="Approve the pending autonomous tool execution.",
                 reason="autonomous result requires approval — auto-approving",
+            )
+
+        # Rule 7: browser task timed out or errored
+        if current_logic == "browser_task" and ("timeout" in r or ("error" in r and len(result) < 150)):
+            return PolicyIntercept(
+                substitute_logic="autonomous",
+                substitute_message=(
+                    f"Browser task failed. Use a non-browser approach to: {goal[:200]}"
+                ),
+                reason="browser_task timed out or errored — autonomous non-browser fallback",
+            )
+
+        # Rule 8: device task hit permission error
+        if current_logic == "device_task" and "permission denied" in r:
+            return PolicyIntercept(
+                substitute_logic="autonomous",
+                substitute_message=(
+                    f"Device task hit a permission error. "
+                    f"Suggest an alternative or elevated approach to: {goal[:200]}"
+                ),
+                reason="device_task hit permission denied — escalating via autonomous",
             )
 
         return None

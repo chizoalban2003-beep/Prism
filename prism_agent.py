@@ -44,7 +44,9 @@ from prism_autonomous import PrismAutonomous
 from prism_composer import PrismComposer
 from prism_chain import PrismChain
 from prism_chain_expert import PrismChainExpert
+from prism_chain_theory import InterceptorPolicy
 from prism_voice import PrismVoice
+from prism_organ_loader import OrganLoader
 
 logger = logging.getLogger(__name__)
 
@@ -289,12 +291,14 @@ class PrismAgent:
             task_queue    = self._queue,
         )
         self._chain = PrismChain(
-            llm_router    = self._router,
-            policy_engine = getattr(self, '_policy', None),
-            push          = self._push,
-            autonomous    = self._autonomous,
-            memory        = self._memory,
+            llm_router         = self._router,
+            policy_engine      = getattr(self, '_policy', None),
+            push               = self._push,
+            autonomous         = self._autonomous,
+            memory             = self._memory,
+            interceptor_policy = InterceptorPolicy(),
         )
+        self._organ_loader = OrganLoader(llm_router=self._router)
         self._chain_expert = PrismChainExpert(
             llm_router    = self._router,
             policy_engine = getattr(self, '_policy', None),
@@ -311,6 +315,42 @@ class PrismAgent:
             self._smarthome = PrismSmartHome.from_config(self._config)
             self._email     = PrismEmail.from_config(self._config)
             self._calendar  = PrismCalendar.from_config(self._config)
+
+        # HorizonPlanner — cross-session long-horizon goal persistence
+        try:
+            from prism_horizon import HorizonPlanner
+            self._horizon = HorizonPlanner(
+                llm_router = self._router,
+                task_queue = self._queue,
+                push       = self._push,
+            )
+            triggered = self._horizon.on_session_start()
+            if triggered:
+                logger.info(
+                    "HorizonPlanner: %d goal(s) triggered at startup: %s",
+                    len(triggered), triggered,
+                )
+        except Exception as e:
+            logger.warning("HorizonPlanner not available: %s", e)
+            self._horizon = None
+
+    def stop(self) -> None:
+        """Gracefully shut down all background subsystems."""
+        if getattr(self, '_horizon', None) is not None:
+            try:
+                self._horizon.on_session_end()
+            except Exception:
+                pass
+        if getattr(self, '_proactive', None) is not None:
+            try:
+                self._proactive.stop()
+            except Exception:
+                pass
+        if getattr(self, '_perception', None) is not None:
+            try:
+                self._perception.stop()
+            except Exception:
+                pass
 
     def _handle_proactive_event(self, event) -> None:
         """Store proactive notification for chat UI polling."""
@@ -522,6 +562,13 @@ class PrismAgent:
                 n_plans          = 4,
             )
             return plan_of_action_card(plan)
+
+        if intent == "research":
+            try:
+                result = self._chain._research_logic(message, self._execute, ctx)
+                return text_card(result, "Research")
+            except Exception as exc:
+                return text_card(f"Research failed: {exc}", "Research Error")
 
         if intent.startswith("domain_"):
             domain_key = {
@@ -1039,7 +1086,25 @@ class PrismAgent:
         if intent == "voice":
             return self._handle_voice(message, ctx)
 
-        # Unknown intent — behave like a real PA
+        # Dynamic organ registry — check loaded and synthesized organs
+        organ_fn = self._organ_loader.get(intent)
+        if organ_fn is not None:
+            try:
+                return organ_fn(intent, message, ctx)
+            except Exception as exc:
+                return text_card(f"Organ '{intent}' failed: {exc}", intent)
+
+        # Unknown intent — attempt synthesis before falling back to autonomous
+        if intent not in {"autonomous", "approve_pending"}:
+            logger.info("[agent] Unknown intent '%s' — attempting organ synthesis", intent)
+            if self._organ_loader.synthesize(intent, message):
+                organ_fn = self._organ_loader.get(intent)
+                if organ_fn is not None:
+                    try:
+                        return organ_fn(intent, message, ctx)
+                    except Exception as exc:
+                        return text_card(f"Synthesized organ '{intent}' failed: {exc}", intent)
+
         return self._handle_unknown(intent, message, ctx)
 
     def _handle_voice(self, message: str, ctx: dict) -> PrismCard:

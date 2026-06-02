@@ -148,10 +148,14 @@ Rules:
 - If a logic fails, try a different approach or conclude with what you have
 """
 
+    # Logics whose raw output is verbose/noisy — apply SoftLogic compression
+    SOFT_LOGICS = frozenset({"web_search", "email_read", "device_task", "browser_task"})
+
     def __init__(self, llm_router=None, policy_engine=None,
                   push=None, autonomous=None, memory=None,
                   use_evaluator: bool = True,
-                  interceptor_policy=None):
+                  interceptor_policy=None,
+                  use_soft_logic: bool = True):
         self._router             = llm_router
         self._policy             = policy_engine
         self._push               = push
@@ -159,6 +163,7 @@ Rules:
         self._memory             = memory
         self._use_evaluator      = use_evaluator
         self._interceptor_policy = interceptor_policy
+        self._use_soft_logic     = use_soft_logic
 
         # Thread-safety note: _state_lock protects the internal results list
         # in _execute_branch. The append to state.steps happens in run() which
@@ -166,9 +171,16 @@ Rules:
         self._state_lock = threading.Lock()
 
         from prism_composer import LOGIC_REGISTRY
+        from prism_chain_theory import SubChainLogic
         self._registry = LOGIC_REGISTRY
         self._registry_str = "\n".join(
             f"  {k}: {v}" for k, v in self._registry.items())
+
+        # Research sub-chain: web_search → parse_result → cross_reference
+        self._research_logic = SubChainLogic(
+            sub_logics=["web_search", "parse_result", "cross_reference"],
+            llm_router=self._router,
+        )
 
         # Chain persistence DB
         self._db = Path("~/.prism/chains.db").expanduser()
@@ -516,14 +528,47 @@ Rules:
 
     def _logic_node(self, logic: str, message: str,
                      ctx: dict, agent_execute_fn) -> str:
-        """Execute the chosen logic, return plain text result."""
+        """
+        Execute the chosen logic, return plain text result.
+
+        Special handling:
+          "research" → SubChainLogic (web_search → parse → cross_reference → synth)
+          SOFT_LOGICS → result compressed by SoftLogic LLM before returning
+        """
+        # Research: internally a mini sub-chain
+        if logic == "research":
+            try:
+                return self._research_logic(message, agent_execute_fn, ctx)
+            except Exception as e:
+                logger.warning("[chain] Research sub-chain failed: %s", e)
+                return f"Research failed: {e}"
+
         try:
             card   = agent_execute_fn(logic, message, ctx)
             result = getattr(card, "body", str(card)) or ""
-            return result[:800]
+            result = result[:800]
         except Exception as e:
             logger.warning("[chain] Logic node %s failed: %s", logic, e)
             return f"Error in {logic}: {e}"
+
+        # SoftLogic: compress verbose output for noisy logics
+        if self._use_soft_logic and logic in self.SOFT_LOGICS and self._router:
+            result = self._soften(message, logic, result)
+
+        return result
+
+    def _soften(self, goal: str, logic: str, result: str) -> str:
+        """Apply SoftLogic LLM compression to verbose/noisy logic output."""
+        prompt = (
+            f"Extract the 3 most relevant facts for the goal: '{goal[:200]}'\n"
+            f"Source: {logic}\nRaw output: {result[:600]}\n"
+            "Reply in 2 concise sentences. No JSON."
+        )
+        try:
+            text, _ = self._router.call(prompt, min_capability=1, max_tokens=120)
+            return text.strip() or result[:400]
+        except Exception:
+            return result[:400]
 
     # ── Policy node ───────────────────────────────────────────────────────────
 

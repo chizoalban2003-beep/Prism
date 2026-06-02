@@ -244,6 +244,16 @@ Step 1 — Evaluator: score 4/5 — sufficient, early exit
 
 **Branching**: when genuinely ambiguous, the LLM spawns up to 3 parallel logic executions. Results are merged before the next LLM node, turning the spine into a tree.
 
+**Hybrid chain intelligence** (production-adopted theory experiments):
+
+| Component | Module | What it does |
+|---|---|---|
+| `InterceptorPolicy` | `prism_chain_theory.py` | 8-rule deterministic rerouter — fires with zero LLM calls when errors, delivery failures, or permission denials are detected |
+| `SoftLogic` | `prism_chain_theory.py` | In-node LLM softener for noisy logics (`web_search`, `email_read`, `device_task`, `browser_task`) — compresses raw output to 3 key facts before the next Router call |
+| `SubChainLogic` | `prism_chain_theory.py` | Research intent runs a 3-step mini-chain internally (`web_search → parse_result → cross_reference → Synthesiser`) — the outer chain sees one clean result string |
+
+The `research` intent is registered in the logic registry and handled directly in `prism_agent._execute()`, ensuring SubChainLogic is invoked whether the request arrives via Tier 0 Expert, Tier 1 General chain, or Tier 3 direct execution.
+
 View recent chains: say `show chain history` or call `GET /chain/recent`.
 
 ---
@@ -678,7 +688,7 @@ PRISM/
 │   ├── domain_configs.py       Medical · Financial · Legal · HR · Supply Chain · Climate
 │   └── domain_validator.py     Expert-label accuracy validation
 │
-└── tests/                      856 pytest tests — all passing
+└── tests/                      882 pytest tests — all passing
 ```
 
 ---
@@ -704,7 +714,7 @@ PRISM/
 
 ```bash
 python -m pytest tests/ -q
-# 769 tests pass in ~80 seconds
+# 882 tests pass in ~90 seconds
 ```
 
 ---

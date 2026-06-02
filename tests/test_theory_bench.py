@@ -277,6 +277,7 @@ def test_prismchain_interceptor_fires_in_run():
     chain = PrismChain(
         llm_router=router,
         use_evaluator=False,
+        use_soft_logic=False,
         interceptor_policy=policy,
     )
     chain._db = pathlib.Path(tempfile.mktemp(suffix=".db"))
@@ -311,6 +312,7 @@ def test_prismchain_no_interceptor_baseline():
     chain = PrismChain(
         llm_router=router,
         use_evaluator=False,
+        use_soft_logic=False,
         interceptor_policy=None,
     )
     chain._db = pathlib.Path(tempfile.mktemp(suffix=".db"))

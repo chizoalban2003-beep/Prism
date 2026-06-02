@@ -10,7 +10,7 @@ def _make_chain(llm_responses=None):
     router = MagicMock()
     responses = llm_responses or []
     router.call.side_effect = [(r, {}) for r in responses]
-    return PrismChain(llm_router=router, use_evaluator=False)
+    return PrismChain(llm_router=router, use_evaluator=False, use_soft_logic=False)
 
 
 def _make_chain_eval(llm_responses=None):
@@ -18,7 +18,7 @@ def _make_chain_eval(llm_responses=None):
     router = MagicMock()
     responses = llm_responses or []
     router.call.side_effect = [(r, {}) for r in responses]
-    return PrismChain(llm_router=router, use_evaluator=True)
+    return PrismChain(llm_router=router, use_evaluator=True, use_soft_logic=False)
 
 
 def _agent(intent, message, ctx):

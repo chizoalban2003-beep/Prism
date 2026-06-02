@@ -85,6 +85,7 @@ LOGIC_REGISTRY: dict[str, str] = {
     "status":            "returns PRISM system status",
     "calibrate":         "records user feedback to update decision model",
     "autonomous":        "synthesises and executes a custom tool for novel tasks",
+    "research":          "deep multi-step research: web search → parse → cross-reference → synthesise",
 }
 
 
