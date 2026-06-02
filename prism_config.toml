@@ -123,3 +123,7 @@ serp_api_key  = ""
 topic    = ""            # e.g. "prism-yourname-2024" (keep unique and private)
 server   = "https://ntfy.sh"
 priority = "default"    # min|low|default|high|urgent
+
+[contacts]
+google_token = ""    # Google OAuth token with contacts.readonly scope
+auto_extract = true  # extract contacts from prism_memory automatically
