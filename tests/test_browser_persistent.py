@@ -58,4 +58,4 @@ def test_login_indicators_detection():
     step = agent._execute_action(mock_page, action_json)
     assert step.action == "login_required"
     assert step.success is False
-    assert "example.com" in step.target
+    assert step.target == "example.com"

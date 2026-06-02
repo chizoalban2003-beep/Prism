@@ -88,8 +88,9 @@ class PrismBrowserAgent:
         result = agent.execute("find the cheapest flight from London to Paris next Friday")
     """
 
-    MAX_STEPS    = 15
-    PAGE_TIMEOUT = 10000   # ms
+    MAX_STEPS              = 15
+    PAGE_TIMEOUT           = 10000   # ms
+    LOGIN_DETECTION_THRESHOLD = 3    # min matching indicators to flag login wall
 
     def __init__(
         self,
@@ -280,7 +281,7 @@ class PrismBrowserAgent:
             page_text = self._extract_page_text(page)
             login_indicators = ["sign in", "log in", "create account",
                                  "password", "email address", "username"]
-            if sum(1 for w in login_indicators if w in page_text.lower()) >= 3:
+            if sum(1 for w in login_indicators if w in page_text.lower()) >= self.LOGIN_DETECTION_THRESHOLD:
                 # Login wall detected
                 logger.info("Login wall detected at %s", page.url)
                 from urllib.parse import urlparse
