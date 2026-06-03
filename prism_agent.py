@@ -1202,7 +1202,22 @@ class PrismAgent:
                         "That approval request expired (5-minute window). "
                         "Repeat your original request to try again.",
                         "Approval expired")
-                task = pending.get("task","")
+                # Organ-level approval (email_send, phone_call, calendar_write, etc.)
+                if "organ_intent" in pending:
+                    organ_intent   = pending["organ_intent"]
+                    organ_message  = pending["organ_message"]
+                    organ_ctx      = pending["organ_ctx"]
+                    self._pending_approval = None
+                    organ_ctx[f"_approved_{organ_intent}"] = True
+                    organ_fn = self._organ_loader.get(organ_intent)
+                    if organ_fn:
+                        try:
+                            return organ_fn(organ_intent, organ_message, organ_ctx)
+                        except Exception as exc:
+                            return text_card(f"Organ '{organ_intent}' failed: {exc}", organ_intent)
+                    return text_card(f"Organ '{organ_intent}' no longer available.", organ_intent)
+                # Autonomous task approval (legacy path)
+                task = pending.get("task", "")
                 self._pending_approval = None
                 task_id = self._autonomous.execute_async(task, ctx)
                 return text_card(
@@ -1449,6 +1464,24 @@ class PrismAgent:
                 ctx.setdefault("calendar", getattr(self, "_calendar", None))
                 ctx.setdefault("router", getattr(self, "_router", None))
                 ctx.setdefault("twilio_config", self._config.get("twilio", {}))
+                ctx.setdefault("contacts", getattr(self, "_contacts", None))
+                # Hard approval gate — block irreversible/requires_approval organs
+                if not ctx.get(f"_approved_{intent}"):
+                    policy = self._organ_loader.get_organ_policy(intent)
+                    if policy.get("requires_approval"):
+                        self._pending_approval = {
+                            "organ_intent":  intent,
+                            "organ_message": message,
+                            "organ_ctx":     dict(ctx),
+                            "expires":       time.time() + 300,
+                        }
+                        action_desc = message[:200]
+                        return text_card(
+                            f"**{intent}** requires approval before executing.\n\n"
+                            f"Action: {action_desc}\n\n"
+                            f"Say **yes** or **approve** to confirm, or **cancel** to abort.",
+                            f"Approval required — {intent}",
+                        )
                 return organ_fn(intent, message, ctx)
             except Exception as exc:
                 return text_card(f"Organ '{intent}' failed: {exc}", intent)

@@ -255,6 +255,19 @@ Rules:
 
         logger.info("[chain %s] Starting — '%s'", state.chain_id, message[:60])
 
+        # ── Prior memory recall ───────────────────────────────────────────────────
+        if self._memory is not None:
+            try:
+                hits = self._memory.search(message, top_n=5)
+                if hits:
+                    snippets = "\n".join(
+                        f"- [{r.entry.source}] {r.excerpt}" for r in hits
+                    )
+                    state.accumulated = f"[Relevant memories]\n{snippets}\n"
+                    base_ctx.setdefault("memory_context", snippets)
+            except Exception as _mem_exc:
+                logger.debug("[chain] Memory recall failed: %s", _mem_exc)
+
         # ── Memory anchor ─────────────────────────────────────────────────────────
         _anchor_id: Optional[str] = None
         if self._horizon is not None:

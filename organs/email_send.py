@@ -13,6 +13,22 @@ ORGAN_POLICY = {
 }
 
 
+def _resolve_contact_email(name_or_address: str, contacts) -> str:
+    """Return a confirmed email address — look up by name if no @ present."""
+    if not name_or_address or "@" in name_or_address:
+        return name_or_address
+    if contacts is None:
+        return name_or_address
+    try:
+        hits = contacts.search(name_or_address)
+        for c in hits:
+            if c.emails:
+                return c.emails[0]
+    except Exception:
+        pass
+    return name_or_address
+
+
 def execute(intent: str, message: str, ctx: dict):
     import json as _j
 
@@ -36,6 +52,7 @@ def execute(intent: str, message: str, ctx: dict):
         f"Extract email details from the user's request below.\n"
         f"Request: '{message}'\n"
         f"Return ONLY valid JSON with keys: to, subject, body. "
+        f"'to' should be the recipient name or email address exactly as mentioned.\n"
         f"No extra text, no markdown fences.\n"
         f"Example: {{\"to\":\"alice@example.com\",\"subject\":\"Hello\",\"body\":\"Hi Alice...\"}}"
     )
@@ -54,6 +71,18 @@ def execute(intent: str, message: str, ctx: dict):
 
     if not to:
         return text_card("No recipient address found in your message.", "Email")
+
+    # Resolve contact name → email address
+    contacts = ctx.get("contacts")
+    resolved = _resolve_contact_email(to, contacts)
+    if resolved != to:
+        to = resolved
+    elif "@" not in to:
+        return text_card(
+            f"Could not find an email address for '{to}'. "
+            "Add them to contacts or use their full email address.",
+            "Email",
+        )
 
     ok = email.send(to, subject, body)
     if ok:

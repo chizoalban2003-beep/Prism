@@ -68,13 +68,36 @@ def execute(intent: str, message: str, ctx: dict):
     if not is_sms and not is_call:
         is_call = True  # default to voice call
 
-    # ── Extract phone number ─────────────────────────────────────────────────
+    # ── Extract phone number (direct or via contacts) ─────────────────────────
     m = _phone_re().search(message)
-    if not m:
-        return text_card(
-            "No phone number found. Include a number like +447700900000.", "Phone"
-        )
-    to_number = _normalise(m.group(0))
+    if m:
+        to_number = _normalise(m.group(0))
+    else:
+        # Try to resolve a name from contacts
+        contacts = ctx.get("contacts")
+        to_number = ""
+        if contacts is not None:
+            import re
+            name_match = re.search(
+                r"(?:call|text|phone|ring|sms|message)\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)",
+                message,
+            )
+            if name_match:
+                name = name_match.group(1)
+                try:
+                    hits = contacts.search(name)
+                    for c in hits:
+                        if c.phones:
+                            to_number = _normalise(c.phones[0])
+                            break
+                except Exception:
+                    pass
+        if not to_number:
+            return text_card(
+                "No phone number found. Include a number like +447700900000, "
+                "or make sure the contact's number is saved.",
+                "Phone",
+            )
 
     client = Client(account_sid, auth_token)
 
