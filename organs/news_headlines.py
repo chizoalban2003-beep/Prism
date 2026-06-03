@@ -55,7 +55,6 @@ def execute(intent: str, message: str, ctx: dict):
         return text_card(f"Failed to parse RSS feed: {exc}", "News")
 
     # RSS: channel > item > title, description, link, pubDate
-    ns = {}
     channel = root.find("channel")
     if channel is None:
         # Atom feed fallback

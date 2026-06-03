@@ -3,13 +3,12 @@
 </p>
 
 <h1 align="center">PRISM — Decision Intelligence</h1>
-<p align="center"><strong>Crystallised into you.</strong></p>
+<p align="center"><strong>The AI that lives on your device, learns who you are, and acts before you ask.</strong></p>
 
 <p align="center">
-  A local-first platform that decides, explains, and executes — for any user, in any domain.<br>
   Not a chatbot. Not a rules engine. Not an LLM wrapper.<br>
-  A physics-inspired decision model that learns from your outcomes,<br>
-  runs on your hardware, and belongs entirely to you.
+  A local-first personal AI that crystallises around you — your habits, goals and values —<br>
+  and acts on your behalf without sending anything to the cloud.
 </p>
 
 <p align="center">
@@ -121,7 +120,9 @@ Personal Assistant Layer (all local):
   └──────────┘
 
 Background loop:
-  PrismProactive  →  triggers (calendar, budget, recovery, wearable, calibration)
+  PrismProactive  →  11 triggers: calendar_warning · morning_brief · reminder_fire
+                    budget_overrun · recovery_check · wearable_sync · calibration_prompt
+                    disk_space · horizon_deadline · evening_summary · sleep_quality
   PrismMemory     →  short/long-term memory (SQLite + TF-IDF)
   PrismPerception →  context (time, biometrics, system state)
   PrismVoice      →  STT input (Whisper local / SpeechRecognition)
@@ -511,31 +512,203 @@ Policies, calibration history, and standing instructions use this name as the us
 
 ---
 
-## Quick start
+## Installing PRISM on your device
+
+### Requirements
+
+- **Python 3.11+** — [python.org/downloads](https://www.python.org/downloads/)
+- **Ollama** (recommended) — local LLM engine — [ollama.ai](https://ollama.ai)
+- **git** — [git-scm.com](https://git-scm.com)
+
+---
+
+### macOS
+
+```bash
+# 1. Install Homebrew if you don't have it
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+# 2. Install Python 3.11+ and ffmpeg
+brew install python ffmpeg
+
+# 3. Install Ollama (runs LLMs locally)
+brew install ollama
+ollama serve &           # start in background
+ollama pull mistral      # download the default model (~4 GB)
+
+# 4. Clone and install PRISM
+git clone https://github.com/chizoalban2003-beep/Prism.git
+cd Prism
+pip3 install -e ".[full]"
+
+# 5. First-boot identity ceremony
+python3 prism_daemon.py --ceremony
+
+# 6. Start PRISM
+python3 kde_cli.py server --port 8742
+# Open http://localhost:8742
+```
+
+---
+
+### Linux (Ubuntu / Debian)
+
+```bash
+# 1. System dependencies
+sudo apt-get update
+sudo apt-get install -y python3.11 python3-pip python3.11-venv ffmpeg git
+
+# 2. Install Ollama
+curl -fsSL https://ollama.ai/install.sh | sh
+ollama serve &
+ollama pull mistral
+
+# 3. Clone and install PRISM
+git clone https://github.com/chizoalban2003-beep/Prism.git
+cd Prism
+python3.11 -m venv .venv && source .venv/bin/activate
+pip install -e ".[full]"
+
+# 4. First-boot identity ceremony
+python3 prism_daemon.py --ceremony
+
+# 5. Start PRISM
+python3 kde_cli.py server --port 8742
+# Open http://localhost:8742
+
+# Optional: run as a background service
+# Add to ~/.bashrc or create a systemd unit (see below)
+```
+
+**Systemd service** (run PRISM automatically on boot):
+
+```bash
+# Create /etc/systemd/system/prism.service:
+sudo tee /etc/systemd/system/prism.service > /dev/null <<EOF
+[Unit]
+Description=PRISM AI Assistant
+After=network.target
+
+[Service]
+User=$USER
+WorkingDirectory=$HOME/Prism
+ExecStart=$HOME/Prism/.venv/bin/python kde_cli.py server --port 8742
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable prism
+sudo systemctl start prism
+```
+
+---
+
+### Windows
+
+```powershell
+# 1. Install Python 3.11+ from https://www.python.org/downloads/
+#    Tick "Add Python to PATH" during install
+
+# 2. Install Ollama from https://ollama.ai/download/windows
+#    Then open a terminal and run:
+ollama pull mistral
+
+# 3. Install ffmpeg (optional — needed for video/audio processing)
+winget install ffmpeg
+
+# 4. Clone and install PRISM
+git clone https://github.com/chizoalban2003-beep/Prism.git
+cd Prism
+pip install -e ".[full]"
+
+# 5. First-boot ceremony
+python prism_daemon.py --ceremony
+
+# 6. Start PRISM
+python kde_cli.py server --port 8742
+# Open http://localhost:8742
+```
+
+---
+
+### Docker (any platform)
+
+```bash
+# Clone the repo
+git clone https://github.com/chizoalban2003-beep/Prism.git
+cd Prism
+
+# Start PRISM + Ollama together
+docker compose up --build
+
+# Open http://localhost:8742
+# Your data persists in ~/.prism on the host machine
+```
+
+> **Note:** Docker doesn't ship a GPU. For fast local LLM inference, native install (above) with Ollama is recommended.
+
+---
+
+### Mobile / PWA (iPhone, Android, iPad)
+
+PRISM ships a Progressive Web App at `/mobile`. Once your server is running on your home network:
+
+1. Find your machine's local IP: `ip addr` (Linux) / `ifconfig` (Mac) — e.g. `192.168.1.42`
+2. On your phone, open `http://192.168.1.42:8742/mobile`
+3. **iPhone:** tap Share → "Add to Home Screen"
+4. **Android:** tap the browser menu → "Install app" or "Add to Home Screen"
+
+The PWA works offline for reading and sends push notifications via [ntfy.sh](https://ntfy.sh) (free, no account needed — set `[push].topic` in config).
+
+---
+
+### First boot checklist
+
+After installing, run through these steps:
+
+```bash
+# 1. Identity ceremony — creates your soul seed (values, goals, identity)
+python3 prism_daemon.py --ceremony
+
+# 2. Edit prism_config.toml to add your name and any integrations
+#    (email, calendar, smart home, Twilio, etc.)
+nano prism_config.toml
+
+# 3. Start the server
+python3 kde_cli.py server --port 8742
+
+# 4. Open the chat and say:
+#    "my profile"        — see your crystallised identity
+#    "plan my day"       — get a morning brief
+#    "my narrative"      — see what PRISM has learned about you
+```
+
+---
+
+### Quick start (minimal — no Ollama)
+
+PRISM falls back to Claude API if Ollama is unavailable:
 
 ```bash
 git clone https://github.com/chizoalban2003-beep/Prism.git
 cd Prism
-pip install -r requirements.txt
-# Optional: pip install playwright && playwright install chromium
-# Optional: install Ollama from https://ollama.ai, then: ollama pull mistral
+pip install -e .
+export ANTHROPIC_API_KEY="sk-ant-..."
+python3 kde_cli.py server --port 8742
 ```
 
-If you want installed CLI entry points:
+Everything works without any configuration. Add integrations as you need them.
 
-```bash
-pip install .
-prism --help
-kde --help
-ksa --help
-```
-
-Run `python3 prism_daemon.py --ceremony` on first boot to create your soul seed
+---
 
 ### Chat interface
 
 ```bash
-python kde_cli.py server --port 8742
+python3 kde_cli.py server --port 8742
 ```
 
 Open **http://localhost:8742** — the PRISM chat interface. Type any request in plain language:
@@ -545,7 +718,9 @@ Open **http://localhost:8742** — the PRISM chat interface. Type any request in
 - `what's on my calendar today`
 - `add task: finish the report by Friday`
 - `search the web for Python async tutorials`
-- `send me a push notification about my meeting`
+- `remind me to call Alice in 30 minutes`
+- `my profile` — see your crystallised persona
+- `my narrative` — weekly story of what PRISM learned about you
 - `that was too aggressive` — calibrates the model
 
 ### Developer agent (KSA)
@@ -1024,7 +1199,7 @@ PRISM/
 │   ├── domain_configs.py       Medical · Financial · Legal · HR · Supply Chain · Climate
 │   └── domain_validator.py     Expert-label accuracy validation
 │
-└── tests/                      1131 pytest tests — all passing
+└── tests/                      1469 pytest tests — all passing
 ```
 
 ---
@@ -1050,7 +1225,7 @@ PRISM/
 
 ```bash
 python -m pytest tests/ -q
-# 1304+ tests pass in ~115 seconds
+# 1469+ tests pass in ~115 seconds
 
 # With coverage report:
 python -m pytest tests/ -q --cov=. --cov-report=term-missing:skip-covered

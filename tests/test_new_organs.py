@@ -10,9 +10,7 @@ import importlib
 import importlib.util
 import json
 import sys
-from io import BytesIO
 from unittest.mock import MagicMock, mock_open, patch
-
 
 # ── loader helper ──────────────────────────────────────────────────────────────
 

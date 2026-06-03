@@ -15,8 +15,8 @@ ORGAN_POLICY = {
 
 def _parse_reminder(message: str) -> tuple:
     """Return (reminder_text, delay_seconds) parsed from message."""
-    import re
     import datetime
+    import re
 
     text = ""
     delay = 0

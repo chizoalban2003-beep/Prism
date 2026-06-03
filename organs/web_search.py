@@ -39,9 +39,9 @@ def _strip_tags(html: str) -> str:
 
 
 def execute(intent: str, message: str, ctx: dict):
+    import re
     import urllib.parse
     import urllib.request
-    import re
 
     from prism_responses import text_card
 

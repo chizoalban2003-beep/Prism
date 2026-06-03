@@ -48,6 +48,7 @@ def _save_png(data: str) -> str:
     """Save QR code as PNG. Return file path string."""
     import datetime
     from pathlib import Path
+
     import qrcode  # type: ignore[import]
 
     out_dir = Path("~/.prism/qrcodes").expanduser()
