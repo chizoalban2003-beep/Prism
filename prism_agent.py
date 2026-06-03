@@ -1338,6 +1338,7 @@ class PrismAgent:
             try:
                 ctx.setdefault("organ_loader", self._organ_loader)
                 ctx.setdefault("policy_engine", self._policy)
+                ctx.setdefault("tasks", getattr(self, "_tasks", None))
                 return organ_fn(intent, message, ctx)
             except Exception as exc:
                 return text_card(f"Organ '{intent}' failed: {exc}", intent)

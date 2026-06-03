@@ -840,7 +840,33 @@ Rules:
             except Exception:
                 pass
 
-        return "  ".join(notes)
+        combined = "  ".join(notes)
+        if combined:
+            self._write_policy_audit(logic, combined)
+        return combined
+
+    _AUDIT_DB: str = "~/.prism/policy_audit.db"
+
+    def _write_policy_audit(self, logic: str, note: str) -> None:
+        """Persist a policy flag to the audit log so policy_audit organ can surface it."""
+        import sqlite3
+        import time
+        from pathlib import Path
+        try:
+            db = Path(self._AUDIT_DB).expanduser()
+            db.parent.mkdir(parents=True, exist_ok=True)
+            with sqlite3.connect(db) as con:
+                con.execute(
+                    "CREATE TABLE IF NOT EXISTS audit_log("
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                    "ts REAL NOT NULL, logic TEXT NOT NULL, note TEXT NOT NULL)"
+                )
+                con.execute(
+                    "INSERT INTO audit_log(ts, logic, note) VALUES (?,?,?)",
+                    (time.time(), logic, note),
+                )
+        except Exception:
+            pass
 
     # ── Evaluator node ────────────────────────────────────────────────────────
 
