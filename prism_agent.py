@@ -26,7 +26,7 @@ from prism_memory import PrismMemory
 from prism_organ_loader import OrganLoader
 from prism_perception import PrismPerception
 from prism_planner import PrismPlanner
-from prism_proactive import PrismProactive, build_default_triggers
+from prism_proactive import PrismProactive, build_advanced_triggers, build_default_triggers
 from prism_push import PrismPush
 from prism_responses import (
     PrismCard,
@@ -517,6 +517,23 @@ class PrismAgent:
         except Exception as e:
             logger.warning("ChainOrchestrator not available: %s", e)
             self._orchestrator = None
+
+        # Advanced proactive triggers — registered after all dependencies exist
+        if getattr(self, '_proactive', None) is not None:
+            try:
+                advanced = build_advanced_triggers(
+                    organ_loader = getattr(self, '_organ_loader', None),
+                    router       = self._router,
+                    calendar     = getattr(self, '_calendar', None),
+                    persona      = getattr(self, '_persona', None),
+                    horizon      = getattr(self, '_horizon', None),
+                    config       = self._config,
+                )
+                for t in advanced:
+                    self._proactive.register(t)
+                logger.info("Advanced proactive triggers registered: %d", len(advanced))
+            except Exception as e:
+                logger.warning("Advanced proactive triggers failed: %s", e)
 
     def stop(self) -> None:
         """Gracefully shut down all background subsystems."""

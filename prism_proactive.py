@@ -263,3 +263,379 @@ def build_default_triggers(
     ))
 
     return triggers
+
+
+# ── Advanced / organ-driven triggers ──────────────────────────────────────────
+
+def _run_organ(organ_loader, intent: str, message: str, ctx: dict) -> str:
+    """Execute an organ and return its body string, or '' on failure."""
+    try:
+        fn = organ_loader.get(intent) if organ_loader else None
+        if fn is None:
+            return ""
+        card = fn(intent, message, ctx)
+        return card.body if hasattr(card, "body") else str(card)
+    except Exception as exc:
+        logger.debug("Proactive organ %s failed: %s", intent, exc)
+        return ""
+
+
+def build_advanced_triggers(
+    organ_loader=None,
+    router=None,
+    calendar=None,
+    persona=None,
+    horizon=None,
+    config: dict = None,
+) -> list[ProactiveTrigger]:
+    """
+    Build organ-driven and system-aware proactive triggers.
+    Call this after PrismAgent finishes initialising all dependencies.
+
+    Triggers added:
+      reminder_fire      — polls ~/.prism/reminders.json; fires overdue reminders
+      morning_brief      — at wake hour; runs weather + news, composes LLM brief
+      calendar_warning   — 15 min before a calendar event
+      disk_space         — warns when disk usage > 90 %
+      horizon_deadline   — warns 48 h before a HorizonGoal expires
+      evening_summary    — at end-of-day; summarises tasks + tomorrow
+    """
+    cfg = config or {}
+    triggers: list[ProactiveTrigger] = []
+
+    # ── 1. Reminder poller ────────────────────────────────────────────────────
+    # Closes the loop from the reminder_set organ: reads ~/.prism/reminders.json
+    # and fires any reminder whose fire_at has passed.
+    def _check_reminders() -> bool:
+        import datetime
+        import json
+        from pathlib import Path
+        f = Path("~/.prism/reminders.json").expanduser()
+        if not f.exists():
+            return False
+        try:
+            items = json.loads(f.read_text(encoding="utf-8"))
+            now = datetime.datetime.now()
+            return any(
+                item.get("status") == "pending"
+                and datetime.datetime.fromisoformat(item["fire_at"]) <= now
+                for item in items
+            )
+        except Exception:
+            return False
+
+    def _msg_reminders() -> str:
+        import datetime
+        import json
+        from pathlib import Path
+        f = Path("~/.prism/reminders.json").expanduser()
+        try:
+            items = json.loads(f.read_text(encoding="utf-8"))
+            now = datetime.datetime.now()
+            due = [
+                item for item in items
+                if item.get("status") == "pending"
+                and datetime.datetime.fromisoformat(item["fire_at"]) <= now
+            ]
+            for item in due:
+                item["status"] = "fired"
+            f.write_text(json.dumps(items, indent=2), encoding="utf-8")
+            if not due:
+                return "Reminder due."
+            return "\n".join(f"\u23f0 Reminder: {d['text']}" for d in due[:5])
+        except Exception:
+            return "Reminder due."
+
+    triggers.append(ProactiveTrigger(
+        "reminder_fire", "Reminder due",
+        check_every=30,
+        condition=_check_reminders,
+        message=_msg_reminders,
+        cooldown=1,        # can fire multiple times per minute for different reminders
+        enabled=True,
+    ))
+
+    # ── 2. Morning brief ──────────────────────────────────────────────────────
+    # Fires once per day at the user's wake hour (persona-aware).
+    # Runs weather_check + news_headlines organs and composes an LLM brief.
+    if organ_loader:
+        _morning_hour_cache: dict = {}
+
+        def _morning_hour() -> int:
+            """Return the wake hour from persona peak hours or default (7)."""
+            if persona:
+                try:
+                    peaks = persona.peak_hours()
+                    if peaks:
+                        return min(int(h) for h in peaks)
+                except Exception:
+                    pass
+            return int(cfg.get("morning_hour", 7))
+
+        def _check_morning() -> bool:
+            import datetime
+            now = datetime.datetime.now()
+            today = now.strftime("%Y-%m-%d")
+            if _morning_hour_cache.get("last_date") == today:
+                return False
+            return now.hour == _morning_hour()
+
+        def _msg_morning() -> str:
+            import datetime
+            today = datetime.datetime.now().strftime("%Y-%m-%d")
+            _morning_hour_cache["last_date"] = today
+
+            ctx: dict = {}
+            parts: list[str] = []
+
+            weather = _run_organ(organ_loader, "weather_check", "weather today", ctx)
+            if weather:
+                parts.append(weather)
+
+            news = _run_organ(organ_loader, "news_headlines", "top headlines", ctx)
+            if news:
+                parts.append(news)
+
+            cal_text = ""
+            if calendar:
+                try:
+                    events = calendar.events_today() or []
+                    if events:
+                        titles = []
+                        for e in events[:5]:
+                            t = (getattr(e, "title", None)
+                                 or (e.get("title") if hasattr(e, "get") else None)
+                                 or "Event")
+                            titles.append(str(t))
+                        cal_text = "Today's calendar: " + ", ".join(titles)
+                        parts.append(cal_text)
+                except Exception:
+                    pass
+
+            if not parts:
+                return "\u2600 Good morning! Have a great day."
+
+            combined = "\n\n".join(parts)
+            if router:
+                try:
+                    prompt = (
+                        "Write a concise, friendly good-morning briefing for the user "
+                        "based on this information. 3 sentences max. Be direct.\n\n"
+                        f"{combined[:2000]}"
+                    )
+                    answer, _ = router.call(prompt)
+                    return f"\u2600 Good morning!\n\n{answer.strip()}"
+                except Exception:
+                    pass
+            return f"\u2600 Good morning!\n\n{combined[:600]}"
+
+        triggers.append(ProactiveTrigger(
+            "morning_brief", "Morning briefing",
+            check_every=60,
+            condition=_check_morning,
+            message=_msg_morning,
+            cooldown=86400,
+            enabled=True,
+        ))
+
+    # ── 3. Calendar 15-minute warning ─────────────────────────────────────────
+    if calendar:
+        _warned_events: set = set()
+
+        def _check_cal_warning() -> bool:
+            import datetime
+            try:
+                events = calendar.events_today() or []
+                now = datetime.datetime.now()
+                for evt in events:
+                    start = (getattr(evt, "start_dt", None)
+                             or getattr(evt, "start", None)
+                             or (evt.get("start_dt") or evt.get("start")
+                                 if hasattr(evt, "get") else None))
+                    if start is None:
+                        continue
+                    if isinstance(start, str):
+                        try:
+                            start = datetime.datetime.fromisoformat(start)
+                        except Exception:
+                            continue
+                    delta = (start - now).total_seconds()
+                    evt_id = str(getattr(evt, "uid", None) or id(evt))
+                    if 0 < delta <= 900 and evt_id not in _warned_events:
+                        return True
+            except Exception:
+                pass
+            return False
+
+        def _msg_cal_warning() -> str:
+            import datetime
+            try:
+                events = calendar.events_today() or []
+                now = datetime.datetime.now()
+                msgs = []
+                for evt in events:
+                    start = (getattr(evt, "start_dt", None)
+                             or getattr(evt, "start", None)
+                             or (evt.get("start_dt") or evt.get("start")
+                                 if hasattr(evt, "get") else None))
+                    if start is None:
+                        continue
+                    if isinstance(start, str):
+                        try:
+                            start = datetime.datetime.fromisoformat(start)
+                        except Exception:
+                            continue
+                    delta = (start - now).total_seconds()
+                    evt_id = str(getattr(evt, "uid", None) or id(evt))
+                    if 0 < delta <= 900 and evt_id not in _warned_events:
+                        title = (getattr(evt, "title", None)
+                                 or (evt.get("title") if hasattr(evt, "get") else None)
+                                 or "Meeting")
+                        mins = int(delta // 60) + 1
+                        msgs.append(f"\U0001f4c5 {title} starts in {mins} minute(s)")
+                        _warned_events.add(evt_id)
+                return "\n".join(msgs) if msgs else "Meeting starting soon."
+            except Exception:
+                return "Meeting starting soon."
+
+        triggers.append(ProactiveTrigger(
+            "calendar_warning", "Meeting soon",
+            check_every=60,
+            condition=_check_cal_warning,
+            message=_msg_cal_warning,
+            cooldown=60,    # can fire for multiple events with short gap
+            enabled=True,
+        ))
+
+    # ── 4. Disk space warning ─────────────────────────────────────────────────
+    def _check_disk() -> bool:
+        try:
+            import psutil
+            return psutil.disk_usage("/").percent > 90
+        except Exception:
+            return False
+
+    def _msg_disk() -> str:
+        try:
+            import psutil
+            usage = psutil.disk_usage("/")
+            return (
+                f"\U0001f4be Disk space low: {usage.percent:.0f}% used "
+                f"({usage.free // (1024**3)} GB free). "
+                "Consider clearing old files."
+            )
+        except Exception:
+            return "\U0001f4be Disk space is running low."
+
+    triggers.append(ProactiveTrigger(
+        "disk_space", "Disk space warning",
+        check_every=3600,
+        condition=_check_disk,
+        message=_msg_disk,
+        cooldown=86400,
+        enabled=True,
+    ))
+
+    # ── 5. Horizon goal deadline warning ─────────────────────────────────────
+    if horizon:
+        def _check_horizon_deadline() -> bool:
+            import datetime
+            try:
+                goals = horizon.list_goals(status="watching") or []
+                now = datetime.datetime.now()
+                for g in goals:
+                    exp = getattr(g, "expires_at", None)
+                    if exp and (exp - now).total_seconds() < 172800:  # 48h
+                        return True
+            except Exception:
+                pass
+            return False
+
+        def _msg_horizon_deadline() -> str:
+            import datetime
+            try:
+                goals = horizon.list_goals(status="watching") or []
+                now = datetime.datetime.now()
+                msgs = []
+                for g in goals:
+                    exp = getattr(g, "expires_at", None)
+                    if exp and (exp - now).total_seconds() < 172800:
+                        hours = int((exp - now).total_seconds() // 3600)
+                        intent = getattr(g, "intent", "goal")
+                        msgs.append(f"\U0001f3af Goal deadline in {hours}h: \"{intent}\"")
+                return "\n".join(msgs) if msgs else "A horizon goal is expiring soon."
+            except Exception:
+                return "A horizon goal is expiring soon."
+
+        triggers.append(ProactiveTrigger(
+            "horizon_deadline", "Goal deadline approaching",
+            check_every=1800,
+            condition=_check_horizon_deadline,
+            message=_msg_horizon_deadline,
+            cooldown=43200,
+            enabled=True,
+        ))
+
+    # ── 6. Evening summary ───────────────────────────────────────────────────
+    # Fires once per day at the configured evening hour (default 18:00).
+    # Summarises outcomes + what's on the calendar tomorrow.
+    _evening_cache: dict = {}
+    _evening_hour = int(cfg.get("evening_hour", 18))
+
+    def _check_evening() -> bool:
+        import datetime
+        now = datetime.datetime.now()
+        today = now.strftime("%Y-%m-%d")
+        if _evening_cache.get("last_date") == today:
+            return False
+        return now.hour == _evening_hour
+
+    def _msg_evening() -> str:
+        import datetime
+        today = datetime.datetime.now().strftime("%Y-%m-%d")
+        _evening_cache["last_date"] = today
+
+        parts: list[str] = []
+        if calendar:
+            try:
+                tomorrow = (datetime.datetime.now()
+                            + datetime.timedelta(days=1))
+                events = calendar.events_on(tomorrow) or []
+                if events:
+                    titles = []
+                    for e in events[:5]:
+                        t = (getattr(e, "title", None)
+                             or (e.get("title") if hasattr(e, "get") else None)
+                             or "Event")
+                        titles.append(str(t))
+                    parts.append("Tomorrow: " + ", ".join(titles))
+            except Exception:
+                pass
+
+        if not parts and not router:
+            return "\U0001f307 Good evening! Day complete."
+
+        if router and parts:
+            try:
+                prompt = (
+                    "Write a brief, warm evening wrap-up for the user in 2 sentences. "
+                    "Mention what's coming up tomorrow if relevant.\n\n"
+                    + "\n".join(parts)
+                )
+                answer, _ = router.call(prompt)
+                return f"\U0001f307 {answer.strip()}"
+            except Exception:
+                pass
+
+        return "\U0001f307 Good evening!\n\n" + "\n".join(parts)
+
+    triggers.append(ProactiveTrigger(
+        "evening_summary", "Evening summary",
+        check_every=60,
+        condition=_check_evening,
+        message=_msg_evening,
+        cooldown=86400,
+        enabled=True,
+    ))
+
+    return triggers
