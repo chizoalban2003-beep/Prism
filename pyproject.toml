@@ -14,7 +14,7 @@ urls = { Homepage = "https://github.com/chizoalban2003-beep/Prism", Repository =
 
 [project.optional-dependencies]
 full = ["playwright", "openai-whisper", "pyaudio", "pydub", "pdfplumber",
-        "openpyxl", "aiohttp", "mss"]
+        "openpyxl", "aiohttp", "mss", "twilio>=8.0"]
 dev  = ["ruff>=0.4.0", "pytest>=7.0", "mypy>=1.8"]
 
 [project.scripts]

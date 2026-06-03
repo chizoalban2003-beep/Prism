@@ -934,28 +934,6 @@ class PrismAgent:
                 messages, llm_router=getattr(self, '_router', None))
             return text_card(summary, f"Inbox — {len(messages)} unread")
 
-        if intent == "email_send":
-            if not self._email.configured:
-                return text_card("Email not configured.", "Email")
-            router = getattr(self, '_router', None)
-            if router:
-                prompt = (f"Extract email details from: '{message}'\n"
-                          f"Return JSON: {{\"to\":\"...\",\"subject\":\"...\","
-                          f"\"body\":\"...\"}}")
-                raw, _ = router.call(prompt, min_capability=1, max_tokens=300,
-                                      json_mode=True)
-                try:
-                    import json as _j
-                    data = _j.loads(raw.strip().lstrip("```json").rstrip("```"))
-                    ok   = self._email.send(data["to"], data["subject"], data["body"])
-                    return text_card(
-                        f"{'Sent' if ok else 'Failed to send'} to {data.get('to','')}",
-                        "Email")
-                except Exception:
-                    pass
-            return text_card("Could not parse email details. "
-                             "Try: 'send email to name@example.com about...'", "Email")
-
         if intent == "calendar_read":
             if not self._calendar.configured:
                 return text_card("Calendar not configured. "
@@ -969,33 +947,6 @@ class PrismAgent:
             if next_ev and next_ev.starts_in_mins <= 30:
                 msg = f"⚠ {next_ev.title} starts in {next_ev.starts_in_mins} minutes\n\n" + msg
             return text_card(msg, f"Today — {len(today)} events")
-
-        if intent == "calendar_write":
-            if not self._calendar.configured:
-                return text_card("Calendar not configured.", "Calendar")
-            router = getattr(self, '_router', None)
-            if "free slot" in message.lower() or "available" in message.lower():
-                slot = self._calendar.find_free_slot()
-                if slot:
-                    return text_card(
-                        f"Next free slot: {slot.strftime('%a %d %b at %H:%M')}",
-                        "Calendar")
-                return text_card("No free slots found in the next 48 hours.", "Calendar")
-            parsed = self._calendar.parse_event_from_text(message, router)
-            if parsed and parsed.get("start_iso"):
-                from datetime import datetime as _dt
-                start = _dt.fromisoformat(parsed["start_iso"])
-                event = self._calendar.create_event(
-                    title        = parsed.get("title", "New Event"),
-                    start        = start,
-                    duration_mins= parsed.get("duration_mins", 60),
-                    location     = parsed.get("location", ""),
-                    attendees    = parsed.get("attendees", []),
-                )
-                if event:
-                    return text_card(f"Created: {event}", "Calendar")
-            return text_card("Could not parse event details. "
-                             "Try: 'schedule a meeting with X on Friday at 2pm'", "Calendar")
 
         if intent == "browser_task":
             if not self._browser.available:
@@ -1494,6 +1445,10 @@ class PrismAgent:
                 ctx.setdefault("organ_loader", self._organ_loader)
                 ctx.setdefault("policy_engine", self._policy)
                 ctx.setdefault("tasks", getattr(self, "_tasks", None))
+                ctx.setdefault("email", getattr(self, "_email", None))
+                ctx.setdefault("calendar", getattr(self, "_calendar", None))
+                ctx.setdefault("router", getattr(self, "_router", None))
+                ctx.setdefault("twilio_config", self._config.get("twilio", {}))
                 return organ_fn(intent, message, ctx)
             except Exception as exc:
                 return text_card(f"Organ '{intent}' failed: {exc}", intent)
