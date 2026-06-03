@@ -171,3 +171,9 @@ class PrismMemory:
                 timestamp REAL)""")
             c.execute("CREATE INDEX IF NOT EXISTS ix_ts ON memory(timestamp)")
             c.execute("CREATE INDEX IF NOT EXISTS ix_src ON memory(source)")
+            self._migrate(c)
+
+    def _migrate(self, c) -> None:
+        ver = c.execute("PRAGMA user_version").fetchone()[0]
+        if ver < 1:
+            c.execute("PRAGMA user_version = 1")

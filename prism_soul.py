@@ -186,6 +186,13 @@ class PrismSoul:
             )
         """)
         c.commit()
+        self._migrate()
+
+    def _migrate(self) -> None:
+        ver = self._conn.execute("PRAGMA user_version").fetchone()[0]
+        if ver < 1:
+            self._conn.execute("PRAGMA user_version = 1")
+            self._conn.commit()
 
     # ------------------------------------------------------------------
     # Soul Seed

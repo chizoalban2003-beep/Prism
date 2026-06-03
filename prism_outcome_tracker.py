@@ -64,7 +64,8 @@ class OutcomeTracker:
     -------------
     Every recorded outcome calls feed_soul() incrementally:
     - 'done': observation_count += 1 on any belief whose text overlaps
-      with the goal keywords (confidence nudge toward 0.85)
+      with the goal keywords (Bayesian Beta(alpha, beta) update: each
+      completed chain is a success; confidence converges toward 0.95)
     - 'user_corrected': observation on a "_corrections" lens if present
     - 'abandoned': no soul update (noise)
 
@@ -246,11 +247,15 @@ class OutcomeTracker:
                 if any(kw in ln.description.lower() for kw in keywords):
                     soul.record_observation(ln.lens_id, 1.0, f"chain completed: {rec.goal[:60]}")
                     updates += 1
-            # Nudge confidence of related stated beliefs upward
+            # Bayesian Beta(alpha, beta) confidence update for related stated beliefs
             beliefs = soul.list_beliefs(belief_type="stated")
             for b in beliefs:
                 if any(kw in b.text.lower() for kw in keywords):
-                    new_conf = min(0.95, b.confidence + 0.02)
+                    obs = getattr(b, "observation_count", 0) or 0
+                    # Beta(successes+1, failures+1) mean — treat each completed chain as a success
+                    alpha = obs + 2  # successes + 1 (prior)
+                    beta_param = max(1, round(obs * (1 - b.confidence))) + 1  # failures + 1
+                    new_conf = round(min(0.95, alpha / (alpha + beta_param)), 4)
                     soul.update_belief(b.node_id, confidence=new_conf, observation_count_delta=1)
                     updates += 1
 
@@ -277,6 +282,14 @@ class OutcomeTracker:
             timestamp   = row[10],
         )
 
+    def _migrate(self, con: sqlite3.Connection) -> None:
+        ver = con.execute("PRAGMA user_version").fetchone()[0]
+        if ver < 1:
+            cols = {r[1] for r in con.execute("PRAGMA table_info(outcomes)")}
+            if "context_id" not in cols:
+                con.execute("ALTER TABLE outcomes ADD COLUMN context_id TEXT NOT NULL DEFAULT 'default'")
+            con.execute("PRAGMA user_version = 1")
+
     def _init_db(self) -> None:
         with sqlite3.connect(self._db) as con:
             con.execute("""
@@ -296,6 +309,7 @@ class OutcomeTracker:
             """)
             con.execute("CREATE INDEX IF NOT EXISTS idx_ts ON outcomes(timestamp)")
             con.execute("CREATE INDEX IF NOT EXISTS idx_ctx ON outcomes(context_id)")
+            self._migrate(con)
 
 
 def _extract_keywords(text: str) -> list[str]:

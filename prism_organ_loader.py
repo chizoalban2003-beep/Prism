@@ -46,7 +46,7 @@ import importlib.util
 import json
 import logging
 from pathlib import Path
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +196,50 @@ class OrganLoader:
     def list_organs(self) -> list[str]:
         """Return sorted list of loaded organ intent names."""
         return sorted(self._organs.keys())
+
+    def execute_parallel(
+        self,
+        intents: list[str],
+        message: str,
+        ctx: dict,
+        timeout: float = 30.0,
+    ) -> dict[str, Any]:
+        """
+        Run multiple organs concurrently. Only organs whose ORGAN_POLICY marks
+        irreversible=False and requires_approval=False are eligible; others are
+        silently skipped (call execute() for those individually).
+
+        Returns {intent: card_or_error_dict}.
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from concurrent.futures import TimeoutError as _FTimeout
+
+        safe = [
+            i for i in intents
+            if not self.get_organ_policy(i).get("irreversible", False)
+            and not self.get_organ_policy(i).get("requires_approval", False)
+            and self.get(i) is not None
+        ]
+        if not safe:
+            return {}
+
+        results: dict[str, Any] = {}
+        with ThreadPoolExecutor(max_workers=min(len(safe), 4)) as pool:
+            futures = {pool.submit(self.get(i), i, message, ctx): i for i in safe}
+            try:
+                for future in as_completed(futures, timeout=timeout):
+                    intent = futures[future]
+                    try:
+                        results[intent] = future.result(timeout=5.0)
+                    except _FTimeout:
+                        results[intent] = {"error": "timeout", "output": ""}
+                    except Exception as exc:
+                        results[intent] = {"error": str(exc), "output": ""}
+            except _FTimeout:
+                for future, intent in futures.items():
+                    if intent not in results:
+                        results[intent] = {"error": "overall timeout", "output": ""}
+        return results
 
     def synthesize(self, intent: str, message: str) -> bool:
         """

@@ -171,3 +171,9 @@ class TaskQueue:
         with sqlite3.connect(self._db) as c:
             c.execute("CREATE TABLE IF NOT EXISTS tasks("
                       "id TEXT PRIMARY KEY, status TEXT, data_json TEXT)")
+            self._migrate(c)
+
+    def _migrate(self, c) -> None:
+        ver = c.execute("PRAGMA user_version").fetchone()[0]
+        if ver < 1:
+            c.execute("PRAGMA user_version = 1")

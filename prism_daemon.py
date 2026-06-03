@@ -140,6 +140,37 @@ def _outcome_feed_worker(agent, interval: int = 3600):
             logger.debug("OutcomeTracker feed error: %s", exc)
 
 
+def _surprise_reflection_worker(agent, interval: int = 3600):
+    """
+    Fire an immediate reflection when the 7-day completion rate drops 15+
+    points vs. the prior 7-day baseline — indicating a sudden performance dip.
+    """
+    while not _SHUTDOWN.wait(timeout=interval):
+        try:
+            tracker    = getattr(agent, "_outcome_tracker", None)
+            reflection = getattr(agent, "_reflection", None)
+            if tracker is None or reflection is None:
+                continue
+            recent = tracker.stats(days=7)
+            full   = tracker.stats(days=14)
+            recent_total = recent.get("total", 0)
+            full_total   = full.get("total", 0)
+            prior_total  = full_total - recent_total
+            if prior_total >= 5 and recent_total >= 5:
+                prior_done  = (full.get("done", 0) or 0) - (recent.get("done", 0) or 0)
+                prior_rate  = prior_done / prior_total
+                recent_rate = recent.get("completion_rate", 0)
+                delta       = recent_rate - prior_rate
+                if delta < -0.15:
+                    logger.warning(
+                        "[daemon] surprise reflection: rate %.0f%% → %.0f%% (Δ=%.2f)",
+                        prior_rate * 100, recent_rate * 100, delta,
+                    )
+                    reflection.run()
+        except Exception as exc:
+            logger.debug("Surprise reflection error: %s", exc)
+
+
 def _health_worker(agent, interval: int = 120):
     """Log a brief health line every `interval` seconds."""
     while not _SHUTDOWN.wait(timeout=interval):
@@ -279,8 +310,9 @@ def main():
         threading.Thread(target=_bus_flush_worker,    args=(agent,), daemon=True, name="bus-flush"),
         threading.Thread(target=_horizon_worker,      args=(agent,), daemon=True, name="horizon"),
         threading.Thread(target=_health_worker,       args=(agent,), daemon=True, name="health"),
-        threading.Thread(target=_reflection_worker,   args=(agent,), daemon=True, name="reflection"),
-        threading.Thread(target=_outcome_feed_worker, args=(agent,), daemon=True, name="outcome-feed"),
+        threading.Thread(target=_reflection_worker,         args=(agent,), daemon=True, name="reflection"),
+        threading.Thread(target=_outcome_feed_worker,       args=(agent,), daemon=True, name="outcome-feed"),
+        threading.Thread(target=_surprise_reflection_worker,args=(agent,), daemon=True, name="surprise-refl"),
     ]
     for w in workers:
         w.start()

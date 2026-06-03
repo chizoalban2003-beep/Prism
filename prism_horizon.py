@@ -100,6 +100,8 @@ class HorizonGoal:
     session_count:        int = 0
     expires_at:           Optional[float] = None
     notes:                str = ""
+    outcome_rate:         float = 0.0
+    sample_size:          int = 0
 
     def is_expired(self) -> bool:
         return self.expires_at is not None and time.time() > self.expires_at
@@ -120,6 +122,8 @@ class HorizonGoal:
             self.session_count,
             self.expires_at,
             self.notes,
+            self.outcome_rate,
+            self.sample_size,
         )
 
     @classmethod
@@ -129,6 +133,7 @@ class HorizonGoal:
             status, ctx_json, steps_json,
             created_at, last_checked_at, triggered_at, completed_at,
             session_count, expires_at, notes,
+            *extra,  # outcome_rate, sample_size — absent in pre-migration rows
         ) = row
         return cls(
             goal_id=goal_id,
@@ -145,6 +150,8 @@ class HorizonGoal:
             session_count=session_count or 0,
             expires_at=expires_at,
             notes=notes or "",
+            outcome_rate=extra[0] if len(extra) > 0 else 0.0,
+            sample_size=int(extra[1]) if len(extra) > 1 else 0,
         )
 
 
@@ -678,18 +685,31 @@ class HorizonPlanner:
                     completed_at         REAL,
                     session_count        INTEGER,
                     expires_at           REAL,
-                    notes                TEXT
+                    notes                TEXT,
+                    outcome_rate         REAL NOT NULL DEFAULT 0.0,
+                    sample_size          INTEGER NOT NULL DEFAULT 0
                 )
             """)
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS ix_hz_status ON horizon_goals(status)"
             )
+            self._migrate(conn)
+
+    def _migrate(self, conn) -> None:
+        ver = conn.execute("PRAGMA user_version").fetchone()[0]
+        if ver < 1:
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(horizon_goals)")}
+            if "outcome_rate" not in cols:
+                conn.execute("ALTER TABLE horizon_goals ADD COLUMN outcome_rate REAL NOT NULL DEFAULT 0.0")
+            if "sample_size" not in cols:
+                conn.execute("ALTER TABLE horizon_goals ADD COLUMN sample_size INTEGER NOT NULL DEFAULT 0")
+            conn.execute("PRAGMA user_version = 1")
 
     def _upsert(self, goal: HorizonGoal) -> None:
         with sqlite3.connect(self._db) as conn:
             conn.execute(
                 """INSERT OR REPLACE INTO horizon_goals VALUES
-                   (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                   (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 goal.to_row(),
             )
 

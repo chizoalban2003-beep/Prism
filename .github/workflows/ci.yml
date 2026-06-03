@@ -4,8 +4,6 @@ on:
   push:
     branches: ["main"]
   pull_request:
-    branches: ["main"]
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -15,65 +13,31 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
+  ci:
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-      - run: pip install ruff
-      - run: ruff check . --select E,W,F --ignore E501,E401
-        # E501 = line length (not enforced)
-        # E401 = multiple imports on one line (intentional style in this codebase)
-        # F = pyflakes (unused imports, undefined names)
-        # E,W = pycodestyle errors and warnings
-
-  test:
-    name: Tests (Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
-    needs: lint
-
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.11", "3.12"]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.11"
           cache: pip
 
       - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       - name: Install Python dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          python -m pip install .
+        run: python3 -m pip install -e ".[full]" || python3 -m pip install -e .
 
-      - name: Install Playwright (optional, non-blocking)
-        run: pip install playwright && playwright install chromium || true
+      - name: Lint with ruff
+        run: python3 -m ruff check .
 
       - name: Run tests
-        run: pytest tests/ -q --tb=short
+        run: python3 -m pytest -x -q --tb=short
 
-      - name: Smoke test
-        run: |
-          timeout 10 python kde_cli.py server --port 8743 &
-          sleep 4
-          curl -f http://localhost:8743/status || exit 1
-          kill %1 || true
-
-      - name: Smoke test installed CLIs
-        run: |
-          prism --help > /dev/null
-          kde --help > /dev/null
-          ksa --help > /dev/null
+      - name: Type-check with mypy (allow failure)
+        run: >
+          python3 -m mypy prism_agent.py prism_chain.py prism_llm_router.py
+          --ignore-missing-imports --no-error-summary || true

@@ -1,0 +1,24 @@
+services:
+  prism:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    volumes:
+      - ~/.prism:/root/.prism
+      - .:/app
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    depends_on:
+      - ollama
+    ports:
+      - "8742:8742"
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+volumes:
+  ollama_data:

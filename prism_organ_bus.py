@@ -44,6 +44,7 @@ for debugging or audit.
 """
 from __future__ import annotations
 
+import collections
 import json
 import logging
 import sqlite3
@@ -124,6 +125,65 @@ terminology appropriate for the receiving engine.
 
 
 # ---------------------------------------------------------------------------
+# Anomaly detection
+# ---------------------------------------------------------------------------
+
+
+class SignalAnomalyDetector:
+    """
+    Sliding-window frequency counter per signal type.
+    Fires registered callbacks when a type exceeds baseline × multiplier
+    within the window, indicating a compound anomaly (e.g. 3 health_alerts
+    in 10 minutes when the normal rate is one per day).
+    """
+
+    def __init__(
+        self,
+        window_seconds: float = 600.0,
+        baseline_per_window: float = 1.0,
+        spike_multiplier: float = 3.0,
+    ) -> None:
+        self._window     = window_seconds
+        self._baseline   = baseline_per_window
+        self._multiplier = spike_multiplier
+        self._timestamps: dict[str, collections.deque] = collections.defaultdict(collections.deque)
+        self._callbacks:  list[Callable] = []
+        self._lock        = threading.Lock()
+
+    def on_anomaly(self, callback: Callable) -> None:
+        """Register callback(signal_type, count, window_seconds) for anomaly events."""
+        self._callbacks.append(callback)
+
+    def record(self, signal_type: str) -> bool:
+        """Record one occurrence. Returns True if an anomaly threshold was crossed."""
+        now = time.time()
+        with self._lock:
+            dq = self._timestamps[signal_type]
+            dq.append(now)
+            cutoff = now - self._window
+            while dq and dq[0] < cutoff:
+                dq.popleft()
+            count = len(dq)
+        threshold = self._baseline * self._multiplier
+        if count >= threshold:
+            for cb in self._callbacks:
+                try:
+                    cb(signal_type, count, self._window)
+                except Exception:
+                    pass
+            return True
+        return False
+
+    def counts(self) -> dict[str, int]:
+        """Return current per-type counts within the active window."""
+        now = time.time()
+        cutoff = now - self._window
+        with self._lock:
+            return {k: sum(1 for ts in dq if ts >= cutoff)
+                    for k, dq in self._timestamps.items()}
+
+
+# ---------------------------------------------------------------------------
 # OrganBus
 # ---------------------------------------------------------------------------
 
@@ -162,13 +222,14 @@ class OrganBus:
         llm_router: Any = None,
         db_path: str    = "~/.prism/organ_bus.db",
     ) -> None:
-        self._router        = llm_router
-        self._db            = Path(db_path).expanduser()
+        self._router          = llm_router
+        self._db              = Path(db_path).expanduser()
         self._db.parent.mkdir(parents=True, exist_ok=True)
-        self._subscribers:  List[OrganSubscription] = []
-        self._cache:        Dict[Tuple[str, str, str], dict] = {}  # (sig_type,src,rcv) → payload
-        self._batch:        List[OrganSignal] = []    # low-priority queue
-        self._lock          = threading.Lock()
+        self._subscribers:    List[OrganSubscription] = []
+        self._cache:          Dict[Tuple[str, str, str], dict] = {}
+        self._batch:          List[OrganSignal] = []
+        self._lock            = threading.Lock()
+        self.anomaly_detector = SignalAnomalyDetector()
         self._init_db()
 
     # ------------------------------------------------------------------
@@ -222,6 +283,8 @@ class OrganBus:
 
         Returns list of DeliveryRecords (one per subscriber that received it).
         """
+        self.anomaly_detector.record(signal.signal_type)
+
         if signal.priority == LOW:
             with self._lock:
                 self._batch.append(signal)

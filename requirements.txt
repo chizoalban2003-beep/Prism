@@ -1,23 +1,3 @@
-psutil>=5.9
-Pillow>=10.0
-
-# Optional — install for full functionality
-# ffmpeg must be installed via brew/apt, not pip
-
-# Local LLM
-# ollama — install from https://ollama.ai
-
-# Voice input
-# openai-whisper
-# pyaudio
-
-# Browser automation
-# playwright
-
-# Document processing
-# pdfplumber
-# openpyxl
-
-# Development / Testing
-ruff>=0.4.0
-pytest>=7.0
+# Dependencies are declared in pyproject.toml
+# Install with: pip install -e ".[full]"
+# Dev deps:     pip install -e ".[dev]"
