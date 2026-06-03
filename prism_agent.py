@@ -453,6 +453,26 @@ class PrismAgent:
             logger.warning("PrismReflection not available: %s", e)
             self._reflection = None
 
+        # ChainOrchestrator — prefrontal cortex for multi-step coordination
+        try:
+            from prism_orchestrator import ChainOrchestrator
+            self._orchestrator = ChainOrchestrator(
+                chain           = getattr(self, '_chain', None),
+                organ_loader    = getattr(self, '_organ_loader', None),
+                outcome_tracker = getattr(self, '_outcome_tracker', None),
+                horizon         = getattr(self, '_horizon', None),
+                router          = self._router,
+                soul            = getattr(self, '_soul', None),
+            )
+            # Resume any graphs that were paused waiting on horizon goals
+            resumed = self._orchestrator.resume_waiting(self._execute, {})
+            if resumed:
+                logger.info("ChainOrchestrator: %d paused graph(s) resumed", len(resumed))
+            logger.info("ChainOrchestrator ready")
+        except Exception as e:
+            logger.warning("ChainOrchestrator not available: %s", e)
+            self._orchestrator = None
+
     def stop(self) -> None:
         """Gracefully shut down all background subsystems."""
         if getattr(self, '_horizon', None) is not None:
@@ -634,13 +654,23 @@ class PrismAgent:
                 self._context_manager.inject_into_chain(self._chain)
 
             # 8. Route intent and execute
-            # Tier 0: expert chain — for research/evaluation-heavy requests
-            # Tier 1: general chain — adaptive multi-step
-            # Tier 2: static composition (known multi-step, predictable)
-            # Tier 3: single intent (simple, direct)
+            # Tier 0:   orchestrator    — conditional / multi-domain / cross-session
+            # Tier 0.5: expert chain    — research / evaluation-heavy
+            # Tier 1:   general chain   — adaptive multi-step
+            # Tier 2:   static composer — known multi-step, predictable
+            # Tier 3:   single intent   — direct
             card   = None
             msg_ln = len((message or "").split())
             msg_lw = (message or "").lower()
+
+            # Tier 0: orchestrator
+            orch = getattr(self, '_orchestrator', None)
+            if card is None and orch and message and orch.should_orchestrate(message):
+                try:
+                    card = orch.orchestrate(message, self._execute, context)
+                except Exception as e:
+                    logger.debug("Orchestrator failed: %s", e)
+                    card = None
 
             # Tier 0: expert chain — for research/evaluation-heavy requests
             EXPERT_SIGNALS = [

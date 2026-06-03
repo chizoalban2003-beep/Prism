@@ -82,6 +82,7 @@ py-modules = [
     "prism_horizon",
     "prism_memory",
     "prism_context_profile",
+    "prism_orchestrator",
     "prism_organ_bus",
     "prism_organ_bus_experiment",
     "prism_organ_loader",
