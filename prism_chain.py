@@ -174,6 +174,7 @@ Rules:
         self._organ_loader       = organ_loader
         self._outcome_tracker    = outcome_tracker
         self._context_id         = context_id
+        self._persona            = None
 
         # Thread-safety note: _state_lock protects the internal results list
         # in _execute_branch. The append to state.steps happens in run() which
@@ -267,6 +268,17 @@ Rules:
                     base_ctx.setdefault("memory_context", snippets)
             except Exception as _mem_exc:
                 logger.debug("[chain] Memory recall failed: %s", _mem_exc)
+
+        # ── Persona context injection ─────────────────────────────────────────────
+        _persona = self._persona or base_ctx.get("_persona_ref")
+        if _persona is not None:
+            try:
+                persona_ctx = _persona.build_context(max_chars=400)
+                if persona_ctx:
+                    state.accumulated = (state.accumulated or "") + f"\n[Crystallised user profile]\n{persona_ctx}\n"
+                    base_ctx.setdefault("persona_context", persona_ctx)
+            except Exception as _p_exc:
+                logger.debug("[chain] Persona context failed: %s", _p_exc)
 
         # ── Memory anchor ─────────────────────────────────────────────────────────
         _anchor_id: Optional[str] = None

@@ -171,6 +171,33 @@ def _surprise_reflection_worker(agent, interval: int = 3600):
             logger.debug("Surprise reflection error: %s", exc)
 
 
+def _crystalliser_worker(agent, interval: int = 3600):
+    """Hourly deep analysis of recent interactions."""
+    while not _SHUTDOWN.wait(timeout=interval):
+        crystalliser = getattr(agent, '_crystalliser', None)
+        if crystalliser is None:
+            continue
+        try:
+            n = crystalliser.deep_analyse(lookback_hours=2)
+            if n > 0:
+                logger.info("[crystalliser] Updated %d persona signals", n)
+        except Exception as exc:
+            logger.debug("[crystalliser] Error: %s", exc)
+
+
+def _narrative_worker(agent, interval: int = 604800):
+    """Weekly narrative generation stored to memory."""
+    while not _SHUTDOWN.wait(timeout=interval):
+        narrative = getattr(agent, '_narrative', None)
+        if narrative is None:
+            continue
+        try:
+            _ = narrative.weekly()
+            logger.info("[narrative] Weekly narrative generated")
+        except Exception as exc:
+            logger.debug("[narrative] Error: %s", exc)
+
+
 def _health_worker(agent, interval: int = 120):
     """Log a brief health line every `interval` seconds."""
     while not _SHUTDOWN.wait(timeout=interval):
@@ -313,6 +340,8 @@ def main():
         threading.Thread(target=_reflection_worker,         args=(agent,), daemon=True, name="reflection"),
         threading.Thread(target=_outcome_feed_worker,       args=(agent,), daemon=True, name="outcome-feed"),
         threading.Thread(target=_surprise_reflection_worker,args=(agent,), daemon=True, name="surprise-refl"),
+        threading.Thread(target=_crystalliser_worker,       args=(agent,), daemon=True, name="crystalliser"),
+        threading.Thread(target=_narrative_worker,          args=(agent,), daemon=True, name="narrative"),
     ]
     for w in workers:
         w.start()

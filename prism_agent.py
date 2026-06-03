@@ -180,6 +180,14 @@ class PrismAgent:
          r"(?:email|mail).*(?:unread|new|recent)|send.*(?:email|mail)|"
          r"draft.*(?:email|reply)|reply.*email|email.*summary",
          "email_read"),
+        (r"what (?:do you )?know about me|my profile|who am i|crystallise|persona|how well do you know me",
+         "my_profile"),
+        (r"my (?:week|weekly|month|monthly) (?:report|summary|narrative|review)|"
+         r"what happened this (?:week|month)",
+         "my_narrative"),
+        (r"how (?:much have you |have you )learned|growth report|"
+         r"what have you learned about me|prism growth",
+         "my_growth"),
     ]
 
     def __init__(
@@ -397,6 +405,34 @@ class PrismAgent:
             logger.warning("PrismSoul not available: %s", e)
             self._soul = None
 
+        # Living user model — persona, crystalliser, narrative
+        try:
+            from prism_crystalliser import PrismCrystalliser
+            from prism_narrative import PrismNarrative
+            from prism_persona import PrismPersona
+            self._persona = PrismPersona()
+            self._crystalliser = PrismCrystalliser(
+                persona=self._persona,
+                memory=getattr(self, '_memory', None),
+                outcome_tracker=getattr(self, '_outcome_tracker', None),
+                calibration=getattr(self, '_calibration', None),
+                llm_router=self._router,
+            )
+            self._narrative = PrismNarrative(
+                persona=self._persona,
+                memory=getattr(self, '_memory', None),
+                outcome_tracker=getattr(self, '_outcome_tracker', None),
+                calibration=getattr(self, '_calibration', None),
+                soul=getattr(self, '_soul', None),
+                llm_router=self._router,
+            )
+            logger.info("Living user model ready (persona, crystalliser, narrative)")
+        except Exception as e:
+            logger.warning("Living user model not available: %s", e)
+            self._persona = None
+            self._crystalliser = None
+            self._narrative = None
+
         # OutcomeTracker — closes the learning loop
         try:
             from prism_outcome_tracker import OutcomeTracker
@@ -410,6 +446,14 @@ class PrismAgent:
         except Exception as e:
             logger.warning("OutcomeTracker not available: %s", e)
             self._outcome_tracker = None
+
+        # Wire living model dependencies now that outcome_tracker exists
+        if getattr(self, '_crystalliser', None) is not None:
+            self._crystalliser._outcome_tracker = getattr(self, '_outcome_tracker', None)
+        if getattr(self, '_chain', None) is not None:
+            self._chain._persona = getattr(self, '_persona', None)
+        if getattr(self, '_outcome_tracker', None) is not None:
+            self._outcome_tracker._crystalliser = getattr(self, '_crystalliser', None)
 
         # ContextManager — work/personal/focus context switching
         try:
@@ -653,6 +697,12 @@ class PrismAgent:
                 self._context_manager.inject_into_chain_ctx(context)
                 self._context_manager.inject_into_chain(self._chain)
 
+            # Persona context for chain injection
+            context["persona_context"] = (
+                self._persona.build_context()
+                if getattr(self, '_persona', None) is not None else ""
+            )
+
             # 8. Route intent and execute
             # Tier 0:   orchestrator    — conditional / multi-domain / cross-session
             # Tier 0.5: expert chain    — research / evaluation-heavy
@@ -726,6 +776,17 @@ class PrismAgent:
 
             if self._tts:
                 self._tts.speak(card.body or "")
+
+            # Crystallise behavioural signals from this turn
+            if card is not None:
+                try:
+                    orch = getattr(self, '_crystalliser', None)
+                    if orch:
+                        intent_used = self._route(message or "") if message else ""
+                        orch.observe_turn(message, card.body, intent_used, context)
+                except Exception:
+                    pass
+
             return card
         except Exception as exc:
             logging.exception("PrismAgent.chat error")
@@ -769,6 +830,44 @@ class PrismAgent:
             return None
 
     def _execute(self, intent: str, message: str, ctx: dict) -> PrismCard:
+        if intent == "my_profile":
+            persona = getattr(self, '_persona', None)
+            soul = getattr(self, '_soul', None)
+            narrative = getattr(self, '_narrative', None)
+            if persona or soul:
+                parts = []
+                if persona:
+                    parts.append(persona.summary())
+                if soul:
+                    parts.append("\n**Soul (beliefs & values):**\n" + soul.compress_for_llm(400))
+                if narrative:
+                    try:
+                        parts.append("\n**Current snapshot:**\n" + narrative.snapshot())
+                    except Exception:
+                        pass
+                return text_card("\n\n".join(parts), "Your crystallised profile")
+            return text_card("Profile not yet initialised.", "Profile")
+
+        if intent == "my_narrative":
+            narrative = getattr(self, '_narrative', None)
+            if narrative:
+                try:
+                    return text_card(narrative.weekly(), "Weekly narrative")
+                except Exception as exc:
+                    return text_card(f"Could not generate narrative: {exc}", "Narrative")
+            return text_card("Narrative engine not available.", "Narrative")
+
+        if intent == "my_growth":
+            persona = getattr(self, '_persona', None)
+            narrative = getattr(self, '_narrative', None)
+            if persona and narrative:
+                try:
+                    report = narrative.growth_report()
+                    return text_card(report, "What PRISM knows about you")
+                except Exception as exc:
+                    return text_card(f"Growth report failed: {exc}", "Growth")
+            return text_card("Not enough data yet.", "Growth")
+
         if intent == "device_task":
             from prism_responses import device_result_card
             result = self._device.execute(message, params=ctx.get("params", {}))

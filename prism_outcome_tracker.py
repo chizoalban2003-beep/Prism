@@ -83,10 +83,11 @@ class OutcomeTracker:
         soul: Optional["PrismSoul"] = None,
         horizon: Optional["HorizonPlanner"] = None,
     ):
-        self._db      = Path(db_path).expanduser()
+        self._db           = Path(db_path).expanduser()
         self._db.parent.mkdir(parents=True, exist_ok=True)
-        self._soul    = soul
-        self._horizon = horizon
+        self._soul         = soul
+        self._horizon      = horizon
+        self._crystalliser = None
         self._init_db()
 
     # ------------------------------------------------------------------
@@ -128,6 +129,20 @@ class OutcomeTracker:
         logger.debug("[outcome_tracker] recorded %s → %s (chain %s)", goal[:40], outcome, chain_id)
 
         self._incremental_soul_update(rec)
+
+        # Notify crystalliser
+        crystalliser = self._crystalliser
+        if crystalliser is not None:
+            try:
+                crystalliser.observe_outcome(
+                    intent=goal[:100],
+                    outcome=outcome,
+                    goal=goal,
+                    correction=correction,
+                )
+            except Exception:
+                pass
+
         return rec
 
     def recent(self, n: int = 20, context_id: Optional[str] = None) -> list[OutcomeRecord]:
