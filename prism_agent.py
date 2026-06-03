@@ -62,7 +62,7 @@ class PrismAgent:
          r"what(?:'s| is) the best way|i want to|i need to|my goal is", "universal_plan"),
         (r"predict|match|fixture|vs|versus", "predict_match"),
         (r"injury|risk|squad|fitness|medical|available", "squad_risk"),
-        (r"moment|1v1|keeper|shot|attack", "moment"),
+        (r"moment|1v1|keeper|\bshot\b|attack", "moment"),
         (r"session|footage|video|analyse.*play", "session"),
         (r"transfer|market|value|worth", "transfer"),
         (r"triage|chest|pain|fever|symptom|patient", "domain_medical"),
@@ -83,7 +83,7 @@ class PrismAgent:
         (r"artifact|history|past\.decision|what\.have\.i", "artifacts"),
         (r"status|connected|device|sync", "status"),
         (r"index|scan\.files|search\.code|grep|find\.file", "ksa_task"),
-        (r"resize|convert|compress|rename|move|copy|delete|create file|"
+        (r"resize|(?:convert|compress) (?:file|image|video)|rename|move|copy|delete|create file|"
          r"find file|search (?:in|for)|read file|list files|"
          r"run (?:command|script)|execute|open (?:app|file)|"
          r"install (?:package|app)|git (?:commit|push|pull|status)|"
@@ -188,6 +188,43 @@ class PrismAgent:
          r"(?:email|mail).*(?:unread|new|recent)|send.*(?:email|mail)|"
          r"draft.*(?:email|reply)|reply.*email|email.*summary",
          "email_read"),
+        # Organ-mapped intents
+        (r"news|headlines|top stories|latest stories", "news_headlines"),
+        (r"weather|temperature|forecast|how (?:hot|cold)|rain|sunny", "weather_check"),
+        (r"wikipedia|look up|tell me about|who (?:is|was)|what (?:is|was) (?:a |an |the )?[A-Za-z]",
+         "wikipedia_lookup"),
+        (r"translate|translation|in (?:spanish|french|german|italian|portuguese|chinese|japanese|arabic|russian|hindi)",
+         "translate_text"),
+        (r"(?:convert|how many|how much) .* (?:to|in|into)|"
+         r"(?:km|miles|kg|lbs|celsius|fahrenheit|meters?|feet|inches?|liters?|gallons?) (?:to|in|into)",
+         "unit_convert"),
+        (r"(?:convert|exchange|how much) .* (?:usd|eur|gbp|jpy|cad|aud|chf|cny|currency)|"
+         r"(?:usd|eur|gbp|jpy|cad|aud|chf|cny) (?:to|in|into)",
+         "currency_convert"),
+        (r"(?:take|capture|grab) (?:a )?screenshot|screenshot", "screenshot_capture"),
+        (r"(?:read|what(?:'s| is) on|show|paste|get) (?:my )?clipboard", "clipboard_read"),
+        (r"(?:set|start|create) (?:a )?timer|timer (?:for|of)|countdown", "timer_set"),
+        (r"(?:append|add|write|save|take|jot down) (?:a )?note|note(?:pad)?:? ", "note_append"),
+        (r"(?:read|open|show|cat|display) (?:the )?file|file (?:contents?|read)", "file_read"),
+        (r"(?:write|save|create|overwrite) (?:to )?(?:the )?file|write (?:this|that) to", "file_write"),
+        (r"(?:play|pause|skip|next|previous|volume|stop) (?:music|spotify|song|track|playback)",
+         "spotify_control"),
+        (r"(?:generate|create|make|qr) (?:a )?qr (?:code)?|qr code for", "qr_generate"),
+        (r"(?:run|execute|shell|bash|cmd|terminal|command)(?:\s|:)", "shell_run"),
+        (r"github (?:issue|pr|pull request|repo)|(?:create|list|open) (?:an? )?issue", "github_issue"),
+        (r"(?:send|post) (?:a )?(?:message )?(?:to|on) discord|discord", "discord_send"),
+        (r"(?:send|post) (?:a )?(?:message )?(?:to|on) telegram|telegram", "telegram_send"),
+        (r"(?:control|turn|set|dim) (?:the )?(?:lights?|thermostat|fan|ac|heater|lock|switch)",
+         "smart_home_control"),
+        (r"my (?:finances?|budget|spending|transactions?|expenses?)|finance (?:summary|report)",
+         "finance_summary"),
+        (r"my (?:health|steps?|sleep|hrv|heart rate|calories?)|health (?:summary|report|data)",
+         "health_summary"),
+        (r"(?:brief|briefing|prep|summary) (?:for|before|about) (?:my )?(?:meeting|call|standup)",
+         "meeting_brief"),
+        (r"(?:overdue|due today|pending|upcoming) (?:tasks?|reminders?|todos?)|task reminder",
+         "task_reminder"),
+        (r"policy (?:audit|log|history)|audit (?:log|trail)", "policy_audit"),
     ]
 
     def __init__(
@@ -931,7 +968,11 @@ class PrismAgent:
             diagnosis = DomainDecisionModel(config).evaluate(profile, factors)
             return domain_card(domain_key, diagnosis)
 
-        if self._kde:
+        _KDE_INTENTS = {
+            "plan", "predict_match", "squad_risk", "moment", "session",
+            "transfer", "reflect", "status",
+        }
+        if self._kde and intent in _KDE_INTENTS:
             try:
                 result = self._kde.ask(message)
                 output = getattr(result, 'output', result)
