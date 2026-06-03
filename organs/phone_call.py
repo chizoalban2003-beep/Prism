@@ -33,18 +33,13 @@ def _normalise(raw: str) -> str:
 
 
 def execute(intent: str, message: str, ctx: dict):
-    import os
-
     from prism_responses import text_card
 
-    # ── Credential resolution (config > env) ────────────────────────────────
-    twilio_cfg = ctx.get("twilio_config") or {}
-    account_sid = (twilio_cfg.get("account_sid") or
-                   os.environ.get("TWILIO_ACCOUNT_SID", "")).strip()
-    auth_token  = (twilio_cfg.get("auth_token") or
-                   os.environ.get("TWILIO_AUTH_TOKEN", "")).strip()
-    from_number = (twilio_cfg.get("from_number") or
-                   os.environ.get("TWILIO_FROM", "")).strip()
+    # ── Credential resolution — populated by prism_agent from config/env ────
+    twilio_cfg  = ctx.get("twilio_config") or {}
+    account_sid = twilio_cfg.get("account_sid", "").strip()
+    auth_token  = twilio_cfg.get("auth_token",  "").strip()
+    from_number = twilio_cfg.get("from_number", "").strip()
 
     if not (account_sid and auth_token and from_number):
         return text_card(

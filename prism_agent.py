@@ -1563,7 +1563,12 @@ class PrismAgent:
                 ctx.setdefault("email", getattr(self, "_email", None))
                 ctx.setdefault("calendar", getattr(self, "_calendar", None))
                 ctx.setdefault("router", getattr(self, "_router", None))
-                ctx.setdefault("twilio_config", self._config.get("twilio", {}))
+                _tw = dict(self._config.get("twilio", {}))
+                import os as _os
+                _tw.setdefault("account_sid", _os.environ.get("TWILIO_ACCOUNT_SID", ""))
+                _tw.setdefault("auth_token",  _os.environ.get("TWILIO_AUTH_TOKEN", ""))
+                _tw.setdefault("from_number", _os.environ.get("TWILIO_FROM", ""))
+                ctx.setdefault("twilio_config", _tw)
                 ctx.setdefault("contacts", getattr(self, "_contacts", None))
                 # Hard approval gate — block irreversible/requires_approval organs
                 if not ctx.get(f"_approved_{intent}"):

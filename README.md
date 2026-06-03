@@ -90,6 +90,22 @@ User input (chat / voice / CLI / REST API)
     │  AdaptiveFulcrum.observe() ← online learn     │
     └────────────────────────────────────────────────┘
 
+Organ Layer — 33 bundled organs, extensible at runtime:
+  ┌──────────────────────────────────────────────────────────────┐
+  │  OrganLoader (prism_organ_loader.py)                         │
+  │  Discovers organs from ./organs/ (bundled) and              │
+  │  ~/.prism/organs/ (user-created or LLM-synthesised)         │
+  │  AST safety check on every file before exec                  │
+  │  synthesize() → LLM writes a new organ on demand            │
+  ├────────┬────────┬──────────┬──────────┬──────────┬──────────┤
+  │ Comms  │ Files  │   Web    │  System  │  Utils   │  Dev     │
+  │email   │file_r/w│web_search│shell_run │weather   │github_   │
+  │phone   │note_   │web_scrape│clipboard │currency  │ issue    │
+  │discord │append  │wikipedia │screenshot│unit_conv │spotify   │
+  │telegram│        │news      │timer_set │translate │qr_gen    │
+  │calendar│        │          │reminder  │finance   │smart_home│
+  └────────┴────────┴──────────┴──────────┴──────────┴──────────┘
+
 Personal Assistant Layer (all local):
   ┌──────────┐ ┌──────────┐ ┌──────────────┐ ┌────────────┐
   │  Email   │ │ Calendar │ │ Web Search   │ │  Contacts  │
@@ -142,17 +158,35 @@ Background loop:
 | Email read/send | `prism_email.py`, `organs/email_send.py` | Working (needs config) |
 | Calendar read/write (CalDAV/iCal/Google) | `prism_calendar.py`, `organs/calendar_write.py` | Working (needs config) |
 | Phone calls + SMS (Twilio) | `organs/phone_call.py` | Working — `pip install twilio`, add `[twilio]` to config |
-| Web search | `prism_search.py` | Working (DDG free; Brave/Serp optional) |
+| Web search | `prism_search.py`, `organs/web_search.py` | Working (DDG free; Brave/Serp optional) |
+| Web scrape / fetch URL | `organs/web_scrape.py` | Working — fetches and summarises any URL |
+| Wikipedia lookup | `organs/wikipedia_lookup.py` | Working — summary via Wikipedia REST API |
+| News headlines | `organs/news_headlines.py` | Working — BBC RSS, no API key |
+| Translate text | `organs/translate_text.py` | Working — MyMemory free API, auto-detects language |
+| Unit conversion | `organs/unit_convert.py` | Working — length, weight, temperature, volume, speed |
+| Currency conversion | `organs/currency_convert.py` | Working — live exchange rates |
+| Notes (append) | `organs/note_append.py` | Working — timestamped notes to `~/.prism/notes.md` |
+| File read | `organs/file_read.py` | Working — read any local file |
+| File write | `organs/file_write.py` | Working — write/create files; approval-gated |
+| Timer | `organs/timer_set.py` | Working — countdown timer with threading |
+| Reminder | `organs/reminder_set.py` | Working — `~/.prism/reminders.json` |
+| Screenshot | `organs/screenshot_capture.py` | Working — saves to `~/.prism/screenshots/` (needs `mss`) |
+| Clipboard read | `organs/clipboard_read.py` | Working — reads clipboard (inject `ctx["clipboard_reader"]`) |
+| Shell / CLI commands | `organs/shell_run.py` | Working — critical risk; inject `ctx["shell_runner"]`; always approval-gated |
+| Discord webhook | `organs/discord_send.py` | Working — set `DISCORD_WEBHOOK_URL` or `ctx["discord_webhook"]` |
+| Telegram bot | `organs/telegram_send.py` | Working — set `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` |
+| Spotify control | `organs/spotify_control.py` | Working — play/pause/skip/volume (`pip install spotipy`) |
+| GitHub issues | `organs/github_issue.py` | Working — list/create issues via REST; set `GITHUB_TOKEN` |
+| Smart home control | `organs/smart_home_control.py` | Working — Home Assistant REST API |
+| QR code generation | `organs/qr_generate.py` | Working — ASCII or PNG (`pip install qrcode`) |
 | Push notifications | `prism_push.py` | Working (ntfy.sh, free) |
 | Contacts | `prism_contacts.py` | Working (local + Google optional; auto-resolved in email/call) |
 | Tasks | `prism_tasks.py` | Working (local + Todoist/GitHub/Linear) |
-| Smart home | `prism_smart_home.py` | Working (Home Assistant) |
 | Browser automation | `prism_browser_agent.py` | Working (needs playwright) |
 | Device tasks | `prism_device_agent.py` | Working |
 | Memory | `prism_memory.py` | Working — recalled at chain start; SQLite + semantic search |
 | Standing instructions | `prism_instructions.py` | Working |
 | Proactive triggers | `prism_proactive.py` | Working |
-| Scheduled reminders | `prism_proactive.py` | Working |
 | Wearable sync trigger | `prism_proactive.py` | Working |
 | TTS | `prism_tts.py` | Working (espeak fallback) |
 | Voice input (Whisper) | `prism_voice.py` | Working — Whisper local / faster-whisper / SpeechRecognition; `pip install openai-whisper` |
@@ -161,6 +195,7 @@ Background loop:
 | Multi-user | `prism_agent.py` | Working (`[user].name` in config) |
 | Unknown-tool PA fallback | `prism_agent.py` | Working (discovers + plans integrations) |
 | Autonomous tool synthesis | `prism_autonomous.py` | Working — synthesises, installs, sandboxes (AST+subprocess), caches |
+| On-demand organ synthesis | `prism_organ_loader.py` | Working — LLM writes a new organ mid-conversation; AST-validated; saved to `~/.prism/organs/` |
 | Multi-step task orchestration | `prism_orchestrator.py` | Working — DAG decomposition, parallel execution, 5 chain profiles |
 | Cross-session goals | `prism_horizon.py` | Working — persists HorizonGoals across restarts; resumes on session start |
 | Approval gate | `prism_agent.py` | Working — `requires_approval` organs block until explicit confirmation |
@@ -241,7 +276,7 @@ You: yes
 PRISM: Sent to alice@example.com — "Tomorrow's meeting"
 ```
 
-This applies to: `email_send`, `phone_call`, `calendar_write`, autonomous tasks, and any custom organ with `requires_approval: True`. Approvals expire after 5 minutes. `cancel` drops the pending action with no side effects.
+This applies to: `email_send`, `phone_call`, `calendar_write`, `discord_send`, `telegram_send`, `file_write`, `shell_run`, `github_issue`, `smart_home_control`, autonomous tasks, and any organ with `requires_approval: True`. Approvals expire after 5 minutes. `cancel` drops the pending action with no side effects.
 
 ### Viewing accumulated tools
 
@@ -710,29 +745,99 @@ Proactive calibration prompts fire every 3 days if no feedback has been given.
 
 ## Organ system
 
+PRISM's organ system is the execution backbone of the personal assistant layer. Each organ is a self-contained Python module that handles exactly one intent — it receives a message, optional context, and returns a `PrismCard`. Every organ declares its own risk policy. The ChainOrchestrator can compose organs into DAGs.
+
+### Three tiers of organs
+
+| Tier | Location | Who creates them |
+|---|---|---|
+| **Bundled** | `organs/` (version-controlled) | Shipped with PRISM |
+| **User-created** | `~/.prism/organs/` | Drop any `.py` file with `ORGAN_META` + `execute()` |
+| **LLM-synthesised** | `~/.prism/organs/` (auto-saved) | PRISM writes them on demand mid-conversation |
+
+To have PRISM synthesise a new organ: say **"build me an organ that does X"** or **"I need a tool that fetches my Strava runs"**. The LLM generates a complete organ file, the AST safety visitor validates it, and it persists to `~/.prism/organs/` for reuse in all future sessions.
+
+### All 33 bundled organs
+
+| Intent | Module | Risk | Approval | Description |
+|---|---|---|---|---|
+| `email_send` | `organs/email_send.py` | high | yes | Send email — LLM-parsed, contact-resolved |
+| `phone_call` | `organs/phone_call.py` | high | yes | Outbound voice call or SMS via Twilio |
+| `calendar_write` | `organs/calendar_write.py` | medium | yes | Create events or find free slots |
+| `discord_send` | `organs/discord_send.py` | high | yes | Send message to a Discord webhook |
+| `telegram_send` | `organs/telegram_send.py` | high | yes | Send Telegram message via bot API |
+| `shell_run` | `organs/shell_run.py` | critical | yes | Run a shell command (inject `ctx["shell_runner"]`) |
+| `file_write` | `organs/file_write.py` | medium | yes | Write or create a local file |
+| `github_issue` | `organs/github_issue.py` | medium | yes (create) | Create or list GitHub issues |
+| `smart_home_control` | `organs/smart_home_control.py` | medium | yes | Control Home Assistant entities |
+| `weather_check` | `organs/weather_check.py` | low | no | Current weather via wttr.in (no API key) |
+| `web_search` | `organs/web_search.py` | low | no | DuckDuckGo web search (no API key) |
+| `web_scrape` | `organs/web_scrape.py` | low | no | Fetch and summarise any URL |
+| `wikipedia_lookup` | `organs/wikipedia_lookup.py` | low | no | Wikipedia article summary |
+| `news_headlines` | `organs/news_headlines.py` | low | no | Top headlines via BBC RSS |
+| `translate_text` | `organs/translate_text.py` | low | no | Text translation via MyMemory free API |
+| `unit_convert` | `organs/unit_convert.py` | low | no | Length, weight, temperature, volume, speed |
+| `currency_convert` | `organs/currency_convert.py` | low | no | Live currency exchange rates |
+| `note_append` | `organs/note_append.py` | low | no | Append timestamped note to `~/.prism/notes.md` |
+| `file_read` | `organs/file_read.py` | low | no | Read contents of a local file |
+| `timer_set` | `organs/timer_set.py` | low | no | Countdown timer with threading |
+| `reminder_set` | `organs/reminder_set.py` | low | no | Set a reminder in `~/.prism/reminders.json` |
+| `screenshot_capture` | `organs/screenshot_capture.py` | low | no | Capture screen to `~/.prism/screenshots/` |
+| `clipboard_read` | `organs/clipboard_read.py` | low | no | Read clipboard (inject `ctx["clipboard_reader"]`) |
+| `spotify_control` | `organs/spotify_control.py` | low | no | Play/pause/skip/volume via Spotipy |
+| `qr_generate` | `organs/qr_generate.py` | low | no | Generate QR code (ASCII or PNG) |
+| `document_read` | `organs/document_read.py` | low | no | Read local markdown/txt documents |
+| `finance_summary` | `organs/finance_summary.py` | low | no | Summarise local CSV/JSON ledger |
+| `health_summary` | `organs/health_summary.py` | low | no | Health metrics (steps, sleep, HRV) |
+| `meeting_brief` | `organs/meeting_brief.py` | low | no | Pre-meeting brief from calendar details |
+| `task_reminder` | `organs/task_reminder.py` | low | no | Surface overdue/due-today tasks |
+| `policy_audit` | `organs/policy_audit.py` | low | no | Query the SQLite policy audit log |
+| `policy_inspect` | `organs/policy_inspect.py` | low | no | Dump `ORGAN_POLICY` for every loaded organ |
+| `policy_update` | `organs/policy_update.py` | low | no | Update a live organ's policy at runtime |
+
 ### ORGAN_POLICY — per-organ risk declarations
 
-Every bundled organ in `organs/` may declare an `ORGAN_POLICY` dict at module level:
+Every organ declares its own risk contract at module level:
 
 ```python
 ORGAN_POLICY = {
-    "risk_level":        "low",   # "low" | "medium" | "high"
-    "requires_approval": False,   # prompt user before executing?
-    "irreversible":      False,   # cannot be undone?
-    "max_per_session":   None,    # integer cap, or None for unlimited
+    "risk_level":        "low",   # "low" | "medium" | "high" | "critical"
+    "requires_approval": False,   # block at execution until user confirms?
+    "irreversible":      False,   # extra warning injected into chain context?
+    "max_per_session":   None,    # integer cap per session; None = unlimited
 }
 ```
 
-`prism_organ_loader.py` reads this dict when loading each organ and makes it available via `get_organ_policy(intent)`.  `prism_chain.py` enforces the policy (blocks high-risk actions, writes to the audit log, enforces session caps).
+`OrganLoader` reads this dict on load and exposes it via `get_organ_policy(intent)`. `PrismAgent` enforces the approval gate before any organ with `requires_approval: True` executes. The policy audit log records every organ execution to `~/.prism/prism_audit.db`.
 
-### Bundled policy organs
+### Writing your own organ
 
-| Organ intent | Module | Purpose |
-|---|---|---|
-| `task_reminder` | `organs/task_reminder.py` | Show overdue/due-today tasks; add new reminders with optional due date |
-| `policy_audit` | `organs/policy_audit.py` | Query the SQLite audit log (`~/.prism/prism_audit.db`) for recent policy decisions |
-| `policy_inspect` | `organs/policy_inspect.py` | Dump the declared `ORGAN_POLICY` for every currently loaded organ |
-| `policy_update` | `organs/policy_update.py` | Update a loaded organ's live policy at runtime (risk_level, approval flag, session cap) |
+Drop a `.py` file into `~/.prism/organs/` and PRISM picks it up on the next load:
+
+```python
+"""My organ: fetch_strava — pulls latest Strava activities."""
+ORGAN_META = {
+    "intent":      "fetch_strava",
+    "description": "Fetch the user's latest Strava runs and rides",
+    "version":     "1.0",
+}
+
+ORGAN_POLICY = {
+    "risk_level":        "low",
+    "requires_approval": False,
+    "irreversible":      False,
+    "max_per_session":   None,
+}
+
+def execute(intent: str, message: str, ctx: dict):
+    import urllib.request, json
+    from prism_responses import text_card
+    token = ctx.get("strava_token", "")
+    # ... fetch and format activities ...
+    return text_card(result, "Strava")
+```
+
+Or ask PRISM to write it for you: **"build me an organ that fetches my Strava activities"**.
 
 ### OrganBus
 
@@ -849,19 +954,46 @@ PRISM/
 │   ├── prism_organ_bus.py          LLM-mediated pub/sub bus between PRISM logic engines
 │   ├── prism_organ_bus_experiment.py  Experimental organ bus extensions
 │   └── organs/                 Bundled organ modules
-│       ├── currency_convert.py     Currency conversion via live exchange rates
-│       ├── weather_check.py        Current weather for any city
-│       ├── finance_summary.py      Local CSV/JSON ledger summariser
-│       ├── document_read.py        Local document (markdown/txt) reader
-│       ├── meeting_brief.py        Pre-meeting brief from calendar details
-│       ├── health_summary.py       Health metrics summariser (steps, sleep, HRV)
-│       ├── task_reminder.py        Surface overdue/due-today tasks; add new reminders
-│       ├── email_send.py           Send email — LLM-parsed, contact-resolved, approval-gated
-│       ├── calendar_write.py       Create calendar events or find free slots
-│       ├── phone_call.py           Outbound voice call or SMS via Twilio
-│       ├── policy_audit.py         Query the policy audit log (SQLite)
-│       ├── policy_inspect.py       Dump ORGAN_POLICY for every loaded organ
-│       └── policy_update.py        Update a live organ's policy at runtime
+│       ├── Communications
+│       │   ├── email_send.py           Send email — LLM-parsed, contact-resolved, approval-gated
+│       │   ├── phone_call.py           Outbound voice call or SMS via Twilio
+│       │   ├── discord_send.py         Send message to a Discord webhook
+│       │   ├── telegram_send.py        Send Telegram message via bot API
+│       │   └── calendar_write.py       Create calendar events or find free slots
+│       ├── Web & Information
+│       │   ├── web_search.py           DuckDuckGo search (no API key)
+│       │   ├── web_scrape.py           Fetch and summarise any URL
+│       │   ├── wikipedia_lookup.py     Wikipedia article summary
+│       │   ├── news_headlines.py       Top headlines via BBC RSS
+│       │   └── weather_check.py        Current weather for any city (wttr.in)
+│       ├── Files & Notes
+│       │   ├── file_read.py            Read a local file
+│       │   ├── file_write.py           Write or create a local file (approval-gated)
+│       │   ├── note_append.py          Append timestamped note to ~/.prism/notes.md
+│       │   └── document_read.py        Local document (markdown/txt) reader
+│       ├── System & Automation
+│       │   ├── shell_run.py            Run shell commands (critical; inject ctx["shell_runner"])
+│       │   ├── clipboard_read.py       Read clipboard (inject ctx["clipboard_reader"])
+│       │   ├── screenshot_capture.py   Capture screen to ~/.prism/screenshots/ (needs mss)
+│       │   ├── timer_set.py            Countdown timer with threading
+│       │   └── reminder_set.py         Persist reminders to ~/.prism/reminders.json
+│       ├── Utilities & Productivity
+│       │   ├── translate_text.py       Translate text via MyMemory free API
+│       │   ├── unit_convert.py         Length, weight, temperature, volume, speed
+│       │   ├── currency_convert.py     Currency conversion via live exchange rates
+│       │   ├── qr_generate.py          Generate QR code (ASCII or PNG)
+│       │   ├── spotify_control.py      Play/pause/skip/volume via Spotipy
+│       │   └── smart_home_control.py   Home Assistant entity control (approval-gated)
+│       ├── Data & Finance
+│       │   ├── finance_summary.py      Local CSV/JSON ledger summariser
+│       │   ├── health_summary.py       Health metrics summariser (steps, sleep, HRV)
+│       │   ├── meeting_brief.py        Pre-meeting brief from calendar details
+│       │   ├── task_reminder.py        Surface overdue/due-today tasks; add new reminders
+│       │   └── github_issue.py         Create or list GitHub issues via REST API
+│       └── Policy & Meta
+│           ├── policy_audit.py         Query the policy audit log (SQLite)
+│           ├── policy_inspect.py       Dump ORGAN_POLICY for every loaded organ
+│           └── policy_update.py        Update a live organ's policy at runtime
 │
 ├── Personal assistant
 │   ├── prism_email.py          IMAP/SMTP email reader and sender
@@ -918,7 +1050,7 @@ PRISM/
 
 ```bash
 python -m pytest tests/ -q
-# 1282+ tests pass in ~115 seconds
+# 1304+ tests pass in ~115 seconds
 
 # With coverage report:
 python -m pytest tests/ -q --cov=. --cov-report=term-missing:skip-covered
@@ -971,6 +1103,38 @@ MY_DOMAIN = DomainConfig(
 ALL_DOMAINS["Cybersecurity"] = MY_DOMAIN
 ```
 
+### Adding a custom organ
+
+Drop a `.py` file in `~/.prism/organs/` — PRISM discovers it on the next load. Minimum required interface:
+
+```python
+"""My organ: my_intent — one-line description."""
+ORGAN_META = {
+    "intent":      "my_intent",
+    "description": "shown to the LLM router when selecting an organ",
+    "version":     "1.0",
+}
+
+ORGAN_POLICY = {
+    "risk_level":        "low",   # low | medium | high | critical
+    "requires_approval": False,
+    "irreversible":      False,
+    "max_per_session":   None,
+}
+
+def execute(intent: str, message: str, ctx: dict):
+    from prism_responses import text_card
+    # ctx keys available: router, memory, contacts, email,
+    # calendar, tasks, shell_runner, clipboard_reader, twilio_config,
+    # github_config, discord_webhook, telegram_config, ha_config, spotify_config
+    result = "..."
+    return text_card(result, "MyOrgan")
+```
+
+**AST safety** runs on every file before execution — `os`, `subprocess`, `shutil`, `socket`, `ctypes`, `eval`, `exec`, and `__import__` are blocked. Use `urllib.request` for HTTP. Use `pathlib.Path` for file paths.
+
+**Or let PRISM write it:** say "build me an organ that does X" and `OrganLoader.synthesize()` generates, validates, and saves the file automatically.
+
 ### Adding a new executor (KSA)
 
 ```python
@@ -1005,7 +1169,7 @@ All major gaps from the initial build have been bridged. The table below reflect
 | iOS / Android companion | **Working (PWA)** | `prism_pwa.py` — installable PWA at `/mobile`; push via ntfy.sh; no app store needed |
 | Token refresh for Google OAuth | **Working** | Auto-refresh via `google_creds.json` — stores `access_token`, `refresh_token`, `client_id`, `client_secret`, `expiry` |
 | Horizon goals | `prism_horizon.py` | **Working** — cross-session goal watching; say "watch for X when Y" in chat |
-| Organ registry | `prism_organ_loader.py` | **Working** — synthesised tools persist; say "what organs do you have" |
+| Organ library | `organs/` + `~/.prism/organs/` | **Working** — 33 bundled organs; user-creatable; LLM-synthesisable on demand |
 | Identity layer | `prism_soul.py` | Working — belief graph, user-defined lenses, stated vs observed delta, LLM context injection |
 | Identity ceremony | `prism_identity_ceremony.py` | Working — 7-question LLM-facilitated onboarding, heuristic fallback |
 | Continuous daemon | `prism_daemon.py` | Working — systemd-compatible, OrganBus flush, horizon evaluation, --ceremony flag |
