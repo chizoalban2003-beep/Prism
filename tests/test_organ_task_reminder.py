@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import json
-import tempfile
 from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -17,7 +16,7 @@ def _make_task(title, due_date="", done=False):
 
 
 def _execute(message, ctx=None):
-    import importlib.util, sys
+    import importlib.util
     spec = importlib.util.spec_from_file_location(
         "task_reminder",
         Path(__file__).parent.parent / "organs" / "task_reminder.py",
@@ -119,7 +118,7 @@ def test_add_creates_task():
 def test_add_with_due_date_today():
     engine = MagicMock()
     engine.add.return_value = _make_task("Morning run", date.today().isoformat())
-    card = _execute("remind me to go for a morning run today", {"tasks": engine})
+    _execute("remind me to go for a morning run today", {"tasks": engine})
     engine.add.assert_called_once()
     _, kwargs = engine.add.call_args
     assert kwargs.get("due_date") == date.today().isoformat()
@@ -129,7 +128,7 @@ def test_add_with_due_date_tomorrow():
     engine = MagicMock()
     expected = (date.today() + timedelta(days=1)).isoformat()
     engine.add.return_value = _make_task("Pay bills", expected)
-    card = _execute("add reminder to pay bills tomorrow", {"tasks": engine})
+    _execute("add reminder to pay bills tomorrow", {"tasks": engine})
     engine.add.assert_called_once()
     _, kwargs = engine.add.call_args
     assert kwargs.get("due_date") == expected
@@ -138,7 +137,7 @@ def test_add_with_due_date_tomorrow():
 def test_add_with_iso_date():
     engine = MagicMock()
     engine.add.return_value = _make_task("Submit report", "2026-07-01")
-    card = _execute("add reminder Submit report by 2026-07-01", {"tasks": engine})
+    _execute("add reminder Submit report by 2026-07-01", {"tasks": engine})
     engine.add.assert_called_once()
     _, kwargs = engine.add.call_args
     assert kwargs.get("due_date") == "2026-07-01"

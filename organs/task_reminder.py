@@ -15,17 +15,13 @@ ORGAN_POLICY = {
 
 def execute(intent: str, message: str, ctx: dict):
     import re
-    from datetime import date, datetime, timedelta
+    from datetime import date, timedelta
 
     from prism_responses import text_card
 
     tasks_engine = ctx.get("tasks")
 
     # ── Add mode ─────────────────────────────────────────────────────────────
-    ADD_RE = re.compile(
-        r"\b(add|create|set|remind(er)?)\b.{0,80}?[\"']?(?P<title>[^\"'\n]{3,80})[\"']?",
-        re.IGNORECASE,
-    )
     DATE_RE = re.compile(
         r"\b(?:by|on|due|at)?\s*"
         r"(?P<date>\d{4}-\d{2}-\d{2}|today|tomorrow|"
@@ -39,7 +35,8 @@ def execute(intent: str, message: str, ctx: dict):
     if is_add and tasks_engine is not None:
         # Extract title: text after the trigger keyword
         title_match = re.search(
-            r"(?:add|create|remind(?:er)?(?: me)?|set(?: a)? reminder(?: for)?)\s+(?:to\s+|that\s+)?(.+?)(?:\s+(?:by|on|due|at)\s+|$)",
+            r"(?:add|create|remind(?:er)?(?: me)?|set(?: a)? reminder(?: for)?)"
+            r"\s+(?:to\s+|that\s+)?(.+?)(?:\s+(?:by|on|due|at)\s+|$)",
             message, re.IGNORECASE,
         )
         title = title_match.group(1).strip() if title_match else message.strip()
@@ -98,7 +95,6 @@ def execute(intent: str, message: str, ctx: dict):
         return text_card(f"Could not fetch tasks: {exc}", intent)
 
     today_str = date.today().isoformat()
-    yesterday = (date.today() - timedelta(days=1)).isoformat()
 
     overdue  = []
     due_today = []

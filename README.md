@@ -617,6 +617,70 @@ Proactive calibration prompts fire every 3 days if no feedback has been given.
 
 ---
 
+## Organ system
+
+### ORGAN_POLICY — per-organ risk declarations
+
+Every bundled organ in `organs/` may declare an `ORGAN_POLICY` dict at module level:
+
+```python
+ORGAN_POLICY = {
+    "risk_level":        "low",   # "low" | "medium" | "high"
+    "requires_approval": False,   # prompt user before executing?
+    "irreversible":      False,   # cannot be undone?
+    "max_per_session":   None,    # integer cap, or None for unlimited
+}
+```
+
+`prism_organ_loader.py` reads this dict when loading each organ and makes it available via `get_organ_policy(intent)`.  `prism_chain.py` enforces the policy (blocks high-risk actions, writes to the audit log, enforces session caps).
+
+### Bundled policy organs
+
+| Organ intent | Module | Purpose |
+|---|---|---|
+| `task_reminder` | `organs/task_reminder.py` | Show overdue/due-today tasks; add new reminders with optional due date |
+| `policy_audit` | `organs/policy_audit.py` | Query the SQLite audit log (`~/.prism/prism_audit.db`) for recent policy decisions |
+| `policy_inspect` | `organs/policy_inspect.py` | Dump the declared `ORGAN_POLICY` for every currently loaded organ |
+| `policy_update` | `organs/policy_update.py` | Update a loaded organ's live policy at runtime (risk_level, approval flag, session cap) |
+
+### OrganBus
+
+`OrganBus` (in `prism_organ_bus.py`) is an LLM-mediated publish/subscribe bus that lets PRISM's internal engines communicate without knowing each other's data schemas.  An engine emits an `OrganSignal`; the bus uses an LLM to translate the signal payload into each subscriber's vocabulary before delivery.
+
+```python
+bus = OrganBus(llm=my_llm)
+bus.subscribe("policy", policy_engine.handle)
+bus.publish(OrganSignal(source="physics", signal_type="injury_risk_elevated",
+                        payload={"risk": 0.78, "muscle_group": "hamstring"}))
+```
+
+REST endpoints: `GET /organ_bus/history`, `GET /organ_bus/subscribers`.
+
+### PrismSoul
+
+`PrismSoul` (in `prism_soul.py`) is the persistent identity layer.  It maintains a *belief graph* — observed vs stated values for attributes like stress, focus, and energy — and injects a compact identity context string into every LLM prompt so responses stay consistent with the user's current state.
+
+Key concepts:
+- **Belief graph** — stores `(attribute, stated_value, observed_value)` triples in SQLite
+- **Lenses** — user-defined value filters (e.g. "I prioritise recovery over training load")
+- **Delta signal** — fires when stated and observed values diverge significantly
+
+### Identity ceremony (`prism_identity_ceremony.py`)
+
+Run on first boot via `python3 prism_daemon.py --ceremony`.  Guides the user through a 7-question onboarding flow (LLM-facilitated or heuristic fallback) and seeds the `PrismSoul` belief graph with initial values.
+
+### prism_daemon
+
+`prism_daemon.py` is the background process that keeps PRISM alive between chat sessions.  It runs on a configurable tick (default 60 s) and on each tick:
+
+1. Flushes pending `OrganBus` signals
+2. Evaluates `HorizonGoal` conditions (fires task queue entries when conditions are met)
+3. Checks proactive triggers (calendar, reminders, calibration prompts)
+
+Systemd-compatible — exits cleanly on SIGTERM.  Run with `--daemon` to detach, `--ceremony` to trigger identity onboarding.
+
+---
+
 ## Project structure
 
 ```
@@ -697,7 +761,11 @@ PRISM/
 │       ├── finance_summary.py      Local CSV/JSON ledger summariser
 │       ├── document_read.py        Local document (markdown/txt) reader
 │       ├── meeting_brief.py        Pre-meeting brief from calendar details
-│       └── health_summary.py       Health metrics summariser (steps, sleep, HRV)
+│       ├── health_summary.py       Health metrics summariser (steps, sleep, HRV)
+│       ├── task_reminder.py        Surface overdue/due-today tasks; add new reminders
+│       ├── policy_audit.py         Query the policy audit log (SQLite)
+│       ├── policy_inspect.py       Dump ORGAN_POLICY for every loaded organ
+│       └── policy_update.py        Update a live organ's policy at runtime
 │
 ├── Personal assistant
 │   ├── prism_email.py          IMAP/SMTP email reader and sender
@@ -728,7 +796,7 @@ PRISM/
 │   ├── domain_configs.py       Medical · Financial · Legal · HR · Supply Chain · Climate
 │   └── domain_validator.py     Expert-label accuracy validation
 │
-└── tests/                      1087 pytest tests — all passing
+└── tests/                      1131 pytest tests — all passing
 ```
 
 ---
@@ -754,7 +822,7 @@ PRISM/
 
 ```bash
 python -m pytest tests/ -q
-# 1087 tests pass in ~100 seconds
+# 1131 tests pass in ~115 seconds
 ```
 
 ---

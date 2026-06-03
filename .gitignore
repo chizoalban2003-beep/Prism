@@ -23,6 +23,13 @@ ENV/
 htmlcov/
 *.xml
 
+# Ruff cache
+.ruff_cache/
+
+# Logs and env files
+*.log
+.env
+
 # KSA runtime files
 *.db
 .ksa_index.txt

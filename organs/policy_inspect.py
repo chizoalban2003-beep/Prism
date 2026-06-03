@@ -32,7 +32,10 @@ def execute(intent: str, message: str, ctx: dict):
             approval    = "yes" if policy.get("requires_approval") else "no"
             irreversible = "yes" if policy.get("irreversible") else "no"
             max_sess    = str(policy.get("max_per_session") or "∞")
-            lines.append(f"  {name:30s}  risk={risk:<8}  approval={approval}  irreversible={irreversible}  max/session={max_sess}")
+            lines.append(
+                f"  {name:30s}  risk={risk:<8}  approval={approval}"
+                f"  irreversible={irreversible}  max/session={max_sess}"
+            )
         else:
             lines.append(f"  {name:30s}  (no ORGAN_POLICY declared — legacy fallback)")
 

@@ -3,9 +3,8 @@ from __future__ import annotations
 
 import sqlite3
 import tempfile
-import time
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 
 def _load_audit_organ():
@@ -106,8 +105,7 @@ def test_organ_reads_audit_log_entries():
             chain._write_policy_audit("email_send", "[policy: email_send is action logic]")
             chain._write_policy_audit("browser_task", "[policy blocked: session limit]")
             # Read via organ — patch the DB constant directly on the imported module
-            import organs.policy_audit as pa
-            orig_const = pa  # module-level constant not used; path resolved inside execute()
+            # (path resolved inside execute(); no module-level constant to patch)
             # Seed the organ's expected DB path via sqlite directly
             with sqlite3.connect(Path(db_path)) as con:
                 rows = con.execute("SELECT count(*) FROM audit_log").fetchone()
