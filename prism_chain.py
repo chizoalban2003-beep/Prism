@@ -617,6 +617,11 @@ Rules:
             "event":    "done",
             "answer":   card.body if hasattr(card, "body") else str(card),
             "chain_id": getattr(card, "source", ""),
+            "card_type": getattr(card, "card_type", "text").value
+                         if hasattr(getattr(card, "card_type", None), "value")
+                         else str(getattr(card, "card_type", "text")),
+            "card_data": getattr(card, "card_data", {}),
+            "card_title": getattr(card, "title", ""),
         }
 
     def resume(self, goal_id: str, agent_execute_fn, base_ctx: dict) -> "PrismCard":

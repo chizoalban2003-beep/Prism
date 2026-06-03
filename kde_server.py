@@ -1036,7 +1036,14 @@ class KDEHandler(BaseHTTPRequestHandler):
                     try:
                         card = agent.chat(message)
                         body = card.body if hasattr(card, 'body') else str(card)
-                        self._sse_write({"event": "done", "answer": body})
+                        self._sse_write({
+                            "event": "done", "answer": body,
+                            "card_type": card.card_type.value
+                                         if hasattr(getattr(card, "card_type", None), "value")
+                                         else str(getattr(card, "card_type", "text")),
+                            "card_data":  getattr(card, "card_data", {}),
+                            "card_title": getattr(card, "title", ""),
+                        })
                     finally:
                         self._sse_end()
                     return
