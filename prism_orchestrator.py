@@ -324,6 +324,7 @@ class ChainOrchestrator:
         self._horizon = horizon
         self._router  = router
         self._soul    = soul
+        self._persona = None
         self._db      = Path(db_path).expanduser()
         self._db.parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
@@ -515,10 +516,19 @@ class ChainOrchestrator:
             except Exception:
                 pass
 
+        persona_ctx = ""
+        if self._persona is not None:
+            try:
+                persona_ctx = self._persona.build_context(max_chars=300)
+            except Exception:
+                pass
+
+        combined_ctx = "; ".join(filter(None, [soul_ctx, persona_ctx])) or "(no user context)"
+
         prompt = _DECOMPOSE_PROMPT.format(
             message    = message,
             logic_list = "\n".join(logic_lines) or "  (none loaded)",
-            soul_context = soul_ctx or "(no soul context)",
+            soul_context = combined_ctx,
         )
         raw, _ = self._router.call(
             prompt,

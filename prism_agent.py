@@ -71,7 +71,15 @@ class PrismAgent:
         (r"hire|hiring|recruit|talent|headcount", "domain_hr"),
         (r"supply|procurement|inventory|stock", "domain_supply"),
         (r"climate|carbon|emission|energy\.policy", "domain_climate"),
-        (r"identity|profile|who\.am|digital\.dna|crystal", "identity"),
+        (r"what (?:do you )?know about me|my profile|who am i|crystallise|persona|how well do you know me",
+         "my_profile"),
+        (r"my (?:week|weekly|month|monthly) (?:report|summary|narrative|review)|"
+         r"what happened this (?:week|month)",
+         "my_narrative"),
+        (r"how (?:much have you |have you )learned|growth report|"
+         r"what have you learned about me|prism growth",
+         "my_growth"),
+        (r"identity|digital\.dna|who\.am", "identity"),
         (r"artifact|history|past\.decision|what\.have\.i", "artifacts"),
         (r"status|connected|device|sync", "status"),
         (r"index|scan\.files|search\.code|grep|find\.file", "ksa_task"),
@@ -180,14 +188,6 @@ class PrismAgent:
          r"(?:email|mail).*(?:unread|new|recent)|send.*(?:email|mail)|"
          r"draft.*(?:email|reply)|reply.*email|email.*summary",
          "email_read"),
-        (r"what (?:do you )?know about me|my profile|who am i|crystallise|persona|how well do you know me",
-         "my_profile"),
-        (r"my (?:week|weekly|month|monthly) (?:report|summary|narrative|review)|"
-         r"what happened this (?:week|month)",
-         "my_narrative"),
-        (r"how (?:much have you |have you )learned|growth report|"
-         r"what have you learned about me|prism growth",
-         "my_growth"),
     ]
 
     def __init__(
@@ -508,6 +508,7 @@ class PrismAgent:
                 router          = self._router,
                 soul            = getattr(self, '_soul', None),
             )
+            self._orchestrator._persona = getattr(self, '_persona', None)
             # Resume any graphs that were paused waiting on horizon goals
             resumed = self._orchestrator.resume_waiting(self._execute, {})
             if resumed:
@@ -780,10 +781,10 @@ class PrismAgent:
             # Crystallise behavioural signals from this turn
             if card is not None:
                 try:
-                    orch = getattr(self, '_crystalliser', None)
-                    if orch:
+                    crystalliser = getattr(self, '_crystalliser', None)
+                    if crystalliser:
                         intent_used = self._route(message or "") if message else ""
-                        orch.observe_turn(message, card.body, intent_used, context)
+                        crystalliser.observe_turn(message, card.body, intent_used, context)
                 except Exception:
                     pass
 

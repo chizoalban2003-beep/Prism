@@ -169,6 +169,51 @@ Background loop:
 | Evaluator quality gate | `prism_chain.py` | Working — per-step 1-5 score, early exit when sufficient |
 | Logic composition (DAG) | `prism_composer.py` | Working — LLM decomposes task → parallel/sequential DAG |
 | Outcome learning | `prism_outcome_tracker.py` | Working — Bayesian belief updates on done/abandoned/corrected outcomes |
+| Crystallised user persona | `prism_persona.py` | Working — behavioural profile grows from every interaction |
+| Continuous crystallisation | `prism_crystalliser.py` | Working — heuristic (every turn) + LLM deep analysis (hourly daemon) |
+| Living narrative | `prism_narrative.py` | Working — weekly/monthly synthesis stored to memory; `my narrative` to read |
+
+---
+
+## Living User Model
+
+PRISM crystallises to each user over time through three interlocking systems:
+
+### PrismPersona — the crystallised self
+
+A behavioural profile that grows alongside `PrismSoul` (which stores values and beliefs). Persona stores **how you operate** — patterns inferred from watching you work:
+
+```
+[Alice — crystallised profile]
+Style: direct and technical · concise responses preferred
+Active hours: 9am–6pm · peak: Tue/Wed mornings
+Patterns: defers strategic decisions after 7pm · approves reversible changes readily
+Preferences: 30min default meetings · prefers data over prose summaries
+Confidence: 47 observations · 8 patterns · 12 traits
+```
+
+This compact description is injected into **every LLM call** — chain, orchestrator, and expert chain — so responses are calibrated to the specific user from the first word.
+
+### PrismCrystalliser — the extraction engine
+
+Runs in two modes with no manual input needed:
+
+- **After every message** (zero LLM cost): heuristics extract message length → response preference, vocabulary → technical depth, approval/cancel → risk tolerance, time of day → active hours histogram
+- **Hourly daemon tick**: sends the last 20 conversation turns + outcome stats + calibration events to the LLM; parses structured JSON; updates traits and patterns
+- **Weekly**: full 7-day recrystallisation pass
+
+Corrections deepen learning: when you say "no, not like that — I meant X", that correction is immediately extracted as an explicit preference.
+
+### PrismNarrative — the living story
+
+Chat commands:
+- `my profile` — full crystallised profile: persona + soul beliefs + current snapshot
+- `my narrative` — weekly synthesis: what happened, what shifted, what PRISM learned
+- `what have you learned about me` — growth report: trait confidence gains, pattern counts, outcome trends
+
+Weekly narratives are stored to `PrismMemory` as `source="narrative"` — they become semantically searchable, so future sessions can recall "three weeks ago PRISM noted you prefer X."
+
+The three systems feed each other: outcomes update beliefs (soul) → beliefs shape decisions → decisions create patterns (persona) → patterns inform every future response.
 
 ---
 
