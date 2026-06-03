@@ -86,3 +86,16 @@ enabled     = true
 model       = "base"      # whisper model: tiny | base | small | medium | large
 language    = "en"        # ISO 639-1 — leave blank for auto-detect
 sample_rate = 16000       # Hz — 16000 recommended for Whisper
+
+# ── Phone calls / SMS via Twilio (optional) ───────────────────────────────────
+# Requires: pip install twilio  (or pip install ".[full]")
+# Get credentials from console.twilio.com
+# [twilio]
+# account_sid = "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+# auth_token  = "your_auth_token_here"
+# from_number = "+14155552671"   # Twilio phone number in E.164 format
+
+[twilio]
+account_sid = ""          # ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+auth_token  = ""          # from console.twilio.com
+from_number = ""          # your Twilio number, e.g. +14155552671

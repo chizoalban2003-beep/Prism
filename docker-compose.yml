@@ -4,7 +4,7 @@ services:
       context: .
       dockerfile: Dockerfile
     volumes:
-      - ~/.prism:/root/.prism
+      - ~/.prism:/home/prismuser/.prism
       - .:/app
     environment:
       OLLAMA_HOST: http://ollama:11434

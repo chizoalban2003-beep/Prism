@@ -47,23 +47,33 @@ User input (chat / voice / CLI / REST API)
   └──────────┬──────────────────────────────────┘
              │
     ┌────────▼────────────────────────────────────────────────────────┐
+    │  ChainOrchestrator — Tier 0  (prism_orchestrator.py)            │
+    │  "Prefrontal cortex" — decomposes multi-step tasks into a       │
+    │  TaskGraph DAG; executes nodes in dependency order (serial or   │
+    │  parallel); pauses cross-session via HorizonGoal; synthesises   │
+    │  final answer.  Five profiles: reactive · analytical ·          │
+    │  verification · creative · negotiation.                         │
+    └────────┬────────────────────────────────────────────────────────┘
+             │ delegates nodes to ↓
+    ┌────────▼────────────────────────────────────────────────────────┐
     │  Four-Tier Reasoning Cascade                                     │
     │                                                                  │
-    │  Tier 0 — Expert Chain (prism_chain_expert.py)                  │
+    │  Tier 1 — Expert Chain (prism_chain_expert.py)                  │
     │    Router LLM → Logic+Policy → Evaluator LLM (1-5 score)        │
     │    → Branch Judge → Synthesiser LLM  [research queries]         │
     │                                                                  │
-    │  Tier 1 — General Chain (prism_chain.py)                        │
+    │  Tier 2 — General Chain (prism_chain.py)                        │
     │    LLM₁ → Logic+Policy → Evaluator gate → LLM₂ → ... → LLMₙ   │
     │    Adaptive: plan emerges from real intermediate results         │
     │    Evaluator early-exits when result quality score ≥ 4/5        │
     │    Branches: up to 3 parallel logics when genuinely ambiguous   │
+    │    Memory recall: top-5 relevant past entries prepended          │
     │                                                                  │
-    │  Tier 2 — Static Composer (prism_composer.py)                   │
+    │  Tier 3 — Static Composer (prism_composer.py)                   │
     │    LLM decomposes upfront → DAG → sequential/parallel execute   │
     │    [multi-step requests with clear dependencies]                 │
     │                                                                  │
-    │  Tier 3 — Single Intent (prism_agent._execute)                  │
+    │  Tier 4 — Single Intent (prism_agent._execute)                  │
     │    Regex route → one logic module  [simple one-shot requests]   │
     └──────────┬──────────────────────────────────────────────────────┘
                │
@@ -129,17 +139,17 @@ Background loop:
 | Capability | Module | Status |
 |---|---|---|
 | Chat interface | `prism_chat.py`, `prism_agent.py` | Working |
-| Email read/send | `prism_email.py` | Working (needs config) |
-| Calendar read/write (CalDAV/iCal) | `prism_calendar.py` | Working (needs config) |
-| Calendar read/write (Google) | `prism_calendar.py` | Working (needs OAuth token) |
+| Email read/send | `prism_email.py`, `organs/email_send.py` | Working (needs config) |
+| Calendar read/write (CalDAV/iCal/Google) | `prism_calendar.py`, `organs/calendar_write.py` | Working (needs config) |
+| Phone calls + SMS (Twilio) | `organs/phone_call.py` | Working — `pip install twilio`, add `[twilio]` to config |
 | Web search | `prism_search.py` | Working (DDG free; Brave/Serp optional) |
 | Push notifications | `prism_push.py` | Working (ntfy.sh, free) |
-| Contacts | `prism_contacts.py` | Working (local + Google optional) |
+| Contacts | `prism_contacts.py` | Working (local + Google optional; auto-resolved in email/call) |
 | Tasks | `prism_tasks.py` | Working (local + Todoist/GitHub/Linear) |
 | Smart home | `prism_smart_home.py` | Working (Home Assistant) |
 | Browser automation | `prism_browser_agent.py` | Working (needs playwright) |
 | Device tasks | `prism_device_agent.py` | Working |
-| Memory | `prism_memory.py` | Working (SQLite + TF-IDF) |
+| Memory | `prism_memory.py` | Working — recalled at chain start; SQLite + semantic search |
 | Standing instructions | `prism_instructions.py` | Working |
 | Proactive triggers | `prism_proactive.py` | Working |
 | Scheduled reminders | `prism_proactive.py` | Working |
@@ -151,10 +161,14 @@ Background loop:
 | Multi-user | `prism_agent.py` | Working (`[user].name` in config) |
 | Unknown-tool PA fallback | `prism_agent.py` | Working (discovers + plans integrations) |
 | Autonomous tool synthesis | `prism_autonomous.py` | Working — synthesises, installs, sandboxes (AST+subprocess), caches |
+| Multi-step task orchestration | `prism_orchestrator.py` | Working — DAG decomposition, parallel execution, 5 chain profiles |
+| Cross-session goals | `prism_horizon.py` | Working — persists HorizonGoals across restarts; resumes on session start |
+| Approval gate | `prism_agent.py` | Working — `requires_approval` organs block until explicit confirmation |
 | Adaptive reasoning chain | `prism_chain.py` | Working — alternating LLM→Logic+Policy→Evaluator spine, branches |
 | Expert reasoning chain | `prism_chain_expert.py` | Working — Router/Evaluator/BranchJudge/Synthesiser specialised nodes |
 | Evaluator quality gate | `prism_chain.py` | Working — per-step 1-5 score, early exit when sufficient |
 | Logic composition (DAG) | `prism_composer.py` | Working — LLM decomposes task → parallel/sequential DAG |
+| Outcome learning | `prism_outcome_tracker.py` | Working — Bayesian belief updates on done/abandoned/corrected outcomes |
 
 ---
 
@@ -171,19 +185,18 @@ PRISM is a managerial PA with full autonomy. When asked to do something it has n
 
 ### Approval gate
 
-Actions that may affect external systems (send emails, make purchases, delete data) are held for one-time approval before executing:
+Any organ or autonomous action with `requires_approval: True` in its `ORGAN_POLICY` is **blocked at execution** — PRISM stores the pending call and returns a confirmation prompt before taking any action:
 
 ```
-You: order 10 roses from florist.com
-PRISM: I can do this, but it involves external purchase which may
-       affect external systems.
-       Say 'yes, go ahead' to authorise, or 'cancel' to stop.
-You: yes, go ahead
-PRISM: Approved. Executing autonomously. Task ID: `a3f8b2c1`
-       I'll notify you when done.
+You: send email to alice@example.com about tomorrow's meeting
+PRISM: email_send requires approval before executing.
+       Action: send email to alice@example.com about tomorrow's meeting
+       Say yes or approve to confirm, or cancel to abort.
+You: yes
+PRISM: Sent to alice@example.com — "Tomorrow's meeting"
 ```
 
-Approval is remembered per-conversation — once approved, PRISM acts. `cancel` or `no` drops the pending task with no side effects.
+This applies to: `email_send`, `phone_call`, `calendar_write`, autonomous tasks, and any custom organ with `requires_approval: True`. Approvals expire after 5 minutes. `cancel` drops the pending action with no side effects.
 
 ### Viewing accumulated tools
 
@@ -235,10 +248,11 @@ Step 1 — Evaluator: score 4/5 — sufficient, early exit
 
 | Tier | Module | When used |
 |---|---|---|
-| 0 — Expert | `prism_chain_expert.py` | "research", "analyse", "decide", "compare", "evaluate" |
-| 1 — General | `prism_chain.py` | Multi-goal, conditional, "and then", "after that" |
-| 2 — Composer | `prism_composer.py` | Multiple steps with clear "and" / "then" dependency |
-| 3 — Single | `prism_agent._execute()` | Simple one-shot requests |
+| 0 — Orchestrator | `prism_orchestrator.py` | Cross-domain multi-step, conditional, cross-session ("if hotel confirms, book flight") |
+| 1 — Expert | `prism_chain_expert.py` | "research", "analyse", "decide", "compare", "evaluate" |
+| 2 — General | `prism_chain.py` | Multi-goal, conditional, "and then", "after that" |
+| 3 — Composer | `prism_composer.py` | Multiple steps with clear "and" / "then" dependency |
+| 4 — Single | `prism_agent._execute()` | Simple one-shot requests |
 
 **Evaluator quality gate** runs after every logic step in the general chain. If the Evaluator scores the result ≥ 4/5 (`sufficient=True`), the chain exits early and a Synthesiser LLM composes the final answer — reducing wasted steps without the full +200% Expert overhead.
 
@@ -307,6 +321,32 @@ claude_api_key = "sk-ant-..."
 ```
 
 Or set `ANTHROPIC_API_KEY` environment variable.
+
+---
+
+## Phone calls and SMS (Twilio)
+
+PRISM can make outbound voice calls and send SMS via [Twilio](https://twilio.com):
+
+1. Create a free Twilio account and get a phone number at [console.twilio.com](https://console.twilio.com)
+2. Install the library: `pip install twilio` (or `pip install ".[full]"`)
+3. Add credentials to `prism_config.toml`:
+
+```toml
+[twilio]
+account_sid = "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+auth_token  = "your_auth_token_here"
+from_number = "+14155552671"   # your Twilio number in E.164 format
+```
+
+Or set environment variables `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM`.
+
+**Usage:**
+- `call +447700900000 and say "your meeting starts in 5 minutes"`
+- `text +447700900000 say "running 10 minutes late"`
+- `call Alice` — resolves from your contacts automatically
+
+**Approval gate:** Phone calls are `irreversible` and `requires_approval`. PRISM will always ask for confirmation before dialling.
 
 ---
 
@@ -501,6 +541,12 @@ github_repo   = "owner/repo"
 [smarthome]
 ha_url   = "http://homeassistant.local:8123"
 ha_token = ""                       # Long-lived access token from HA profile
+
+# Phone calls + SMS via Twilio — optional
+[twilio]
+account_sid = ""                    # ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+auth_token  = ""                    # from console.twilio.com
+from_number = ""                    # your Twilio number, e.g. +14155552671
 
 [[devices]]
 name       = "Apple Watch"
@@ -744,7 +790,8 @@ PRISM/
 │   ├── identity_bus.py         Cross-module identity event bus
 │   └── artifact_store.py       Artifact collection with identity tagging
 │
-├── Reasoning chains (LLM sandwich architecture)
+├── Orchestration & reasoning chains
+│   ├── prism_orchestrator.py   ChainOrchestrator — TaskGraph DAG, 5 profiles, cross-session pause
 │   ├── prism_chain.py          General alternating LLM→Logic+Policy→Evaluator chain
 │   ├── prism_chain_expert.py   Expert chain — Router/Evaluator/BranchJudge/Synthesiser
 │   ├── prism_chain_bench.py    Benchmark: general vs expert, mock + live modes
@@ -753,6 +800,7 @@ PRISM/
 ├── Autonomous execution
 │   ├── prism_autonomous.py     Tool synthesis (AST safety + subprocess sandbox + cache)
 │   ├── prism_horizon.py        Cross-session long-horizon goal persistence (SQLite)
+│   ├── prism_outcome_tracker.py Bayesian belief updates from task outcomes
 │   ├── prism_organ_bus.py          LLM-mediated pub/sub bus between PRISM logic engines
 │   ├── prism_organ_bus_experiment.py  Experimental organ bus extensions
 │   └── organs/                 Bundled organ modules
@@ -763,6 +811,9 @@ PRISM/
 │       ├── meeting_brief.py        Pre-meeting brief from calendar details
 │       ├── health_summary.py       Health metrics summariser (steps, sleep, HRV)
 │       ├── task_reminder.py        Surface overdue/due-today tasks; add new reminders
+│       ├── email_send.py           Send email — LLM-parsed, contact-resolved, approval-gated
+│       ├── calendar_write.py       Create calendar events or find free slots
+│       ├── phone_call.py           Outbound voice call or SMS via Twilio
 │       ├── policy_audit.py         Query the policy audit log (SQLite)
 │       ├── policy_inspect.py       Dump ORGAN_POLICY for every loaded organ
 │       └── policy_update.py        Update a live organ's policy at runtime
@@ -822,7 +873,10 @@ PRISM/
 
 ```bash
 python -m pytest tests/ -q
-# 1131 tests pass in ~115 seconds
+# 1282+ tests pass in ~115 seconds
+
+# With coverage report:
+python -m pytest tests/ -q --cov=. --cov-report=term-missing:skip-covered
 ```
 
 ---

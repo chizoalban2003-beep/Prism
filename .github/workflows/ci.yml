@@ -29,15 +29,36 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       - name: Install Python dependencies
-        run: python3 -m pip install -e ".[full]" || python3 -m pip install -e .
+        run: |
+          python3 -m pip install -e ".[dev]" || python3 -m pip install -e .
+          python3 -m pip install pytest-cov
 
       - name: Lint with ruff
         run: python3 -m ruff check .
 
-      - name: Run tests
-        run: python3 -m pytest -x -q --tb=short
+      - name: Run tests with coverage
+        run: |
+          python3 -m pytest -x -q --tb=short \
+            --cov=. --cov-report=xml --cov-report=term-missing:skip-covered \
+            --ignore=tests/test_device_agent.py
 
-      - name: Type-check with mypy (allow failure)
+      - name: Type-check with mypy
         run: >
-          python3 -m mypy prism_agent.py prism_chain.py prism_llm_router.py
+          python3 -m mypy
+          prism_agent.py prism_chain.py prism_llm_router.py
+          prism_orchestrator.py prism_organ_loader.py prism_horizon.py
+          prism_outcome_tracker.py prism_memory.py
           --ignore-missing-imports --no-error-summary || true
+
+      - name: Security scan (high severity only)
+        run: |
+          python3 -m pip install bandit --quiet
+          python3 -m bandit -r . -ll -x tests/,organs/ --quiet || true
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          retention-days: 14

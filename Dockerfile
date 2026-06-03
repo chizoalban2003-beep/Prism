@@ -6,6 +6,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 EXPOSE 8742
 ENV KDE_CONFIG=/app/prism_config.toml
-RUN useradd -m prismuser
+RUN useradd -m prismuser && mkdir -p /home/prismuser/.prism && chown -R prismuser:prismuser /home/prismuser
 USER prismuser
 CMD ["python", "kde_cli.py", "server", "--port", "8742"]
