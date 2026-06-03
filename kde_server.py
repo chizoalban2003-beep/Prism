@@ -97,12 +97,16 @@ Routes:
   GET  /organs                      → list loaded organ intents and descriptions
   GET  /organ_bus/history           → recent inter-engine signals (?n=20)
   GET  /organ_bus/subscribers       → registered organ subscriptions
+  GET  /stream/chat                 → SSE stream of chain steps (?message=...) [text/event-stream]
+  GET  /context                     → active context + all profiles (JSON)
+  GET  /outcomes/stats              → OutcomeTracker stats (?days=30)
+  GET  /reflection                  → run weekly reflection and return report (JSON)
   GET  /mobile                      → PWA mobile companion (HTML)
   GET  /manifest.json               → Web App Manifest (JSON)
   GET  /sw.js                       → Service Worker (JS)
   GET  /icon.svg                    → PRISM icon (SVG)
 
-All responses: Content-Type: application/json (except PWA assets)
+All responses: Content-Type: application/json (except PWA assets and /stream/chat)
 Error format:  {"error": "message", "status": 4xx}
 CORS headers included for local web dashboard access.
 """
@@ -177,6 +181,31 @@ class KDEHandler(BaseHTTPRequestHandler):
 
     def _error(self, message: str, status: int = 400) -> None:
         self._json_response({"error": message, "status": status}, status)
+
+    # ── Server-Sent Events helpers ────────────────────────────────────────
+
+    def _sse_start(self) -> None:
+        """Send SSE headers — call before any _sse_write()."""
+        self.send_response(200)
+        self.send_header("Content-Type",                "text/event-stream; charset=utf-8")
+        self.send_header("Cache-Control",               "no-cache")
+        self.send_header("X-Accel-Buffering",           "no")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+
+    def _sse_write(self, data: dict) -> None:
+        """Write one SSE event dict. Silently swallows broken-pipe errors."""
+        import json as _json
+        try:
+            payload = f"data: {_json.dumps(data, default=str)}\n\n"
+            self.wfile.write(payload.encode("utf-8"))
+            self.wfile.flush()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    def _sse_end(self) -> None:
+        """Write a final 'close' event so clients know the stream is done."""
+        self._sse_write({"event": "close"})
 
     def log_message(self, format, *args) -> None:  # noqa: A002
         # Suppress routine HTTP logs unless debug-level logging is active
@@ -989,6 +1018,78 @@ class KDEHandler(BaseHTTPRequestHandler):
                         ]
                     self._json_response({"subscribers": subs, "count": len(subs),
                                          "available": True})
+
+            # ── Streaming chat (SSE) ──────────────────────────────────────
+            elif path == '/stream/chat':
+                message = qs.get('message', '') or qs.get('q', '')
+                if not message:
+                    self._error("'message' query parameter required", 400)
+                    return
+                agent = getattr(self.server, 'prism_agent', None)
+                if agent is None:
+                    self._error("PRISM agent not available", 503)
+                    return
+                chain = getattr(agent, '_chain', None)
+                if chain is None:
+                    # Fallback: non-streaming chat wrapped in SSE
+                    self._sse_start()
+                    try:
+                        card = agent.chat(message)
+                        body = card.body if hasattr(card, 'body') else str(card)
+                        self._sse_write({"event": "done", "answer": body})
+                    finally:
+                        self._sse_end()
+                    return
+                ctx = {"source": "sse"}
+                self._sse_start()
+                try:
+                    for evt in chain.run_streaming(message, agent._execute, ctx):
+                        self._sse_write(evt)
+                except Exception as exc:
+                    self._sse_write({"event": "error", "message": str(exc)})
+                finally:
+                    self._sse_end()
+
+            # ── Context & learning endpoints ───────────────────────────────
+            elif path == '/context':
+                agent = getattr(self.server, 'prism_agent', None)
+                cm = getattr(agent, '_context_manager', None) if agent else None
+                if cm is None:
+                    self._json_response({"active": "default", "profiles": []})
+                else:
+                    self._json_response({
+                        "active": cm.active_id,
+                        "profiles": [p.to_dict() for p in cm.list_profiles()],
+                    })
+
+            elif path == '/outcomes/stats':
+                agent = getattr(self.server, 'prism_agent', None)
+                tracker = getattr(agent, '_outcome_tracker', None) if agent else None
+                days = int(qs.get('days', 30))
+                if tracker is None:
+                    self._json_response({"available": False})
+                else:
+                    self._json_response({**tracker.stats(days=days), "available": True})
+
+            elif path == '/reflection':
+                agent = getattr(self.server, 'prism_agent', None)
+                refl = getattr(agent, '_reflection', None) if agent else None
+                if refl is None:
+                    self._json_response({"available": False})
+                else:
+                    try:
+                        report = refl.run()
+                        self._json_response({
+                            "available":        True,
+                            "summary":          report.summary,
+                            "patterns":         report.patterns,
+                            "belief_proposals": report.belief_proposals,
+                            "unresolved_goals": report.unresolved_goals,
+                            "applied":          report.applied,
+                            "ran_at":           report.ran_at,
+                        })
+                    except Exception as exc:
+                        self._json_response({"available": True, "error": str(exc)})
 
             # ── PWA mobile companion ──────────────────────────────────────
             elif path == '/mobile':

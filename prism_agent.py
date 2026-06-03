@@ -397,6 +397,62 @@ class PrismAgent:
             logger.warning("PrismSoul not available: %s", e)
             self._soul = None
 
+        # OutcomeTracker — closes the learning loop
+        try:
+            from prism_outcome_tracker import OutcomeTracker
+            self._outcome_tracker = OutcomeTracker(
+                soul    = getattr(self, '_soul', None),
+                horizon = getattr(self, '_horizon', None),
+            )
+            if hasattr(self, '_chain'):
+                self._chain._outcome_tracker = self._outcome_tracker
+            logger.info("OutcomeTracker ready")
+        except Exception as e:
+            logger.warning("OutcomeTracker not available: %s", e)
+            self._outcome_tracker = None
+
+        # ContextManager — work/personal/focus context switching
+        try:
+            from prism_context_profile import ContextManager
+            self._context_manager = ContextManager()
+            if hasattr(self, '_chain'):
+                self._context_manager.inject_into_chain(self._chain)
+            logger.info("ContextManager ready (active: %s)", self._context_manager.active_id)
+        except Exception as e:
+            logger.warning("ContextManager not available: %s", e)
+            self._context_manager = None
+
+        # ProactiveBusWatcher — connect OrganBus signals to proactive triggers
+        try:
+            if self._organ_bus is not None and getattr(self, '_proactive', None) is not None:
+                from prism_proactive_bus_watcher import ProactiveBusWatcher
+                self._bus_watcher = ProactiveBusWatcher(
+                    proactive = self._proactive,
+                    organ_bus = self._organ_bus,
+                )
+                self._bus_watcher.register()
+                logger.info("ProactiveBusWatcher registered")
+            else:
+                self._bus_watcher = None
+        except Exception as e:
+            logger.warning("ProactiveBusWatcher not available: %s", e)
+            self._bus_watcher = None
+
+        # PrismReflection — weekly meta-learning loop
+        try:
+            from prism_reflection import PrismReflection
+            self._reflection = PrismReflection(
+                outcome_tracker = getattr(self, '_outcome_tracker', None),
+                soul            = getattr(self, '_soul', None),
+                horizon         = getattr(self, '_horizon', None),
+                llm_router      = self._router,
+                auto_apply      = False,
+            )
+            logger.info("PrismReflection ready")
+        except Exception as e:
+            logger.warning("PrismReflection not available: %s", e)
+            self._reflection = None
+
     def stop(self) -> None:
         """Gracefully shut down all background subsystems."""
         if getattr(self, '_horizon', None) is not None:
@@ -572,7 +628,12 @@ class PrismAgent:
                 except Exception:
                     pass
 
-            # 7. Route intent and execute
+            # 7. Inject active context into the request context dict
+            if getattr(self, '_context_manager', None) is not None:
+                self._context_manager.inject_into_chain_ctx(context)
+                self._context_manager.inject_into_chain(self._chain)
+
+            # 8. Route intent and execute
             # Tier 0: expert chain — for research/evaluation-heavy requests
             # Tier 1: general chain — adaptive multi-step
             # Tier 2: static composition (known multi-step, predictable)
@@ -1319,6 +1380,70 @@ class PrismAgent:
                 f"Stopped watching: **{goal.intent[:60]}**\n"
                 f"Goal `{gid}` has been abandoned.",
                 "Horizon goal abandoned")
+
+        # ── Context switching ─────────────────────────────────────────────
+        if intent in ("switch_context", "context_switch"):
+            import re as _re
+            cm = getattr(self, '_context_manager', None)
+            if cm is None:
+                return text_card("Context manager not available.", "Error")
+            m = _re.search(r"\b(work|personal|focus|default)\b", message, _re.IGNORECASE)
+            if not m:
+                profiles = [p.context_id for p in cm.list_profiles()]
+                return text_card(
+                    f"Available contexts: {', '.join(profiles)}\n"
+                    "Say: 'switch to work' / 'switch to personal' / 'switch to focus'",
+                    "Context")
+            target = m.group(1).lower()
+            try:
+                profile = cm.switch(target)
+                cm.apply_to_policy(self._policy)
+                cm.inject_into_chain(self._chain)
+                return text_card(
+                    f"Switched to **{target}** context.\n{profile.description}",
+                    f"Context: {target}")
+            except ValueError as exc:
+                return text_card(str(exc), "Error")
+
+        if intent == "context_status":
+            cm = getattr(self, '_context_manager', None)
+            if cm is None:
+                return text_card("Context manager not available.", "Error")
+            profile = cm.active()
+            lines = [f"Active context: **{profile.context_id}**",
+                     f"{profile.description}",
+                     f"Policy overrides: {profile.policy_overrides or 'none'}",
+                     f"Organ priorities: {profile.organ_priorities or 'none'}"]
+            return text_card("\n".join(lines), "Context status")
+
+        # ── Outcome / learning stats ───────────────────────────────────────
+        if intent == "outcome_stats":
+            tracker = getattr(self, '_outcome_tracker', None)
+            if tracker is None:
+                return text_card("OutcomeTracker not available.", "Error")
+            stats = tracker.stats(days=30)
+            lines = [
+                "Chain outcomes (last 30 days):",
+                f"  Total chains:     {stats['total']}",
+                f"  Completed:        {stats['done']}",
+                f"  Abandoned:        {stats['abandoned']}",
+                f"  User-corrected:   {stats['user_corrected']}",
+                f"  Completion rate:  {stats['completion_rate']:.0%}",
+                f"  Avg steps/chain:  {stats['avg_steps']}",
+                f"  Avg policy flags: {stats['avg_policy_flags']}",
+            ]
+            return text_card("\n".join(lines), "Learning stats")
+
+        # ── Weekly reflection ─────────────────────────────────────────────
+        if intent == "reflection":
+            refl = getattr(self, '_reflection', None)
+            if refl is None:
+                return text_card("Reflection engine not available.", "Error")
+            try:
+                summary = refl.summarise_for_chat()
+                return text_card(summary, "Weekly reflection")
+            except Exception as exc:
+                return text_card(f"Reflection failed: {exc}", "Error")
 
         # ── Organ registry ────────────────────────────────────────────────
         if intent == "list_organs":

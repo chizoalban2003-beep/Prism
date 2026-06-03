@@ -158,7 +158,9 @@ Rules:
                   use_soft_logic: bool = True,
                   horizon_planner=None,
                   soul=None,
-                  organ_loader=None):
+                  organ_loader=None,
+                  outcome_tracker=None,
+                  context_id: str = "default"):
         self._router             = llm_router
         self._policy             = policy_engine
         self._push               = push
@@ -170,6 +172,8 @@ Rules:
         self._horizon            = horizon_planner
         self._soul               = soul
         self._organ_loader       = organ_loader
+        self._outcome_tracker    = outcome_tracker
+        self._context_id         = context_id
 
         # Thread-safety note: _state_lock protects the internal results list
         # in _execute_branch. The append to state.steps happens in run() which
@@ -227,12 +231,14 @@ Rules:
         return False
 
     def run(self, message: str, agent_execute_fn,
-             base_ctx: dict) -> "PrismCard":
+             base_ctx: dict,
+             step_callback=None) -> "PrismCard":
         """
         Run the alternating chain to completion.
 
         agent_execute_fn: agent._execute(intent, message, ctx) -> PrismCard
         base_ctx: context dict from the agent's chat() call
+        step_callback: optional callable(ChainStep) called after each step completes
 
         Returns a PrismCard with the composed final answer.
         """
@@ -299,6 +305,11 @@ Rules:
                         duration_ms = br.duration_ms,
                     )
                     state.steps.append(step)
+                    if step_callback is not None:
+                        try:
+                            step_callback(step)
+                        except Exception:
+                            pass
                     # Checkpoint step to horizon anchor
                     if _anchor_id is not None:
                         try:
@@ -406,6 +417,11 @@ Rules:
                     eval_score  = eval_score,
                 )
                 state.steps.append(step)
+                if step_callback is not None:
+                    try:
+                        step_callback(step)
+                    except Exception:
+                        pass
                 # Checkpoint step to horizon anchor
                 if _anchor_id is not None:
                     try:
@@ -484,7 +500,99 @@ Rules:
             except Exception:
                 pass
 
+        # ── Record outcome for learning loop ──────────────────────────────────
+        if self._outcome_tracker is not None:
+            try:
+                from prism_outcome_tracker import OUTCOME_ABANDONED, OUTCOME_DONE
+                outcome = OUTCOME_DONE if state.done else OUTCOME_ABANDONED
+                policy_flags = sum(1 for s in state.steps if s.policy_note)
+                self._outcome_tracker.record(
+                    chain_id    = state.chain_id,
+                    goal        = state.original,
+                    outcome     = outcome,
+                    steps_count = len(state.steps),
+                    duration_ms = sum(s.duration_ms for s in state.steps),
+                    policy_flags= policy_flags,
+                    final_answer= state.final_answer or "",
+                    context_id  = self._context_id,
+                )
+            except Exception as exc:
+                logger.debug("[chain] outcome_tracker record failed: %s", exc)
+
         return card
+
+    def run_streaming(self, message: str, agent_execute_fn, base_ctx: dict):
+        """
+        Generator version of run() — yields SSE-compatible dicts as each
+        chain step completes, then a final 'done' event.
+
+        Yields:
+            {"event": "step",  "step": N, "logic": "...", "result": "...", "policy": "..."}
+            {"event": "done",  "answer": "...", "chain_id": "..."}
+            {"event": "error", "message": "..."}
+
+        Usage in kde_server SSE handler:
+            for evt in chain.run_streaming(msg, fn, ctx):
+                wfile.write(f"data: {json.dumps(evt)}\n\n".encode())
+        """
+        import queue
+        import threading
+
+        step_queue: queue.Queue = queue.Queue()
+        result_holder: list = []
+        error_holder:  list = []
+        done_event = threading.Event()
+
+        _SENTINEL = object()
+
+        def _on_step(step):
+            step_queue.put({
+                "event":  "step",
+                "step":   step.step_num,
+                "logic":  step.logic,
+                "result": step.result_out[:200],
+                "policy": step.policy_note or "",
+                "score":  step.eval_score,
+            })
+
+        def _run():
+            try:
+                card = self.run(message, agent_execute_fn, base_ctx,
+                                step_callback=_on_step)
+                result_holder.append(card)
+            except Exception as exc:
+                error_holder.append(str(exc))
+            finally:
+                step_queue.put(_SENTINEL)
+                done_event.set()
+
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+
+        while True:
+            try:
+                item = step_queue.get(timeout=30)
+            except Exception:
+                yield {"event": "error", "message": "stream timeout"}
+                return
+            if item is _SENTINEL:
+                break
+            yield item
+
+        if error_holder:
+            yield {"event": "error", "message": error_holder[0]}
+            return
+
+        card = result_holder[0] if result_holder else None
+        if card is None:
+            yield {"event": "error", "message": "chain returned no card"}
+            return
+
+        yield {
+            "event":    "done",
+            "answer":   card.body if hasattr(card, "body") else str(card),
+            "chain_id": getattr(card, "source", ""),
+        }
 
     def resume(self, goal_id: str, agent_execute_fn, base_ctx: dict) -> "PrismCard":
         """

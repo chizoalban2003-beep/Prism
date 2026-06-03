@@ -103,6 +103,43 @@ def _horizon_worker(agent, interval: int = 300):
             logger.debug("HorizonPlanner check error: %s", exc)
 
 
+def _reflection_worker(agent, interval: int = 604800):
+    """Run weekly reflection every `interval` seconds (default 7 days)."""
+    while not _SHUTDOWN.wait(timeout=interval):
+        refl = getattr(agent, '_reflection', None)
+        if refl is None:
+            continue
+        try:
+            report = refl.run()
+            logger.info(
+                "Reflection: %d pattern(s), %d belief proposal(s), %d stale goal(s)",
+                len(report.patterns),
+                len(report.belief_proposals),
+                len(report.unresolved_goals),
+            )
+        except Exception as exc:
+            logger.debug("Reflection error: %s", exc)
+
+
+def _outcome_feed_worker(agent, interval: int = 3600):
+    """Feed outcome deltas into soul and horizon every hour."""
+    while not _SHUTDOWN.wait(timeout=interval):
+        tracker = getattr(agent, '_outcome_tracker', None)
+        if tracker is None:
+            continue
+        try:
+            soul    = getattr(agent, '_soul', None)
+            horizon = getattr(agent, '_horizon', None)
+            if soul:
+                n = tracker.feed_soul(soul)
+                if n:
+                    logger.debug("OutcomeTracker: fed %d soul update(s)", n)
+            if horizon:
+                tracker.feed_horizon(horizon)
+        except Exception as exc:
+            logger.debug("OutcomeTracker feed error: %s", exc)
+
+
 def _health_worker(agent, interval: int = 120):
     """Log a brief health line every `interval` seconds."""
     while not _SHUTDOWN.wait(timeout=interval):
@@ -239,9 +276,11 @@ def main():
 
     # Background workers
     workers = [
-        threading.Thread(target=_bus_flush_worker,  args=(agent,), daemon=True, name="bus-flush"),
-        threading.Thread(target=_horizon_worker,    args=(agent,), daemon=True, name="horizon"),
-        threading.Thread(target=_health_worker,     args=(agent,), daemon=True, name="health"),
+        threading.Thread(target=_bus_flush_worker,    args=(agent,), daemon=True, name="bus-flush"),
+        threading.Thread(target=_horizon_worker,      args=(agent,), daemon=True, name="horizon"),
+        threading.Thread(target=_health_worker,       args=(agent,), daemon=True, name="health"),
+        threading.Thread(target=_reflection_worker,   args=(agent,), daemon=True, name="reflection"),
+        threading.Thread(target=_outcome_feed_worker, args=(agent,), daemon=True, name="outcome-feed"),
     ]
     for w in workers:
         w.start()
