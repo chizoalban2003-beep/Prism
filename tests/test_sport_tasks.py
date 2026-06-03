@@ -94,7 +94,10 @@ def _make_platform() -> MagicMock:
     return platform
 
 
-MOCK_LLM_RESPONSE = "# Mock LLM Response\n\nThis is mock content from the LLM.\n\n## Performance\n\nGood.\n\n## Tactics\n\nSolid."
+MOCK_LLM_RESPONSE = (
+    "# Mock LLM Response\n\nThis is mock content from the LLM.\n\n"
+    "## Performance\n\nGood.\n\n## Tactics\n\nSolid."
+)
 
 
 # ---------------------------------------------------------------------------

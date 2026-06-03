@@ -346,7 +346,10 @@ class PrismExecutorAgent:
         elif plan.approval_needed:
             approved = self.on_approval(plan)
             if not approved:
-                return ExecutionResult(False, {}, "approval_denied", 0.0, "Not approved by user", error="Not approved by user")
+                return ExecutionResult(
+                    False, {}, "approval_denied", 0.0, "Not approved by user",
+                    error="Not approved by user",
+                )
 
         if plan.selected_executor is not None:
             result = self._invoke_executor(plan.selected_executor, plan, context)
@@ -396,7 +399,11 @@ class PrismExecutorAgent:
             return final
 
         elapsed_ms = (time.perf_counter() - started) * 1000.0
-        final = ExecutionResult(False, {}, "no_executor", elapsed_ms, "No executor or fallback path found.", error="No executor or fallback path found.")
+        final = ExecutionResult(
+            False, {}, "no_executor", elapsed_ms,
+            "No executor or fallback path found.",
+            error="No executor or fallback path found.",
+        )
         self._log(plan, final)
         return final
 
@@ -433,7 +440,11 @@ class PrismExecutorAgent:
                 "error": (stderr or stdout or f"Executor exited {result.returncode}")[:500],
             }
         if not stdout:
-            return {"success": False, "status": "executor_error", "error": (stderr or "Executor produced no output")[:500]}
+            return {
+                "success": False,
+                "status": "executor_error",
+                "error": (stderr or "Executor produced no output")[:500],
+            }
         try:
             payload = json.loads(stdout)
         except json.JSONDecodeError:
@@ -447,7 +458,11 @@ class PrismExecutorAgent:
     def _run_executor(self, executor_name: str, context: dict) -> dict:
         record = self.registry._resolve(executor_name)
         if record is None:
-            return {"success": False, "status": "missing_executor", "error": f"Executor file not found: {executor_name}"}
+            return {
+                "success": False,
+                "status": "missing_executor",
+                "error": f"Executor file not found: {executor_name}",
+            }
         return self._invoke_executor(record, ExecutionPlan(task=executor_name), context)
 
     def _synthesise_executor(self, plan: ExecutionPlan, context: dict, started: float) -> ExecutionResult:
@@ -464,7 +479,10 @@ class PrismExecutorAgent:
         ok, code = self.collaborator.synthesise_tool(spec)
         elapsed_ms = (time.perf_counter() - started) * 1000.0
         if not ok:
-            return ExecutionResult(False, {}, "synthesis_failed", elapsed_ms, code, executor_used="synthesis_failed", error=code)
+            return ExecutionResult(
+                False, {}, "synthesis_failed", elapsed_ms, code,
+                executor_used="synthesis_failed", error=code,
+            )
 
         record = ExecutorRecord(
             executor_id=str(uuid.uuid4()),
@@ -507,7 +525,10 @@ class PrismExecutorAgent:
             status = str(result.get("status", "executed" if success else "failed"))
             message = str(result.get("message", result.get("error", "")))
             error = str(result.get("error", "")) if not success else ""
-            return ExecutionResult(success, result, status, elapsed_ms, message, executor_used=executor_used, error=error)
+            return ExecutionResult(
+                success, result, status, elapsed_ms, message,
+                executor_used=executor_used, error=error,
+            )
         return ExecutionResult(True, {"result": result}, "executed", elapsed_ms, executor_used=executor_used)
 
     def _save_code(self, code: str, name: str) -> str:

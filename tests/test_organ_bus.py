@@ -14,7 +14,6 @@ from prism_organ_bus import (
     OrganSignal,
 )
 
-
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 @pytest.fixture

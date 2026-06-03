@@ -201,7 +201,9 @@ class HTMLReportGenerator:
 <h2>📈 Summary</h2>
 <div class="card">
   <p>Total sessions: <strong>{len(sessions)}</strong></p>
-  {'<p>Avg RPE: <strong>' + f"{sum(s.get('rpe',0) for s in sessions)/len(sessions):.1f}" + '</strong></p>' if sessions else ''}
+  {('<p>Avg RPE: <strong>'
+     + f"{sum(s.get('rpe', 0) for s in sessions) / len(sessions):.1f}"
+     + '</strong></p>') if sessions else ''}
 </div>
 """
         return _wrap(f"Weekly Performance — {profile_name}", body)
@@ -224,7 +226,12 @@ class HTMLReportGenerator:
 <h2>📋 Plan History</h2>
 <table>
 <tr><th>Date</th><th>Focus</th><th>Fulcrum</th></tr>
-{"".join(f"<tr><td>{h.get('date','')}</td><td>{h.get('primary_focus','')}</td><td>{h.get('fulcrum','')}</td></tr>" for h in history[:30])}
+{"".join(
+    f"<tr><td>{h.get('date', '')}</td>"
+    f"<td>{h.get('primary_focus', '')}</td>"
+    f"<td>{h.get('fulcrum', '')}</td></tr>"
+    for h in history[:30]
+)}
 </table>
 """
         return _wrap(f"Season Dashboard — {profile_name}", body)

@@ -500,7 +500,8 @@ class DeviceHub:
                 elif record_type == "HKCategoryTypeIdentifierSleepAnalysis":
                     start_dt = _parse_date(start_date)
                     end_dt = _parse_date(elem.get("endDate", ""))
-                    is_sleep = value_text in {"1", "HKCategoryValueSleepAnalysisAsleep", "HKCategoryValueSleepAnalysisInBed"}
+                    sleep_values = {"1", "HKCategoryValueSleepAnalysisAsleep", "HKCategoryValueSleepAnalysisInBed"}
+                    is_sleep = value_text in sleep_values
                     if start_dt and end_dt and is_sleep:
                         hours = max(0.0, (end_dt - start_dt).total_seconds() / 3600.0)
                         sleep_day = end_dt.date().isoformat()

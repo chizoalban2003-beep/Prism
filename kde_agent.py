@@ -941,7 +941,8 @@ class KDEAgent:
             payload = json.loads(outcome.stdout) if outcome.stdout else outcome.stderr
         except (json.JSONDecodeError, ValueError):
             payload = outcome.stdout or outcome.stderr
-        if task_name == "domain_evaluate" and isinstance(payload, dict) and "domain" in payload and "fulcrum" in payload:
+        is_domain_eval = task_name == "domain_evaluate" and isinstance(payload, dict)
+        if is_domain_eval and "domain" in payload and "fulcrum" in payload:
             try:
                 self._record_identity_artifact(
                     domain=str(payload["domain"]),

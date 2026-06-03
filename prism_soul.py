@@ -48,7 +48,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -227,7 +227,8 @@ class PrismSoul:
     def get_seed(self) -> Optional[SoulSeed]:
         """Load seed from DB."""
         row = self._conn.execute(
-            "SELECT narrative, stated_values, stated_goals, stated_constraints, created_at, updated_at FROM seed LIMIT 1"
+            "SELECT narrative, stated_values, stated_goals, stated_constraints,"
+            " created_at, updated_at FROM seed LIMIT 1"
         ).fetchone()
         if not row:
             return None
@@ -271,7 +272,8 @@ class PrismSoul:
     def get_belief(self, node_id: str) -> Optional[BeliefNode]:
         """Load from DB."""
         row = self._conn.execute(
-            "SELECT node_id, text, belief_type, source, confidence, created_at, updated_at, observation_count, notes FROM beliefs WHERE node_id=?",
+            "SELECT node_id, text, belief_type, source, confidence,"
+            " created_at, updated_at, observation_count, notes FROM beliefs WHERE node_id=?",
             (node_id,),
         ).fetchone()
         if not row:
@@ -282,7 +284,10 @@ class PrismSoul:
         self, source: Optional[str] = None, belief_type: Optional[str] = None
     ) -> List[BeliefNode]:
         """Filter query."""
-        query = "SELECT node_id, text, belief_type, source, confidence, created_at, updated_at, observation_count, notes FROM beliefs WHERE 1=1"
+        query = (
+            "SELECT node_id, text, belief_type, source, confidence,"
+            " created_at, updated_at, observation_count, notes FROM beliefs WHERE 1=1"
+        )
         params: List[Any] = []
         if source is not None:
             query += " AND source=?"
@@ -363,7 +368,9 @@ class PrismSoul:
         """Insert SoulLens, return lens_id."""
         lens_id = str(uuid.uuid4())[:8]
         self._conn.execute(
-            "INSERT INTO lenses (lens_id, name, description, signal_types, observations, user_created) VALUES (?, ?, ?, ?, ?, ?)",
+            "INSERT INTO lenses"
+            " (lens_id, name, description, signal_types, observations, user_created)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
             (
                 lens_id,
                 name,
@@ -555,14 +562,14 @@ class PrismSoul:
         ]
         lenses = [
             {
-                "lens_id": l.lens_id,
-                "name": l.name,
-                "description": l.description,
-                "signal_types": l.signal_types,
-                "observations": l.observations,
-                "user_created": l.user_created,
+                "lens_id": ln.lens_id,
+                "name": ln.name,
+                "description": ln.description,
+                "signal_types": ln.signal_types,
+                "observations": ln.observations,
+                "user_created": ln.user_created,
             }
-            for l in self.list_lenses()
+            for ln in self.list_lenses()
         ]
         return {"seed": seed_data, "beliefs": beliefs, "edges": edges, "lenses": lenses}
 
@@ -604,14 +611,16 @@ class PrismSoul:
                 (e["edge_id"], e["from_id"], e["to_id"], e["relation"], e["strength"], e["created_at"]),
             )
 
-        for l in data.get("lenses", []):
+        for ln in data.get("lenses", []):
             self._conn.execute(
-                "INSERT INTO lenses (lens_id, name, description, signal_types, observations, user_created) VALUES (?, ?, ?, ?, ?, ?)",
+                "INSERT INTO lenses"
+            " (lens_id, name, description, signal_types, observations, user_created)"
+            " VALUES (?, ?, ?, ?, ?, ?)",
                 (
-                    l["lens_id"], l["name"], l["description"],
-                    json.dumps(l["signal_types"]),
-                    json.dumps(l["observations"]),
-                    int(l["user_created"]),
+                    ln["lens_id"], ln["name"], ln["description"],
+                    json.dumps(ln["signal_types"]),
+                    json.dumps(ln["observations"]),
+                    int(ln["user_created"]),
                 ),
             )
 
@@ -647,7 +656,10 @@ class PrismSoul:
         observed = [b for b in beliefs if b.source == "observed"]
         if observed:
             for b in observed:
-                lines.append(f"- [{b.belief_type}] {b.text} (confidence: {b.confidence:.2f}, obs: {b.observation_count})")
+                lines.append(
+                    f"- [{b.belief_type}] {b.text}"
+                    f" (confidence: {b.confidence:.2f}, obs: {b.observation_count})"
+                )
         else:
             lines.append("_None yet._")
 

@@ -6,25 +6,17 @@ Comprehensive tests for prism_soul.py and prism_identity_ceremony.py.
 from __future__ import annotations
 
 import json
-import time
-import uuid
 from unittest.mock import MagicMock
 
-import pytest
-
+from prism_identity_ceremony import (
+    IdentityCeremony,
+)
 from prism_soul import (
-    BeliefEdge,
     BeliefNode,
     PrismSoul,
     SoulLens,
     SoulSeed,
 )
-from prism_identity_ceremony import (
-    CEREMONY_QUESTIONS,
-    IdentityCeremony,
-    _QUESTION_ORDER,
-)
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -340,7 +332,7 @@ class TestPrismSoulLenses:
         soul.add_lens("Energy", "desc2")
         lenses = soul.list_lenses()
         assert len(lenses) == 2
-        names = {l.name for l in lenses}
+        names = {ln.name for ln in lenses}
         assert names == {"Focus", "Energy"}
 
     def test_record_observation(self, tmp_path):
@@ -718,7 +710,10 @@ class TestCeremonyWithLLM:
             "initial_beliefs": [
                 {"text": "I value building systems that empower people", "belief_type": "value", "confidence": 0.9},
                 {"text": "I tend to procrastinate on hard problems", "belief_type": "pattern", "confidence": 0.7},
-                {"text": "I prefer written communication over meetings", "belief_type": "preference", "confidence": 0.8},
+                {
+                    "text": "I prefer written communication over meetings",
+                    "belief_type": "preference", "confidence": 0.8,
+                },
                 {"text": "I work best in long uninterrupted sessions", "belief_type": "preference", "confidence": 0.85},
             ],
             "suggested_lenses": [
@@ -758,7 +753,7 @@ class TestCeremonyWithLLM:
         ceremony.run_from_answers(full_answers())
         lenses = soul.list_lenses()
         assert len(lenses) == 2
-        names = {l.name for l in lenses}
+        names = {ln.name for ln in lenses}
         assert "Focus Sessions" in names
         assert "Decision Confidence" in names
 

@@ -122,7 +122,10 @@ def build_agent_from_config(path: str = None) -> KDEAgent:
     cfg = _build_kde_config(agent_section)
 
     if "user" in raw:
-        agent = KDEAgent.setup(config_path=path, config=cfg) if path is None else KDEAgent.setup(profile=from_toml(path), config=cfg)
+        if path is None:
+            agent = KDEAgent.setup(config_path=path, config=cfg)
+        else:
+            agent = KDEAgent.setup(profile=from_toml(path), config=cfg)
     else:
         name = agent_section.get("name", "KDE User")
         role = _parse_role(agent_section.get("role", "athlete"))

@@ -344,10 +344,9 @@ Rules:
                         # Checkpoint step to horizon anchor
                         if _anchor_id is not None:
                             try:
-                                step_summary = (
-                                    f"Step {step_num} [{orig_step.logic if hasattr(orig_step, 'logic') else 'branch'}]: "
-                                    f"{(orig_step.result_out if hasattr(orig_step, 'result_out') else '')[:120]}"
-                                )
+                                _logic = orig_step.logic if hasattr(orig_step, "logic") else "branch"
+                                _out = (orig_step.result_out if hasattr(orig_step, "result_out") else "")[:120]
+                                step_summary = f"Step {step_num} [{_logic}]: {_out}"
                                 self._horizon.record_step(_anchor_id, step_summary)
                                 self._horizon.update_context(_anchor_id, step_count=step_num)
                             except Exception:

@@ -35,7 +35,10 @@ TEST_CASES = [
     },
     {
         "id":      "TC3",
-        "message": "Figure out whether I should invest in index funds or bonds given current market conditions, then schedule a review meeting",
+        "message": (
+            "Figure out whether I should invest in index funds or bonds given current"
+            " market conditions, then schedule a review meeting"
+        ),
         "expects": ["web_search", "domain_financial", "calendar_write"],
         "type":    "sequential_research",
     },
@@ -165,7 +168,10 @@ def make_mock_agent():
     """Mock agent._execute that returns plausible responses."""
     def _execute(intent, message, ctx):
         responses = {
-            "email_read":    "3 unread emails: [URGENT] Server down from Alice, Meeting notes from Bob, Newsletter from Carol",
+            "email_read": (
+                "3 unread emails: [URGENT] Server down from Alice,"
+                " Meeting notes from Bob, Newsletter from Carol"
+            ),
             "add_task":      "Added task: 'Follow up on server outage' (priority: high)",
             "web_search":    "Latest AI news: GPT-5 released, Claude 4 updates, Gemini new features",
             "calendar_read": "Today: 9am standup, 2pm AI strategy review, 4pm 1-1 with manager",

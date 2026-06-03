@@ -8,7 +8,6 @@ ORGAN_META = {
 
 def execute(intent: str, message: str, ctx: dict):
     import json
-    import re
     from collections import defaultdict
     from pathlib import Path
 

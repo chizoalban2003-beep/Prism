@@ -111,3 +111,19 @@ py-modules = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.ruff.lint.per-file-ignores]
+# HTML/SVG/JS embedded strings cannot be wrapped
+"prism_chat.py" = ["E501"]
+"kde_ui.py" = ["E501"]
+"prism_pwa.py" = ["E501"]
+# LLM prompt templates contain long lines that must not be reformatted
+"prism_chain.py" = ["E501"]
+"prism_chain_expert.py" = ["E501"]
+"prism_planner.py" = ["E501"]

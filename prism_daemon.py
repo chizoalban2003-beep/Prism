@@ -163,7 +163,7 @@ def _run_ceremony(agent):
         print("\n  Soul seed created.")
         print(f"  Values: {', '.join(seed.stated_values[:4])}")
         print(f"  Goals:  {', '.join(seed.stated_goals[:2])}")
-        print(f"\n  Saved to ~/.prism/soul.md — you can edit this at any time.")
+        print("\n  Saved to ~/.prism/soul.md — you can edit this at any time.")
         print("=" * 70 + "\n")
         return soul
 

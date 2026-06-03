@@ -410,6 +410,8 @@ kde --help
 ksa --help
 ```
 
+Run `python3 prism_daemon.py --ceremony` on first boot to create your soul seed
+
 ### Chat interface
 
 ```bash
@@ -579,6 +581,8 @@ python kde_cli.py server --port 8742
 | POST | `/horizon/goal/<id>/abandon` | Abandon goal `{"reason":"…"}` |
 | POST | `/horizon/goal/<id>/context` | Deposit facts into accumulated context `{key: value, …}` |
 | GET | `/organs` | List loaded organ intents and descriptions |
+| GET | `/organ_bus/history` | Recent organ bus call history |
+| GET | `/organ_bus/subscribers` | Active organ bus subscribers |
 
 ### Memory & Perception
 
@@ -687,7 +691,13 @@ PRISM/
 │   ├── prism_horizon.py        Cross-session long-horizon goal persistence (SQLite)
 │   ├── prism_organ_bus.py          LLM-mediated pub/sub bus between PRISM logic engines
 │   ├── prism_organ_bus_experiment.py  Experimental organ bus extensions
-│   └── organs/                 Cached synthesised organ modules (JSON, auto-populated)
+│   └── organs/                 Bundled organ modules
+│       ├── currency_convert.py     Currency conversion via live exchange rates
+│       ├── weather_check.py        Current weather for any city
+│       ├── finance_summary.py      Local CSV/JSON ledger summariser
+│       ├── document_read.py        Local document (markdown/txt) reader
+│       ├── meeting_brief.py        Pre-meeting brief from calendar details
+│       └── health_summary.py       Health metrics summariser (steps, sleep, HRV)
 │
 ├── Personal assistant
 │   ├── prism_email.py          IMAP/SMTP email reader and sender
@@ -718,7 +728,7 @@ PRISM/
 │   ├── domain_configs.py       Medical · Financial · Legal · HR · Supply Chain · Climate
 │   └── domain_validator.py     Expert-label accuracy validation
 │
-└── tests/                      992 pytest tests — all passing
+└── tests/                      1087 pytest tests — all passing
 ```
 
 ---
@@ -744,7 +754,7 @@ PRISM/
 
 ```bash
 python -m pytest tests/ -q
-# 992 tests pass in ~100 seconds
+# 1087 tests pass in ~100 seconds
 ```
 
 ---
@@ -829,6 +839,9 @@ All major gaps from the initial build have been bridged. The table below reflect
 | Token refresh for Google OAuth | **Working** | Auto-refresh via `google_creds.json` — stores `access_token`, `refresh_token`, `client_id`, `client_secret`, `expiry` |
 | Horizon goals | `prism_horizon.py` | **Working** — cross-session goal watching; say "watch for X when Y" in chat |
 | Organ registry | `prism_organ_loader.py` | **Working** — synthesised tools persist; say "what organs do you have" |
+| Identity layer | `prism_soul.py` | Working — belief graph, user-defined lenses, stated vs observed delta, LLM context injection |
+| Identity ceremony | `prism_identity_ceremony.py` | Working — 7-question LLM-facilitated onboarding, heuristic fallback |
+| Continuous daemon | `prism_daemon.py` | Working — systemd-compatible, OrganBus flush, horizon evaluation, --ceremony flag |
 
 ---
 

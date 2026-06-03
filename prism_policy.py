@@ -171,14 +171,16 @@ class PolicyEngine:
         if estimated_cost > allocation.per_action_limit:
             return (
                 self.Verdict.ESCALATE,
-                f"£{estimated_cost:.2f} exceeds your per-action limit of £{allocation.per_action_limit:.2f} for {category}.",
+                f"£{estimated_cost:.2f} exceeds your per-action limit"
+                f" of £{allocation.per_action_limit:.2f} for {category}.",
             )
 
         if estimated_cost <= allocation.auto_approve_below:
             self._log_spend(user, category, provider_name, estimated_cost, True)
             return (
                 self.Verdict.APPROVE,
-                f"Auto-approved: £{estimated_cost:.2f} for {provider_name} (under £{allocation.auto_approve_below:.2f} limit).",
+                f"Auto-approved: £{estimated_cost:.2f} for {provider_name}"
+                f" (under £{allocation.auto_approve_below:.2f} limit).",
             )
 
         return (

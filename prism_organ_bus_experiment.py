@@ -28,7 +28,6 @@ from unittest.mock import MagicMock
 
 from prism_organ_bus import HIGH, LOW, OrganBus, OrganSignal
 
-
 # ── Mock LLM router ───────────────────────────────────────────────────────────
 
 

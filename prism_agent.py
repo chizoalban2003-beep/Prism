@@ -715,7 +715,10 @@ class PrismAgent:
             profile = ctx.get("profile") or config.profiles[min(2, len(config.profiles) - 1)].name
             perception_factors = ctx.get("perception", {})
             user_context = {**perception_factors, **(ctx.get("user_factors", {}))}
-            factors = {factor.id: float(user_context.get(factor.id, ctx.get(factor.id, 0.5))) for factor in config.factors}
+            factors = {
+                factor.id: float(user_context.get(factor.id, ctx.get(factor.id, 0.5)))
+                for factor in config.factors
+            }
             diagnosis = DomainDecisionModel(config).evaluate(profile, factors)
             return domain_card(domain_key, diagnosis)
 

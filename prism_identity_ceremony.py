@@ -32,7 +32,10 @@ import json
 import logging
 import re
 import time
-from typing import Dict, List, Optional
+from typing import TYPE_CHECKING, Dict, List
+
+if TYPE_CHECKING:
+    from prism_soul import SoulSeed
 
 logger = logging.getLogger(__name__)
 
@@ -104,7 +107,6 @@ class IdentityCeremony:
     """Conversational identity ceremony that populates the soul seed."""
 
     def __init__(self, soul, llm_router=None):
-        from prism_soul import PrismSoul  # local import to avoid circular deps
         self._soul = soul
         self._llm_router = llm_router
         self._answers: Dict[str, str] = {}  # key -> answer
