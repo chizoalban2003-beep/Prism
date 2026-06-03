@@ -355,6 +355,136 @@ def test_bundled_currency_convert_loads():
     assert "currency_convert" in loader.known_intents()
 
 
+# ── ORGAN_POLICY ──────────────────────────────────────────────────────────────
+
+POLICY_ORGAN = textwrap.dedent("""
+    ORGAN_META = {
+        "intent":      "risky_organ",
+        "description": "an organ that does risky things",
+        "version":     "1.0",
+    }
+
+    ORGAN_POLICY = {
+        "risk_level":        "high",
+        "requires_approval": True,
+        "irreversible":      True,
+        "max_per_session":   2,
+    }
+
+    def execute(intent, message, ctx):
+        from prism_responses import text_card
+        return text_card("done", intent)
+""").strip()
+
+LOW_RISK_ORGAN = textwrap.dedent("""
+    ORGAN_META = {
+        "intent":      "safe_organ",
+        "description": "a safe read-only organ",
+        "version":     "1.0",
+    }
+
+    ORGAN_POLICY = {
+        "risk_level":        "low",
+        "requires_approval": False,
+        "irreversible":      False,
+        "max_per_session":   None,
+    }
+
+    def execute(intent, message, ctx):
+        from prism_responses import text_card
+        return text_card("safe", intent)
+""").strip()
+
+
+def _make_loader_with(*organs: tuple[str, str]) -> "tuple[OrganLoader, Path]":
+    import tempfile
+    d = tempfile.mkdtemp()
+    bundled = Path(d) / "bundled"
+    user    = Path(d) / "user"
+    bundled.mkdir()
+    user.mkdir()
+    for filename, code in organs:
+        _write_organ(bundled, filename, code)
+    return OrganLoader(bundled_dir=bundled, user_dir=user), Path(d)
+
+
+def test_organ_policy_loaded_from_module():
+    loader, _ = _make_loader_with(("risky_organ.py", POLICY_ORGAN))
+    policy = loader.get_organ_policy("risky_organ")
+    assert policy["risk_level"] == "high"
+    assert policy["requires_approval"] is True
+    assert policy["irreversible"] is True
+    assert policy["max_per_session"] == 2
+
+
+def test_organ_policy_returns_empty_for_no_declaration():
+    loader, _ = _make_loader_with(("test_organ.py", VALID_ORGAN))
+    policy = loader.get_organ_policy("test_organ")
+    assert policy == {}
+
+
+def test_organ_policy_returns_empty_for_unknown_intent():
+    loader, _ = _make_loader_with()
+    assert loader.get_organ_policy("nonexistent") == {}
+
+
+def test_low_risk_organ_policy_loaded():
+    loader, _ = _make_loader_with(("safe_organ.py", LOW_RISK_ORGAN))
+    policy = loader.get_organ_policy("safe_organ")
+    assert policy["risk_level"] == "low"
+    assert policy["requires_approval"] is False
+    assert policy["irreversible"] is False
+    assert policy["max_per_session"] is None
+
+
+def test_bundled_finance_summary_has_organ_policy():
+    loader = OrganLoader()
+    policy = loader.get_organ_policy("finance_summary")
+    assert policy != {}
+    assert policy.get("risk_level") == "low"
+
+
+def test_bundled_health_summary_has_organ_policy():
+    loader = OrganLoader()
+    policy = loader.get_organ_policy("health_summary")
+    assert policy != {}
+
+
+def test_bundled_document_read_has_organ_policy():
+    loader = OrganLoader()
+    policy = loader.get_organ_policy("document_read")
+    assert policy != {}
+
+
+def test_bundled_meeting_brief_has_organ_policy():
+    loader = OrganLoader()
+    policy = loader.get_organ_policy("meeting_brief")
+    assert policy != {}
+
+
+def test_bundled_policy_inspect_loads():
+    loader = OrganLoader()
+    assert "policy_inspect" in loader.known_intents()
+
+
+def test_bundled_policy_update_loads():
+    loader = OrganLoader()
+    assert "policy_update" in loader.known_intents()
+
+
+def test_policy_inspect_organ_policy_is_low_risk():
+    loader = OrganLoader()
+    policy = loader.get_organ_policy("policy_inspect")
+    assert policy.get("risk_level") == "low"
+
+
+def test_policy_update_organ_policy_requires_approval():
+    loader = OrganLoader()
+    policy = loader.get_organ_policy("policy_update")
+    assert policy.get("requires_approval") is True
+    assert policy.get("risk_level") == "medium"
+
+
 def test_bundled_organ_execute_is_callable():
     loader = OrganLoader()
     fn = loader.get("weather_check")

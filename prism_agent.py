@@ -333,6 +333,7 @@ class PrismAgent:
             soul               = getattr(self, '_soul', None),
         )
         self._organ_loader = OrganLoader(llm_router=self._router)
+        self._chain._organ_loader = self._organ_loader
         self._chain_expert = PrismChainExpert(
             llm_router    = self._router,
             policy_engine = self._policy,
@@ -1335,6 +1336,8 @@ class PrismAgent:
         organ_fn = self._organ_loader.get(intent)
         if organ_fn is not None:
             try:
+                ctx.setdefault("organ_loader", self._organ_loader)
+                ctx.setdefault("policy_engine", self._policy)
                 return organ_fn(intent, message, ctx)
             except Exception as exc:
                 return text_card(f"Organ '{intent}' failed: {exc}", intent)

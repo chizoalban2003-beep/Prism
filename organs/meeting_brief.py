@@ -5,6 +5,13 @@ ORGAN_META = {
     "version": "1.0",
 }
 
+ORGAN_POLICY = {
+    "risk_level": "low",
+    "requires_approval": False,
+    "irreversible": False,
+    "max_per_session": None,
+}
+
 
 def execute(intent: str, message: str, ctx: dict):
     import re

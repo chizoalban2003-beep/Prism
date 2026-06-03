@@ -105,6 +105,119 @@ def test_policy_node_clear_for_read_logic():
     assert note == ""
 
 
+# ── ORGAN_POLICY integration ──────────────────────────────────────────────────
+
+def test_policy_node_uses_organ_declared_high_risk():
+    from unittest.mock import MagicMock
+    loader = MagicMock()
+    loader.get_organ_policy.return_value = {
+        "risk_level": "high",
+        "requires_approval": False,
+        "irreversible": False,
+        "max_per_session": None,
+    }
+    c = _make_chain()
+    c._organ_loader = loader
+    note = c._policy_node("custom_action", "result", {})
+    assert "risk=high" in note
+
+def test_policy_node_flags_irreversible():
+    from unittest.mock import MagicMock
+    loader = MagicMock()
+    loader.get_organ_policy.return_value = {
+        "risk_level": "low",
+        "requires_approval": False,
+        "irreversible": True,
+        "max_per_session": None,
+    }
+    c = _make_chain()
+    c._organ_loader = loader
+    note = c._policy_node("delete_op", "deleted", {})
+    assert "irreversible" in note
+
+def test_policy_node_blocks_when_session_limit_hit():
+    from unittest.mock import MagicMock
+    loader = MagicMock()
+    loader.get_organ_policy.return_value = {
+        "risk_level": "low",
+        "requires_approval": False,
+        "irreversible": False,
+        "max_per_session": 2,
+    }
+    c = _make_chain()
+    c._organ_loader = loader
+    ctx = {"_policy_count_capped_action": 2}
+    note = c._policy_node("capped_action", "result", ctx)
+    assert "session limit" in note
+
+def test_policy_node_no_note_when_within_session_limit():
+    from unittest.mock import MagicMock
+    loader = MagicMock()
+    loader.get_organ_policy.return_value = {
+        "risk_level": "low",
+        "requires_approval": False,
+        "irreversible": False,
+        "max_per_session": 5,
+    }
+    c = _make_chain()
+    c._organ_loader = loader
+    ctx = {"_policy_count_capped_action": 1}
+    note = c._policy_node("capped_action", "result", ctx)
+    assert note == ""
+
+def test_policy_node_flags_requires_approval():
+    from unittest.mock import MagicMock
+    loader = MagicMock()
+    loader.get_organ_policy.return_value = {
+        "risk_level": "medium",
+        "requires_approval": True,
+        "irreversible": False,
+        "max_per_session": None,
+    }
+    c = _make_chain()
+    c._organ_loader = loader
+    note = c._policy_node("sensitive_action", "result", {})
+    assert "approval" in note
+
+def test_policy_node_approval_clears_when_ctx_approved():
+    from unittest.mock import MagicMock
+    loader = MagicMock()
+    loader.get_organ_policy.return_value = {
+        "risk_level": "medium",
+        "requires_approval": True,
+        "irreversible": False,
+        "max_per_session": None,
+    }
+    c = _make_chain()
+    c._organ_loader = loader
+    ctx = {"_approved_sensitive_action": True}
+    note = c._policy_node("sensitive_action", "result", ctx)
+    assert "approval" not in note
+
+def test_policy_node_low_risk_organ_no_note():
+    from unittest.mock import MagicMock
+    loader = MagicMock()
+    loader.get_organ_policy.return_value = {
+        "risk_level": "low",
+        "requires_approval": False,
+        "irreversible": False,
+        "max_per_session": None,
+    }
+    c = _make_chain()
+    c._organ_loader = loader
+    note = c._policy_node("safe_op", "result", {})
+    assert note == ""
+
+def test_policy_node_falls_back_to_legacy_when_no_organ_policy():
+    from unittest.mock import MagicMock
+    loader = MagicMock()
+    loader.get_organ_policy.return_value = {}  # no ORGAN_POLICY declared
+    c = _make_chain()
+    c._organ_loader = loader
+    note = c._policy_node("email_send", "sent", {})
+    assert "policy" in note.lower()  # legacy fallback fires
+
+
 # ── Full chain run ────────────────────────────────────────────────────────────
 
 def test_chain_completes_in_one_step():

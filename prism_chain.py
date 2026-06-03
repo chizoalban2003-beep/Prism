@@ -157,7 +157,8 @@ Rules:
                   interceptor_policy=None,
                   use_soft_logic: bool = True,
                   horizon_planner=None,
-                  soul=None):
+                  soul=None,
+                  organ_loader=None):
         self._router             = llm_router
         self._policy             = policy_engine
         self._push               = push
@@ -168,6 +169,7 @@ Rules:
         self._use_soft_logic     = use_soft_logic
         self._horizon            = horizon_planner
         self._soul               = soul
+        self._organ_loader       = organ_loader
 
         # Thread-safety note: _state_lock protects the internal results list
         # in _execute_branch. The append to state.steps happens in run() which
@@ -784,26 +786,61 @@ Rules:
 
     # ── Policy node ───────────────────────────────────────────────────────────
 
+    # Fallback set for organs that don't declare ORGAN_POLICY
+    _LEGACY_HIGH_RISK = frozenset({
+        "email_send", "browser_task", "device_task",
+        "send_push", "calendar_write", "autonomous",
+    })
+
     def _policy_node(self, logic: str, result: str, ctx: dict) -> str:
         """
         Check the logic result against policy.
         Returns a note string (empty = all clear).
-        High-risk logics get an extra annotation for the next LLM node.
+
+        Priority order:
+          1. Organ's own ORGAN_POLICY declaration (risk_level, requires_approval,
+             irreversible, max_per_session)
+          2. PolicyEngine.check_action() if available
+          3. Legacy HIGH_RISK fallback for organs with no ORGAN_POLICY
         """
-        HIGH_RISK = {"email_send", "browser_task", "device_task",
-                     "send_push", "calendar_write", "autonomous"}
-        if logic in HIGH_RISK:
-            return f"[policy: {logic} is an action logic — verify intent before repeating]"
+        notes: list[str] = []
+
+        # 1. Organ-declared policy
+        organ_policy: dict = {}
+        if self._organ_loader is not None:
+            try:
+                organ_policy = self._organ_loader.get_organ_policy(logic)
+            except Exception:
+                pass
+
+        if organ_policy:
+            risk = organ_policy.get("risk_level", "low")
+            if risk in ("high", "critical"):
+                notes.append(f"[policy: {logic} risk={risk} — verify intent before repeating]")
+            if organ_policy.get("irreversible"):
+                notes.append(f"[policy: {logic} is irreversible — cannot be undone]")
+            max_sess = organ_policy.get("max_per_session")
+            if max_sess is not None:
+                used = ctx.get(f"_policy_count_{logic}", 0)
+                if used >= max_sess:
+                    notes.append(f"[policy blocked: {logic} reached session limit of {max_sess}]")
+            if organ_policy.get("requires_approval") and not ctx.get(f"_approved_{logic}"):
+                notes.append(f"[policy: {logic} requires explicit user approval]")
+        elif logic in self._LEGACY_HIGH_RISK:
+            # No ORGAN_POLICY declared — fall back to hardcoded annotation
+            notes.append(f"[policy: {logic} is an action logic — verify intent before repeating]")
+
+        # 2. PolicyEngine
         if self._policy:
             try:
-                # If policy engine exposes a check method, use it
                 if hasattr(self._policy, "check_action"):
                     ok, note = self._policy.check_action(logic, ctx)
                     if not ok:
-                        return f"[policy blocked: {note}]"
+                        notes.append(f"[policy blocked: {note}]")
             except Exception:
                 pass
-        return ""
+
+        return "  ".join(notes)
 
     # ── Evaluator node ────────────────────────────────────────────────────────
 

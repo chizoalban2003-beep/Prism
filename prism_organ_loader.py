@@ -17,6 +17,15 @@ Organ interface
         "version":     "1.0",
     }
 
+    # Optional — declares risk level so the policy node is self-extending.
+    # Organs that omit this fall back to the legacy HIGH_RISK hardcoded set.
+    ORGAN_POLICY = {
+        "risk_level":        "low",      # "low" | "medium" | "high" | "critical"
+        "requires_approval": False,      # True → policy node flags before repeat
+        "irreversible":      False,      # True → extra warning in chain context
+        "max_per_session":   None,       # int → hard cap per session; None = unlimited
+    }
+
     def execute(intent: str, message: str, ctx: dict):
         from prism_responses import text_card
         ...
@@ -172,6 +181,14 @@ class OrganLoader:
         entry = self._organs.get(intent)
         return entry[0] if entry else None
 
+    def get_organ_policy(self, intent: str) -> dict:
+        """Return the ORGAN_POLICY dict for intent, or {} if not declared."""
+        entry = self._organs.get(intent)
+        if entry is None:
+            return {}
+        fn = entry[0]
+        return getattr(fn, "_organ_policy", {})
+
     def known_intents(self) -> dict[str, str]:
         """Return {intent: description} for every loaded organ."""
         return {k: v[1].get("description", k) for k, v in self._organs.items()}
@@ -265,7 +282,8 @@ class OrganLoader:
         if not callable(fn):
             logger.warning("[organ_loader] No execute() in %s", path.name)
             return None
-        fn._organ_meta = getattr(module, "ORGAN_META", {})  # type: ignore[attr-defined]
+        fn._organ_meta   = getattr(module, "ORGAN_META", {})    # type: ignore[attr-defined]
+        fn._organ_policy = getattr(module, "ORGAN_POLICY", {})  # type: ignore[attr-defined]
         return fn
 
     def _register(self, intent: str, fn: Callable, meta: dict):
