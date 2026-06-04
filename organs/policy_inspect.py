@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent": "policy_inspect",
     "description": "Show the declared risk policy (risk_level, approval, irreversible) for every loaded organ",
     "version": "1.0",
+    "capabilities": [],
 }
 
 ORGAN_POLICY = {

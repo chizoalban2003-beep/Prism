@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent": "calendar_write",
     "description": "Create a calendar event or find the next free slot from a natural-language request",
     "version": "1.0",
+    "capabilities": ["internet_write"],
 }
 
 ORGAN_POLICY = {

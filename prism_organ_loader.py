@@ -189,6 +189,14 @@ class OrganLoader:
         fn = entry[0]
         return getattr(fn, "_organ_policy", {})
 
+    def get_organ_capabilities(self, intent: str) -> list:
+        """Return the capabilities list declared in ORGAN_META, or [] if absent."""
+        entry = self._organs.get(intent)
+        if entry is None:
+            return []
+        fn = entry[0]
+        return list(getattr(fn, "_organ_meta", {}).get("capabilities", []))
+
     def known_intents(self) -> dict[str, str]:
         """Return {intent: description} for every loaded organ."""
         return {k: v[1].get("description", k) for k, v in self._organs.items()}
@@ -251,6 +259,20 @@ class OrganLoader:
         if not self._router:
             logger.warning("[organ_loader] No router — cannot synthesize %s", intent)
             return False
+
+        # L1 constitution: block synthesis of forbidden capabilities
+        try:
+            from prism_constitution import get_guard
+            guard = get_guard()
+            required = guard.required_capabilities(intent)
+            blocked = [c for c in required if not guard.may_synthesize(c)]
+            if blocked:
+                logger.warning(
+                    "[organ_loader] Synthesis blocked for %s — capabilities %s "
+                    "are forbidden by constitution", intent, blocked)
+                return False
+        except Exception:
+            pass
 
         prompt = _SYNTHESIS_PROMPT.format(intent=intent, message=message[:300])
         try:

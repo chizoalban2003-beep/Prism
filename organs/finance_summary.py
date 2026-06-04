@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent": "finance_summary",
     "description": "Summarise recent transactions from a local CSV or JSON ledger file",
     "version": "1.0",
+    "capabilities": ["internet_read"],
 }
 
 ORGAN_POLICY = {

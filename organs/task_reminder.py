@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent": "task_reminder",
     "description": "Show overdue and due-today reminders, or add a new reminder with an optional due date",
     "version": "1.0",
+    "capabilities": [],
 }
 
 ORGAN_POLICY = {

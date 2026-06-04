@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent":      "smart_home_control",
     "description": "control smart home devices via Home Assistant API (turn on/off, set state)",
     "version":     "1.0",
+    "capabilities": ["smart_home"],
 }
 
 ORGAN_POLICY = {

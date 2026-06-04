@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent":      "file_read",
     "description": "read a file from the filesystem and return its contents",
     "version":     "1.0",
+    "capabilities": ["filesystem_read"],
 }
 
 ORGAN_POLICY = {

@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent":      "file_write",
     "description": "write or overwrite content to a file at a given path",
     "version":     "1.0",
+    "capabilities": ["filesystem_write"],
 }
 
 ORGAN_POLICY = {

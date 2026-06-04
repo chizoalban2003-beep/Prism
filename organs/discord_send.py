@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent":      "discord_send",
     "description": "send a message to a Discord channel via webhook URL",
     "version":     "1.0",
+    "capabilities": ["internet_write"],
 }
 
 ORGAN_POLICY = {

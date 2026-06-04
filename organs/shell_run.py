@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent":      "shell_run",
     "description": "execute a shell command and return its output",
     "version":     "1.0",
+    "capabilities": ["subprocess"],
 }
 
 ORGAN_POLICY = {

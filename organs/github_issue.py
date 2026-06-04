@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent":      "github_issue",
     "description": "create a new GitHub issue or list open issues in a repo",
     "version":     "1.0",
+    "capabilities": ["internet_write"],
 }
 
 ORGAN_POLICY = {

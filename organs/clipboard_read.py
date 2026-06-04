@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent":      "clipboard_read",
     "description": "read and return the current system clipboard contents",
     "version":     "1.0",
+    "capabilities": ["filesystem_read", "system_ui"],
 }
 
 ORGAN_POLICY = {

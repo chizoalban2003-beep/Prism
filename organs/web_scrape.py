@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent":      "web_scrape",
     "description": "fetch and return readable text from a URL",
     "version":     "1.0",
+    "capabilities": ["internet_read"],
 }
 
 ORGAN_POLICY = {

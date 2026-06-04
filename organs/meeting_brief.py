@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent": "meeting_brief",
     "description": "Generate a pre-meeting brief from calendar event details and attendee names",
     "version": "1.0",
+    "capabilities": ["internet_read"],
 }
 
 ORGAN_POLICY = {

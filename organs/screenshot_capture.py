@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent":      "screenshot_capture",
     "description": "capture a screenshot and save it to ~/.prism/screenshots/",
     "version":     "1.0",
+    "capabilities": ["system_ui"],
 }
 
 ORGAN_POLICY = {

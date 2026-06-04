@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent":      "translate_text",
     "description": "translate text between languages using the MyMemory API",
     "version":     "1.0",
+    "capabilities": ["internet_read"],
 }
 
 ORGAN_POLICY = {

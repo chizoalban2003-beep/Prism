@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent": "health_summary",
     "description": "Summarise health metrics from a local JSON log (steps, sleep, HRV, weight)",
     "version": "1.0",
+    "capabilities": ["internet_read"],
 }
 
 ORGAN_POLICY = {

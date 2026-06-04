@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent":      "wikipedia_lookup",
     "description": "look up a topic on Wikipedia and return its summary",
     "version":     "1.0",
+    "capabilities": ["internet_read"],
 }
 
 ORGAN_POLICY = {

@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent": "email_send",
     "description": "Send an email to a recipient — extracts to/subject/body from the user's message",
     "version": "1.0",
+    "capabilities": ["internet_write"],
 }
 
 ORGAN_POLICY = {

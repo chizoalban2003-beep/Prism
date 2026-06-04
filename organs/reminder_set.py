@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent":      "reminder_set",
     "description": "set a reminder for a future time; fires to stdout and saves to JSON",
     "version":     "1.0",
+    "capabilities": ["notifications"],
 }
 
 ORGAN_POLICY = {

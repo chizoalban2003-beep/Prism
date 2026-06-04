@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent": "phone_call",
     "description": "Call or text a phone number — extracts number and message from the user's request",
     "version": "1.0",
+    "capabilities": ["telephony"],
 }
 
 ORGAN_POLICY = {

@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent":      "unit_convert",
     "description": "convert between units: length, weight, temperature, volume, speed",
     "version":     "1.0",
+    "capabilities": [],
 }
 
 ORGAN_POLICY = {

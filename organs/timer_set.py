@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent":      "timer_set",
     "description": "set a countdown timer that fires after a specified duration",
     "version":     "1.0",
+    "capabilities": ["notifications"],
 }
 
 ORGAN_POLICY = {

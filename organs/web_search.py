@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent":      "web_search",
     "description": "search the web using DuckDuckGo and return top results",
     "version":     "1.0",
+    "capabilities": ["internet_read"],
 }
 
 ORGAN_POLICY = {

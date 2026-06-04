@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent": "policy_update",
     "description": "Grant or revoke a user-level action allowance in the policy engine (e.g. allow email_send)",
     "version": "1.0",
+    "capabilities": [],
 }
 
 ORGAN_POLICY = {

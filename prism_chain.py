@@ -29,6 +29,9 @@ class ChainStep:
     duration_ms: float
     eval_score:  Optional[int] = None   # 1-5 from Evaluator node, None = not scored
     timestamp:   float = field(default_factory=time.time)
+    # LogicPolicy metadata — fed back into the next LLM node
+    organ_meta:  dict = field(default_factory=dict)
+    # {"risk_level": "low", "capabilities": [...], "irreversible": False, "constitution": "allowed"}
 
 
 @dataclass
@@ -315,10 +318,12 @@ Rules:
                 # Policy check on each branch; accumulate text for next LLM node
                 branch_text = ""
                 for br in branch_results:
-                    policy_note = self._policy_node(br.logic, br.result, base_ctx)
+                    policy_note   = self._policy_node(br.logic, br.result, base_ctx)
+                    _, br_lp_sum  = self._logicpolicy_meta(br.logic)
                     branch_text += (
                         f"\n\n[Branch {br.branch_id} — {br.logic}]\n"
                         f"Got: {br.result[:300]}"
+                        + (f"\nLogicPolicy: {br_lp_sum}" if br_lp_sum else "")
                         + (f"\nPolicy: {policy_note}" if policy_note else ""))
                     step = ChainStep(
                         step_num    = step_num,
@@ -427,6 +432,9 @@ Rules:
                 policy_note = self._policy_node(
                     decision.next_logic, logic_result, base_ctx)
 
+                # ── LOGICPOLICY META: capabilities + risk + constitution ───────
+                lp_meta, lp_summary = self._logicpolicy_meta(decision.next_logic)
+
                 # ── EVALUATOR NODE: quality gate ──────────────────────────────
                 eval_score, sufficient, gap = self._evaluator_node(
                     state.original, decision.next_logic, logic_result)
@@ -440,6 +448,7 @@ Rules:
                     policy_note = policy_note,
                     duration_ms = elapsed,
                     eval_score  = eval_score,
+                    organ_meta  = lp_meta,
                 )
                 state.steps.append(step)
                 if step_callback is not None:
@@ -459,12 +468,15 @@ Rules:
                     except Exception:
                         pass
                 state.eval_scores.append(eval_score)
-                # Accumulate: the growing context the next LLM node will see
+                # Accumulate: the growing context the next LLM node will see.
+                # lp_summary closes the loop: the LLM knows exactly what the
+                # previous organ was capable of and whether constitution allowed it.
                 eval_note = f"\nEval: {eval_score}/5" + (f" — still missing: {gap}" if gap else "")
                 state.accumulated += (
                     f"\n\n[Step {step_num} — {decision.next_logic}]\n"
                     f"Asked: {decision.next_message[:150]}\n"
                     f"Got: {logic_result[:350]}"
+                    + (f"\nLogicPolicy: {lp_summary}" if lp_summary else "")
                     + (f"\nPolicy: {policy_note}" if policy_note else "")
                     + eval_note
                 )
@@ -572,12 +584,15 @@ Rules:
 
         def _on_step(step):
             step_queue.put({
-                "event":  "step",
-                "step":   step.step_num,
-                "logic":  step.logic,
-                "result": step.result_out[:200],
-                "policy": step.policy_note or "",
-                "score":  step.eval_score,
+                "event":       "step",
+                "step":        step.step_num,
+                "logic":       step.logic,
+                "result":      step.result_out[:200],
+                "policy":      step.policy_note or "",
+                "score":       step.eval_score,
+                "risk":        step.organ_meta.get("risk_level", "low"),
+                "caps":        step.organ_meta.get("capabilities", []),
+                "constitution": step.organ_meta.get("constitution", "allowed"),
             })
 
         def _run():
@@ -921,6 +936,51 @@ Rules:
             return text.strip() or result[:400]
         except Exception:
             return result[:400]
+
+    # ── LogicPolicy metadata ──────────────────────────────────────────────────
+
+    def _logicpolicy_meta(self, logic: str) -> tuple[dict, str]:
+        """
+        Collect organ capabilities, risk level, and L1 constitution verdict.
+        Returns (meta_dict, compact_summary_string) to inject into accumulated state.
+
+        This is what closes the llm→(logic+logicpolicy)→policy→llm loop:
+        the summary string is appended to state.accumulated so the next LLM
+        node knows exactly what the previous action was capable of and whether
+        the constitution allowed it.
+        """
+        meta: dict = {
+            "risk_level":   "low",
+            "capabilities": [],
+            "irreversible": False,
+            "constitution": "allowed",
+        }
+        if self._organ_loader is None:
+            return meta, ""
+
+        try:
+            caps = self._organ_loader.get_organ_capabilities(logic)
+            pol  = self._organ_loader.get_organ_policy(logic)
+            meta["capabilities"] = caps
+            meta["risk_level"]   = pol.get("risk_level", "low") if pol else "low"
+            meta["irreversible"] = bool(pol.get("irreversible", False)) if pol else False
+
+            try:
+                from prism_constitution import get_guard
+                ok, reason = get_guard().check(logic, caps)
+                meta["constitution"] = "allowed" if ok else f"blocked({reason[:40]})"
+            except Exception:
+                pass
+        except Exception:
+            pass
+
+        parts = [f"risk={meta['risk_level']}"]
+        if meta["capabilities"]:
+            parts.append(f"caps=[{', '.join(meta['capabilities'])}]")
+        if meta["irreversible"]:
+            parts.append("irreversible=true")
+        parts.append(f"L1={meta['constitution']}")
+        return meta, "  ".join(parts)
 
     # ── Policy node ───────────────────────────────────────────────────────────
 

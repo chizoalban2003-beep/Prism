@@ -1,0 +1,88 @@
+# PRISM L1 Constitution — immutable at runtime (never hot-reloaded)
+# This file defines absolute limits that no L2 policy or user instruction can override.
+version: "1.0"
+
+# ── Capability registry ────────────────────────────────────────────────────────
+capabilities:
+  internet_read:
+    description: "Read from the internet (web pages, public APIs)"
+    risk: low
+  internet_write:
+    description: "Post, send, or publish to external services"
+    risk: medium
+  filesystem_read:
+    description: "Read local files and clipboard"
+    risk: low
+  filesystem_write:
+    description: "Write or modify local files"
+    risk: medium
+  subprocess:
+    description: "Execute system commands"
+    risk: critical
+  telephony:
+    description: "Make phone calls or send SMS"
+    risk: high
+  system_ui:
+    description: "Interact with system UI (screenshot, clipboard, media control)"
+    risk: low
+  notifications:
+    description: "Send push notifications or schedule reminders"
+    risk: low
+  smart_home:
+    description: "Control smart home devices (lights, locks, thermostat)"
+    risk: medium
+
+# ── Absolute limits — cannot be overridden by L2 or user instruction ──────────
+absolute_limits:
+  max_organs_per_session: 200
+  max_synthesis_per_session: 10
+  # Synthesized organs may never claim these capabilities (too dangerous to auto-generate)
+  never_synthesize_capabilities:
+    - subprocess
+    - telephony
+  data_retention_days: 90
+  # These intents must never be logged to conversation history
+  never_log_intents:
+    - email_send
+    - phone_call
+
+# ── Capability requirements per intent ────────────────────────────────────────
+# Organs that declare capabilities in ORGAN_META must match these.
+# If an organ claims a capability not listed here, it is allowed (additive).
+# If an intent is listed here and the organ does NOT declare the required
+# capability, execution is blocked and synthesis is offered instead.
+capability_requirements:
+  shell_run:            [subprocess]
+  phone_call:           [telephony]
+  file_write:           [filesystem_write]
+  file_read:            [filesystem_read]
+  document_read:        [filesystem_read]
+  clipboard_read:       [filesystem_read, system_ui]
+  note_append:          [filesystem_write]
+  discord_send:         [internet_write]
+  telegram_send:        [internet_write]
+  github_issue:         [internet_write]
+  email_send:           [internet_write]
+  calendar_write:       [internet_write]
+  smart_home_control:   [smart_home]
+  web_search:           [internet_read]
+  web_scrape:           [internet_read]
+  wikipedia_lookup:     [internet_read]
+  news_headlines:       [internet_read]
+  weather_check:        [internet_read]
+  currency_convert:     [internet_read]
+  translate_text:       [internet_read]
+  finance_summary:      [internet_read]
+  health_summary:       [internet_read]
+  meeting_brief:        [internet_read]
+  screenshot_capture:   [system_ui]
+  spotify_control:      [system_ui]
+  reminder_set:         [notifications]
+  timer_set:            [notifications]
+  # Safe — no special capabilities needed
+  unit_convert:         []
+  qr_generate:          []
+  task_reminder:        []
+  policy_audit:         []
+  policy_update:        []
+  policy_inspect:       []

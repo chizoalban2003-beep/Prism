@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent": "document_read",
     "description": "Read and summarise a local document (markdown, txt, or plain text)",
     "version": "1.0",
+    "capabilities": ["filesystem_read"],
 }
 
 ORGAN_POLICY = {

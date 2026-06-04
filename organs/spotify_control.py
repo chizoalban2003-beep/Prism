@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent":      "spotify_control",
     "description": "control Spotify playback: play, pause, next, previous, or volume",
     "version":     "1.0",
+    "capabilities": ["system_ui"],
 }
 
 ORGAN_POLICY = {

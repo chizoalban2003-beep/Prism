@@ -384,6 +384,17 @@ class PrismAgent:
         )
         self._organ_loader = OrganLoader(llm_router=self._router)
         self._chain._organ_loader = self._organ_loader
+
+        # L1 Constitution guard + Bud execution manager
+        try:
+            from prism_constitution import ConstitutionGuard
+            from prism_bud_manager import BudManager
+            self._constitution = ConstitutionGuard()
+            self._bud_mgr = BudManager(constitution_guard=self._constitution)
+        except Exception as e:
+            logger.warning("Constitution/BudManager not available: %s", e)
+            self._constitution = None
+            self._bud_mgr = None
         self._chain_expert = PrismChainExpert(
             llm_router    = self._router,
             policy_engine = self._policy,
@@ -1249,6 +1260,10 @@ class PrismAgent:
                 organ_fn = self._organ_loader.get("web_search")
                 if organ_fn is not None:
                     try:
+                        if self._bud_mgr is not None:
+                            caps = self._organ_loader.get_organ_capabilities("web_search")
+                            handle = self._bud_mgr.spawn("web_search", message, ctx, caps)
+                            return self._bud_mgr.execute(handle, organ_fn)
                         return organ_fn("web_search", message, ctx)
                     except Exception:
                         pass
@@ -1686,7 +1701,19 @@ class PrismAgent:
                 _tw.setdefault("from_number", _os.environ.get("TWILIO_FROM", ""))
                 ctx.setdefault("twilio_config", _tw)
                 ctx.setdefault("contacts", getattr(self, "_contacts", None))
-                # Hard approval gate — block irreversible/requires_approval organs
+
+                # L1 Constitution check — validate organ capabilities against L1 rules
+                if self._constitution is not None:
+                    caps = self._organ_loader.get_organ_capabilities(intent)
+                    ok, reason = self._constitution.check(intent, caps)
+                    if not ok:
+                        logger.warning("[constitution] Blocked %s: %s", intent, reason)
+                        return text_card(
+                            f"This action is restricted by PRISM's constitution.\n\n{reason}",
+                            f"Blocked — {intent}",
+                        )
+
+                # L2 Hard approval gate — block irreversible/requires_approval organs
                 if not ctx.get(f"_approved_{intent}"):
                     policy = self._organ_loader.get_organ_policy(intent)
                     if policy.get("requires_approval"):
@@ -1703,20 +1730,56 @@ class PrismAgent:
                             f"Say **yes** or **approve** to confirm, or **cancel** to abort.",
                             f"Approval required — {intent}",
                         )
-                return organ_fn(intent, message, ctx)
+
+                # Execute via BudManager (scoped context, token lifecycle)
+                if self._bud_mgr is not None:
+                    caps = self._organ_loader.get_organ_capabilities(intent)
+                    handle = self._bud_mgr.spawn(intent, message, ctx, caps)
+                    try:
+                        return self._bud_mgr.execute(handle, organ_fn)
+                    except Exception as exc:
+                        return text_card(f"Organ '{intent}' failed: {exc}", intent)
+                else:
+                    return organ_fn(intent, message, ctx)
             except Exception as exc:
                 return text_card(f"Organ '{intent}' failed: {exc}", intent)
 
         # Unknown intent — attempt synthesis before falling back to autonomous
         if intent not in {"autonomous", "approve_pending"}:
-            logger.info("[agent] Unknown intent '%s' — attempting organ synthesis", intent)
-            if self._organ_loader.synthesize(intent, message):
-                organ_fn = self._organ_loader.get(intent)
-                if organ_fn is not None:
-                    try:
-                        return organ_fn(intent, message, ctx)
-                    except Exception as exc:
-                        return text_card(f"Synthesized organ '{intent}' failed: {exc}", intent)
+            # Check L1 synthesis limit
+            synthesis_ok = (
+                self._bud_mgr is None or self._bud_mgr.synthesis_allowed()
+            )
+            if synthesis_ok:
+                logger.info("[agent] Unknown intent '%s' — attempting organ synthesis", intent)
+                if self._organ_loader.synthesize(intent, message):
+                    organ_fn = self._organ_loader.get(intent)
+                    if organ_fn is not None:
+                        if self._bud_mgr is not None:
+                            self._bud_mgr.record_synthesis()
+                        try:
+                            caps = self._organ_loader.get_organ_capabilities(intent)
+                            if self._bud_mgr is not None:
+                                handle = self._bud_mgr.spawn(intent, message, ctx, caps)
+                                return self._bud_mgr.execute(handle, organ_fn)
+                            return organ_fn(intent, message, ctx)
+                        except Exception as exc:
+                            return text_card(
+                                f"Synthesized organ '{intent}' failed: {exc}", intent)
+                else:
+                    # Synthesis failed — explain what PRISM would need
+                    router = getattr(self, '_router', None)
+                    if router is None:
+                        return text_card(
+                            f"I don't have a built-in handler for '{intent}'.\n\n"
+                            "To build this capability automatically, connect an LLM "
+                            "(Ollama or Claude API key in prism_config.toml). "
+                            "PRISM will synthesize a new organ, validate it, and "
+                            "register it permanently for future sessions.",
+                            f"Capability not found — {intent}",
+                        )
+            else:
+                logger.warning("[agent] Synthesis limit reached for this session")
 
         return self._handle_unknown(intent, message, ctx)
 

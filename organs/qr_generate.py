@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent":      "qr_generate",
     "description": "generate a QR code for text or a URL, as ASCII art or PNG",
     "version":     "1.0",
+    "capabilities": [],
 }
 
 ORGAN_POLICY = {

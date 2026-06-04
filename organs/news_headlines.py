@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent":      "news_headlines",
     "description": "fetch and display the latest news headlines from BBC RSS",
     "version":     "1.0",
+    "capabilities": ["internet_read"],
 }
 
 ORGAN_POLICY = {

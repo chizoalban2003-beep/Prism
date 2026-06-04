@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent":      "telegram_send",
     "description": "send a Telegram message using a bot token and chat ID",
     "version":     "1.0",
+    "capabilities": ["internet_write"],
 }
 
 ORGAN_POLICY = {

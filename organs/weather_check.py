@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent":      "weather_check",
     "description": "fetches current weather conditions for a city or location",
     "version":     "1.0",
+    "capabilities": ["internet_read"],
 }
 
 

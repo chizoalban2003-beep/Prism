@@ -5,6 +5,7 @@ ORGAN_META = {
     "intent":      "currency_convert",
     "description": "converts an amount between currencies using live exchange rates",
     "version":     "1.0",
+    "capabilities": ["internet_read"],
 }
 
 

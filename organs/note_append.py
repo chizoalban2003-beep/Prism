@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent":      "note_append",
     "description": "save a note to the PRISM notes file with a timestamp",
     "version":     "1.0",
+    "capabilities": ["filesystem_write"],
 }
 
 ORGAN_POLICY = {

@@ -3,6 +3,7 @@ ORGAN_META = {
     "intent": "policy_audit",
     "description": "Show a time-ordered audit log of all policy flags, blocked actions, and spend approvals",
     "version": "1.0",
+    "capabilities": [],
 }
 
 ORGAN_POLICY = {
