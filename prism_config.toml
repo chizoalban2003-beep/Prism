@@ -77,9 +77,14 @@ github_repo    = ""
 linear_api_key = ""
 
 [llm]
-claude_api_key = ""   # get from console.anthropic.com — used as fallback when Ollama unavailable
-preferred      = ""
+# Run `python3 prism_setup_llm.py` or open http://localhost:8742/settings/llm to configure
+preferred      = ""          # "ollama/mistral" | "claude" | "openai" | "openai_compat" | ""=auto
 ollama_host    = "http://localhost:11434"
+ollama_model   = "mistral"   # any model you have pulled: llama3, deepseek-r1, qwen, etc.
+claude_api_key = ""          # get from console.anthropic.com  (or set ANTHROPIC_API_KEY)
+openai_api_key = ""          # get from platform.openai.com    (or set OPENAI_API_KEY)
+openai_host    = "https://api.openai.com"   # change for Groq/Together/LM Studio/Gemini
+fallback       = []          # e.g. ["ollama/mistral", "claude"] — ordered fallback chain
 
 [voice]
 enabled     = true

@@ -301,6 +301,8 @@ def main():
     parser = argparse.ArgumentParser(description="PRISM Personal Intelligence Daemon")
     parser.add_argument("--ceremony", action="store_true",
                         help="Run the identity ceremony before starting")
+    parser.add_argument("--setup-llm", action="store_true",
+                        help="Run the LLM setup wizard and exit")
     parser.add_argument("--port", type=int,
                         default=int(os.environ.get("PRISM_PORT", 8742)))
     parser.add_argument("--host",
@@ -308,6 +310,11 @@ def main():
     parser.add_argument("--no-server", action="store_true",
                         help="Run daemon without the HTTP server")
     args = parser.parse_args()
+
+    if args.setup_llm:
+        from prism_setup_llm import run_wizard
+        run_wizard()
+        sys.exit(0)
 
     logger.info("PRISM daemon starting (pid=%d)", os.getpid())
 

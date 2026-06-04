@@ -674,6 +674,11 @@ class KDEHandler(BaseHTTPRequestHandler):
                     return
                 self._json_response(self.llm_router.status_summary())
 
+            elif path == "/settings/llm":
+                from prism_settings_llm import get_llm_settings_html
+                self._respond(get_llm_settings_html().encode("utf-8"), 200,
+                              "text/html; charset=utf-8")
+
             elif path == "/tasks":
                 if self.task_queue is None:
                     self._json_response({"tasks": [], "count": 0, "note": "Task queue not initialised"})
@@ -1644,6 +1649,48 @@ class KDEHandler(BaseHTTPRequestHandler):
                 h.update_context(gid, **facts)
                 self._json_response({"ok": True, "goal_id": gid,
                                      "context_keys": list(facts.keys())})
+
+            elif path == "/settings/llm":
+                from prism_settings_llm import write_llm_config, test_provider as _tp
+                p   = body.get("provider", "")
+                key = body.get("key", "")
+                host= body.get("host", "")
+                model = body.get("model", "")
+                updates: dict = {}
+                if p == "ollama":
+                    updates = {"ollama_host": host or "http://localhost:11434",
+                               "ollama_model": model or "mistral",
+                               "preferred": f"ollama/{model or 'mistral'}"}
+                elif p == "claude":
+                    updates = {"claude_api_key": key, "preferred": "claude"}
+                elif p == "openai":
+                    updates = {"openai_api_key": key,
+                               "openai_host": "https://api.openai.com",
+                               "preferred": "openai"}
+                elif p == "openai_compat":
+                    updates = {"openai_api_key": key, "openai_host": host,
+                               "preferred": "openai_compat"}
+                if updates:
+                    write_llm_config(updates)
+                    if self.llm_router:
+                        self.llm_router._config.update(updates)
+                        self.llm_router._preferred = updates.get("preferred", "")
+                        self.llm_router._discovered = False
+                    self._json_response({"ok": True,
+                                         "message": f"{p} config saved. Restart for full effect.",
+                                         "preferred": updates.get("preferred", "")})
+                else:
+                    self._error("Unknown provider or missing fields", 400)
+
+            elif path == "/settings/llm/test":
+                from prism_settings_llm import test_provider as _tp
+                result = _tp(
+                    provider = body.get("provider", ""),
+                    key      = body.get("key", ""),
+                    host     = body.get("host", ""),
+                    model    = body.get("model", ""),
+                )
+                self._json_response(result)
 
             else:
                 self._error(f"Unknown route: {path}", 404)

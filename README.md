@@ -462,19 +462,48 @@ Falls back gracefully when no backend is installed — PRISM remains fully funct
 
 ---
 
-## Claude API key setup
+## LLM Setup
 
-PRISM uses Ollama (local) by default and falls back to Claude API when Ollama is unavailable or returns empty:
+PRISM needs an LLM for its reasoning chains, organ routing, and synthesis. Three ways to connect one:
 
-1. Get an API key from [console.anthropic.com](https://console.anthropic.com)
-2. Add to `prism_config.toml`:
+### Option A — CLI wizard (recommended for first boot)
+
+```bash
+python3 prism_setup_llm.py
+# or
+python3 prism_daemon.py --setup-llm
+```
+
+Auto-detects Ollama, Claude API, and OpenAI. Presents a numbered menu, tests the connection, and writes `prism_config.toml` in one step.
+
+### Option B — Web settings page
+
+With the server running, open **http://localhost:8742/settings/llm** — a settings page with provider cards (Ollama, Claude, OpenAI, OpenAI-compatible). Click **Test**, then **Save & use**. No restart required for provider switching.
+
+### Option C — Edit `prism_config.toml` directly
 
 ```toml
 [llm]
-claude_api_key = "sk-ant-..."
+# Auto-detect: leave preferred blank and PRISM picks the best available
+preferred      = ""           # "ollama/mistral" | "claude" | "openai" | "openai_compat"
+ollama_host    = "http://localhost:11434"
+ollama_model   = "mistral"    # any pulled model: llama3, deepseek-r1, qwen, phi, etc.
+claude_api_key = "sk-ant-..."  # console.anthropic.com  (or ANTHROPIC_API_KEY env var)
+openai_api_key = "sk-..."      # platform.openai.com    (or OPENAI_API_KEY env var)
+openai_host    = "https://api.openai.com"  # or Groq/Together/LM Studio/Gemini endpoint
+fallback       = ["ollama/mistral", "claude"]  # ordered fallback chain
 ```
 
-Or set `ANTHROPIC_API_KEY` environment variable.
+### Supported providers
+
+| Provider | How | Notes |
+|---|---|---|
+| **Ollama** (local) | `ollama pull mistral` | Free, private, no key needed |
+| **Claude** (Anthropic) | API key | Best reasoning quality |
+| **OpenAI** | API key | GPT-4o, GPT-4o-mini |
+| **OpenAI-compatible** | API key + URL | Groq · Together · LM Studio · llama.cpp · Gemini · Mistral AI |
+
+PRISM always falls back to stdlib-only mode if no LLM is available — routing, organ execution, and approval gates still work; only LLM-dependent steps (chain synthesis, complex planning) are skipped.
 
 ---
 

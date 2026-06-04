@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import time
 import urllib.request
@@ -275,12 +276,21 @@ class PrismAgent:
                 pass
         self._user = self._config.get("user", {}).get("name", "default")
 
-        # Build LLMRouter with claude_api_key from config or constructor arg
-        _llm_cfg = self._config.get("llm", {})
-        _claude_key_cfg = (_llm_cfg.get("claude_api_key", "")
-                           or self._claude_key or "")
-        self._router = LLMRouter.from_config(
-            claude_api_key=_claude_key_cfg) if _claude_key_cfg else LLMRouter.from_config()
+        # Build LLMRouter from local prism_config.toml [llm] section
+        _llm_cfg = dict(self._config.get("llm", {}))
+        if self._claude_key:
+            _llm_cfg["claude_api_key"] = self._claude_key
+        # Env vars override config keys
+        if not _llm_cfg.get("claude_api_key"):
+            _llm_cfg["claude_api_key"] = os.environ.get("ANTHROPIC_API_KEY", "")
+        if not _llm_cfg.get("openai_api_key"):
+            _llm_cfg["openai_api_key"] = os.environ.get("OPENAI_API_KEY", "")
+        self._router = LLMRouter(
+            preferred   = _llm_cfg.get("preferred", ""),
+            fallback    = _llm_cfg.get("fallback", []),
+            ollama_host = _llm_cfg.get("ollama_host", "http://localhost:11434"),
+            config      = _llm_cfg,
+        )
 
         self._queue  = TaskQueue()
         self._planner = PrismPlanner(
