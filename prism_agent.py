@@ -63,6 +63,8 @@ class PrismAgent:
          r"bitcoin|ethereum|crypto (?:price|market)|coin price|"
          r"(?:price|value) of (?:bitcoin|ethereum|[A-Z]{2,5})\b",
          "web_search"),
+        # News must precede plan — "today's headlines" contains "today"
+        (r"news|headlines|top stories|latest stories|breaking news", "news_headlines"),
         (r"(?!.*\bto (?:french|spanish|german|japanese|chinese|arabic|russian|hindi|italian"
          r"|portuguese)\b)(?:plan|morning|daily|today|schedule)", "plan"),
         (r"how (?:do|can|should) i|plan (?:for|to)|strategy for|help me (?:with|plan)|"
@@ -209,7 +211,11 @@ class PrismAgent:
         (r"translate|translation|in (?:spanish|french|german|italian|portuguese|chinese|japanese|arabic|russian|hindi)",
          "translate_text"),
         (r"(?:convert|exchange|how much) .* (?:usd|eur|gbp|jpy|cad|aud|chf|cny|currency)|"
-         r"(?:usd|eur|gbp|jpy|cad|aud|chf|cny) (?:to|in|into)",
+         r"(?:usd|eur|gbp|jpy|cad|aud|chf|cny) (?:to|in|into)|"
+         r"(?:dollar|euro|pound|yen|yuan|franc|rupee|peso|won|ruble|lira|krona|"
+         r"baht|ringgit|dirham|real|shekel|zloty|forint|koruna|krone|dinar|"
+         r"bitcoin|satoshi|ethereum) (?:to|in|into)|"
+         r"(?:convert|exchange) .* (?:dollar|euro|pound|yen|yuan|franc|rupee)",
          "currency_convert"),
         (r"(?:convert|how many|how much) .* (?:to|in|into)|"
          r"(?:km|miles|kg|lbs|celsius|fahrenheit|meters?|feet|inches?|liters?|gallons?) (?:to|in|into)",

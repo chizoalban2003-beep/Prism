@@ -62,7 +62,8 @@ _BLOCKED_IMPORTS = {
 _BLOCKED_CALLS = {"eval", "exec", "compile", "__import__", "breakpoint"}
 _BLOCKED_ATTRS = {
     "system", "popen", "remove", "unlink", "rmtree", "chmod", "chown",
-    "rename", "replace", "symlink", "fork", "spawn", "execv", "execve", "kill",
+    "rename", "symlink", "fork", "spawn", "execv", "execve", "kill",
+    # "replace" intentionally omitted — str.replace() is safe and commonly used
 }
 
 

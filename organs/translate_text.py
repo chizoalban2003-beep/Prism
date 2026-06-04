@@ -28,31 +28,43 @@ _LANG_CODES = {
 def _parse_translation_request(message: str):
     """Return (text, source_lang_code, target_lang_code)."""
     import re
-    # Pattern: translate "text" from LANG to LANG
+    # Build a pattern that anchors known language names
+    lang_names = "|".join(sorted(_LANG_CODES.keys(), key=len, reverse=True))
+
+    # Pattern 1: translate TEXT from LANG to LANG
     m = re.search(
-        r'translate\s+["\']?(.+?)["\']?\s+from\s+(\w+)\s+to\s+(\w+)',
+        rf'translate\s+["\']?(.+?)["\']?\s+from\s+({lang_names})\s+(?:in)?to\s+({lang_names})',
         message, re.IGNORECASE,
     )
     if m:
-        text = m.group(1).strip()
+        text = m.group(1).strip().strip("'\"")
         src = _LANG_CODES.get(m.group(2).lower(), m.group(2).lower()[:2])
         tgt = _LANG_CODES.get(m.group(3).lower(), m.group(3).lower()[:2])
         return text, src, tgt
 
-    # Pattern: translate "text" to LANG (auto-detect source)
+    # Pattern 2: translate TEXT into/to KNOWN_LANG — anchor language to end of string
     m = re.search(
-        r'translate\s+["\']?(.+?)["\']?\s+(?:in)?to\s+(\w+)',
+        rf'translate\s+["\']?(.+?)["\']?\s+(?:in)?to\s+({lang_names})\s*$',
         message, re.IGNORECASE,
     )
     if m:
-        text = m.group(1).strip()
+        text = m.group(1).strip().strip("'\"")
         tgt = _LANG_CODES.get(m.group(2).lower(), m.group(2).lower()[:2])
         return text, "autodetect", tgt
 
-    # Fallback: everything after "translate" is text, target defaults to English
+    # Pattern 3: fallback — greedy match, last word may be a language name
     m = re.search(r'translate\s+(.+)', message, re.IGNORECASE)
     if m:
-        return m.group(1).strip(), "autodetect", "en"
+        rest = m.group(1).strip()
+        # Check if the last word is a known language
+        last_word = rest.rsplit(None, 1)[-1].lower() if rest else ""
+        if last_word in _LANG_CODES and len(rest.split()) > 1:
+            # Strip trailing "to LANG" or "into LANG"
+            text = re.sub(rf'\s+(?:in)?to\s+{re.escape(last_word)}\s*$', '',
+                          rest, flags=re.IGNORECASE).strip()
+            tgt = _LANG_CODES[last_word]
+            return text, "autodetect", tgt
+        return rest, "autodetect", "en"
 
     return message.strip(), "autodetect", "en"
 

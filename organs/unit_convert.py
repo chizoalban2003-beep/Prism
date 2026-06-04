@@ -90,23 +90,48 @@ def _convert_temperature(value: float, src: str, tgt: str) -> float:
 _TEMP_TOKENS = {"c", "celsius", "°c", "f", "fahrenheit", "°f", "k", "kelvin"}
 
 
+# Compound unit aliases → canonical token (must appear before _parse)
+_COMPOUND_ALIASES: dict[str, str] = {
+    "miles per hour": "mph", "mile per hour": "mph",
+    "kilometers per hour": "km/h", "kilometres per hour": "km/h",
+    "kilometer per hour": "km/h", "kilometre per hour": "km/h",
+    "metres per second": "m/s", "meters per second": "m/s",
+    "metre per second": "m/s", "meter per second": "m/s",
+    "feet per second": "ft/s", "foot per second": "ft/s",
+    "knots": "knot",
+    "square metre": "m²", "square meter": "m²", "square metres": "m²",
+    "square foot": "ft²", "square feet": "ft²",
+    "cubic metre": "m³", "cubic meter": "m³",
+}
+
+
+def _normalise(message: str) -> str:
+    """Replace compound unit phrases with their canonical short form."""
+    import re
+    msg = message.lower()
+    for phrase, short in sorted(_COMPOUND_ALIASES.items(), key=lambda x: -len(x[0])):
+        msg = re.sub(r'\b' + re.escape(phrase) + r'\b', short, msg)
+    return msg
+
+
 def _parse(message: str):
     """Return (value, src_unit, tgt_unit) or None."""
     import re
+    msg = _normalise(message)
     # "X unit1 to unit2" or "convert X unit1 to unit2" or "X unit1 in unit2"
     m = re.search(
         r'(\d+(?:\.\d+)?)\s+'
-        r'([\w/°]+(?:\s+\w+)?)\s+'
+        r'([\w/°²³]+(?:\s+\w+)?)\s+'
         r'(?:to|in|into|as)\s+'
-        r'([\w/°]+(?:\s+\w+)?)',
-        message, re.IGNORECASE,
+        r'([\w/°²³]+(?:\s+\w+)?)',
+        msg, re.IGNORECASE,
     )
     if m:
         return float(m.group(1)), m.group(2).strip(), m.group(3).strip()
     # "how many unit2 in N unit1" — e.g. "how many liters in 3 gallons"
     m2 = re.search(
-        r'how many\s+([\w/°]+(?:\s+\w+)?)\s+in\s+(\d+(?:\.\d+)?)\s+([\w/°]+(?:\s+\w+)?)',
-        message, re.IGNORECASE,
+        r'how many\s+([\w/°²³]+(?:\s+\w+)?)\s+in\s+(\d+(?:\.\d+)?)\s+([\w/°²³]+(?:\s+\w+)?)',
+        msg, re.IGNORECASE,
     )
     if m2:
         return float(m2.group(2)), m2.group(3).strip(), m2.group(1).strip()
