@@ -16,8 +16,10 @@ ORGAN_POLICY = {
 def _extract_query(message: str) -> str:
     import re
     for pat in [
-        r'(?:search(?:\s+for)?|look\s+up|find|google)[:\s]+(.+)',
-        r'(?:what\s+is|who\s+is|how\s+(?:do|does|to))\s+(.+)',
+        r'search\s+(?:the\s+)?(?:web|internet|online)\s+for\s+(.+)',
+        r'(?:search\s+for|look\s+up|find\s+(?:out|info|information)\s+(?:about|on)|google)[:\s]+(.+)',
+        r'(?:what\s+is|who\s+is|where\s+is|when\s+(?:did|does|is)|how\s+(?:do|does|to))\s+(.+)',
+        r'(?:research|find)\s+(.+)',
     ]:
         m = re.search(pat, message, re.IGNORECASE)
         if m:
@@ -68,16 +70,19 @@ def execute(intent: str, message: str, ctx: dict):
     results = []
     # DDG Lite wraps results in <a class="result-link"> and <td class="result-snippet">
     link_pattern = re.compile(
-        r'<a[^>]+class="result-link"[^>]*href="([^"]+)"[^>]*>(.+?)</a>',
+        r"""href=["'](https?://[^"']+)["']\s+class=["']result-link["']>(.+?)</a>"""
+        r"""|class=["']result-link["']\s+href=["'](https?://[^"']+)["']>(.+?)</a>""",
         re.IGNORECASE | re.DOTALL,
     )
     snippet_pattern = re.compile(
-        r'class="result-snippet"[^>]*>(.+?)</td>',
+        r"""class=["']result-snippet["'][^>]*>(.+?)</td>""",
         re.IGNORECASE | re.DOTALL,
     )
     links = link_pattern.findall(html)
     snippets = [_strip_tags(s) for s in snippet_pattern.findall(html)]
 
+    # Normalise: each match has 4 groups (two alternations); pick the non-empty pair
+    links = [(g[0] or g[2], g[1] or g[3]) for g in links]
     for i, (href, title) in enumerate(links[:5]):
         title_clean = _strip_tags(title).strip()
         snippet = snippets[i] if i < len(snippets) else ""

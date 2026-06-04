@@ -102,6 +102,13 @@ def _parse(message: str):
     )
     if m:
         return float(m.group(1)), m.group(2).strip(), m.group(3).strip()
+    # "how many unit2 in N unit1" — e.g. "how many liters in 3 gallons"
+    m2 = re.search(
+        r'how many\s+([\w/°]+(?:\s+\w+)?)\s+in\s+(\d+(?:\.\d+)?)\s+([\w/°]+(?:\s+\w+)?)',
+        message, re.IGNORECASE,
+    )
+    if m2:
+        return float(m2.group(2)), m2.group(3).strip(), m2.group(1).strip()
     return None
 
 

@@ -34,18 +34,26 @@ def _parse_reminder(message: str) -> tuple:
         'hour': 3600, 'hr': 3600, 'h': 3600,
         'minute': 60, 'min': 60, 'm': 60,
         'second': 1, 'sec': 1, 's': 1,
+        'day': 86400,
     }
     duration_pattern = re.compile(
-        r'(\d+(?:\.\d+)?)\s*(hours?|hrs?|minutes?|mins?|seconds?|secs?|[hms])',
+        r'(\d+(?:\.\d+)?)\s*(days?|hours?|hrs?|minutes?|mins?|seconds?|secs?|[hms])',
         re.IGNORECASE,
     )
     for val_str, unit in duration_pattern.findall(message):
-        unit_key = (unit.lower().rstrip('s')
-                    if unit.lower() not in ('s', 'm', 'h') else unit.lower())
+        unit_lower = unit.lower()
+        if unit_lower in ('s', 'm', 'h'):
+            unit_key = unit_lower
+        elif unit_lower.startswith('day'):
+            unit_key = 'day'
+        else:
+            unit_key = unit_lower.rstrip('s')
         delay += int(float(val_str) * units.get(unit_key, 1))
 
-    # Parse absolute time like "at 14:30" or "at 2:30pm"
+    # Parse absolute time — "at 14:30", "at 2:30pm", "at 10am", "tomorrow at 9am"
     if delay == 0:
+        tomorrow = re.search(r'\btomorrow\b', message, re.IGNORECASE) is not None
+        # Try "at H:MM [am/pm]"
         at_m = re.search(r'at\s+(\d{1,2}):(\d{2})\s*(am|pm)?', message, re.IGNORECASE)
         if at_m:
             hour = int(at_m.group(1))
@@ -56,12 +64,29 @@ def _parse_reminder(message: str) -> tuple:
             elif ampm == "am" and hour == 12:
                 hour = 0
             now = datetime.datetime.now()
-            target = datetime.datetime(
-                now.year, now.month, now.day, hour, minute, 0
-            )
-            if target <= now:
+            target = datetime.datetime(now.year, now.month, now.day, hour, minute, 0)
+            if tomorrow:
+                target += datetime.timedelta(days=1)
+            elif target <= now:
                 target += datetime.timedelta(days=1)
             delay = int((target - now).total_seconds())
+        else:
+            # Try "at Xam" or "at Xpm" (no minutes)
+            at_m2 = re.search(r'at\s+(\d{1,2})\s*(am|pm)', message, re.IGNORECASE)
+            if at_m2:
+                hour = int(at_m2.group(1))
+                ampm = at_m2.group(2).lower()
+                if ampm == "pm" and hour < 12:
+                    hour += 12
+                elif ampm == "am" and hour == 12:
+                    hour = 0
+                now = datetime.datetime.now()
+                target = datetime.datetime(now.year, now.month, now.day, hour, 0, 0)
+                if tomorrow:
+                    target += datetime.timedelta(days=1)
+                elif target <= now:
+                    target += datetime.timedelta(days=1)
+                delay = int((target - now).total_seconds())
 
     if not text:
         text = message.strip()

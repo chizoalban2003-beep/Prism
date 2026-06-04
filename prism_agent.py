@@ -57,11 +57,13 @@ class PrismAgent:
     """
 
     INTENTS = [
-        (r"plan|morning|daily|today|schedule", "plan"),
+        (r"(?!.*\bto (?:french|spanish|german|japanese|chinese|arabic|russian|hindi|italian"
+         r"|portuguese)\b)(?:plan|morning|daily|today|schedule)", "plan"),
         (r"how (?:do|can|should) i|plan (?:for|to)|strategy for|help me (?:with|plan)|"
          r"what(?:'s| is) the best way|i want to|i need to|my goal is", "universal_plan"),
         (r"predict|match|fixture|vs|versus", "predict_match"),
-        (r"injury|risk|squad|fitness|medical|available", "squad_risk"),
+        (r"injury risk|squad risk|squad injury|player risk|player fitness|"
+         r"\binjury\b|\bsquad\b|\bfitness\b", "squad_risk"),
         (r"moment|1v1|keeper|\bshot\b|attack", "moment"),
         (r"session|footage|video|analyse.*play", "session"),
         (r"transfer|market|value|worth", "transfer"),
@@ -80,8 +82,8 @@ class PrismAgent:
          r"what have you learned about me|prism growth",
          "my_growth"),
         (r"identity|digital\.dna|who\.am", "identity"),
-        (r"artifact|history|past\.decision|what\.have\.i", "artifacts"),
-        (r"status|connected|device|sync", "status"),
+        (r"artifact|past\.decision|what\.have\.i|my artifacts", "artifacts"),
+        (r"\bstatus\b|connected|device|\bsync\b", "status"),
         (r"index|scan\.files|search\.code|grep|find\.file", "ksa_task"),
         (r"resize|(?:convert|compress) (?:file|image|video)|rename|move|copy|delete|create file|"
          r"find file|search (?:in|for)|read file|list files|"
@@ -104,9 +106,12 @@ class PrismAgent:
         (r"(?:schedule|book|create|add) (?:a )?(?:meeting|event|appointment)|"
          r"(?:find|when(?:'s| is) the next) (?:free|available) (?:slot|time)",
                                                                 "calendar_write"),
-        (r"(?:go to|open|browse|visit|search (?:the )?web|find (?:on|online)|"
-         r"look up|book|reserve|fill (?:in|out)|check (?:the )?(?:price|availability)|"
-         r"what(?:'s| is) (?:on|the) website)",  "browser_task"),
+        (r"(?:look up|tell me about|what (?:is|was|are)) .+?(?:on |in )?wikipedia|wikipedia",
+         "wikipedia_lookup"),
+        (r"(?:go to|open|browse|visit|find (?:on|online)|"
+         r"look up(?! .+ (?:on|in) wikipedia)|book|reserve|fill (?:in|out)|"
+         r"check (?:the )?(?:price|availability)|what(?:'s| is) (?:on|the) website)",
+         "browser_task"),
         (r"show (?:my )?(?:instructions?|rules?|standing orders?)|"
          r"what (?:have you )?(?:remember|know) about my preferences",
          "show_instructions"),
@@ -125,6 +130,10 @@ class PrismAgent:
          "send_push"),
         (r"(?:find|search|look up|who is|contact|call|email) (?:my )?(?:contact|person|colleague|client|friend)",
          "contacts"),
+        (r"(?:append|add|write|save|take|jot down) (?:a )?note|note(?:pad)?:? ", "note_append"),
+        (r"remind me|set (?:a )?reminder|alert me (?:in|at|when)|"
+         r"don't let me forget|in (\d+) (?:minute|hour|day)|"
+         r"at (\d+(?::\d+)?(?:am|pm)?)", "reminder_set"),
         (r"(?:add|create|make|new) (?:a )?(?:task|todo|reminder|ticket|issue)|"
          r"(?:i need to|i have to|remember to|don't forget)",
          "add_task"),
@@ -139,9 +148,6 @@ class PrismAgent:
         (r"(?:how am i|calibration|what have you learned|"
          r"how (?:accurate|well) (?:are you|is prism)|"
          r"show (?:my )?feedback history)", "calibration_summary"),
-        (r"remind me|set (?:a )?reminder|alert me (?:in|at|when)|"
-         r"don't let me forget|in (\d+) (?:minute|hour|day)|"
-         r"at (\d+(?::\d+)?(?:am|pm)?)", "reminder"),
         (r"^(?:yes[,.]?|yeah[,.]?|go ahead|approved?|confirm|do it|proceed)[\s!.]*$",
          "approve_pending"),
         (r"^(?:no[,.]?|cancel|stop|don't|abort|never mind)[\s!.]*$",
@@ -176,7 +182,7 @@ class PrismAgent:
          r"(?:forget|remove|delete) (?:that )?(?:goal|watch|monitor)",
          "horizon_abandon"),
         # Organs — loaded capabilities
-        (r"(?:what|which|show|list) (?:organs?|loaded (?:capabilities|modules|tools))|"
+        (r"(?:what|which|show|list) (?:my )?(?:organs?|loaded (?:capabilities|modules|tools))|"
          r"organ (?:list|status|registry)",
          "list_organs"),
         (r"turn (?:on|off)|set (?:the )?(?:lights?|thermostat|temp)|"
@@ -195,16 +201,15 @@ class PrismAgent:
          "wikipedia_lookup"),
         (r"translate|translation|in (?:spanish|french|german|italian|portuguese|chinese|japanese|arabic|russian|hindi)",
          "translate_text"),
-        (r"(?:convert|how many|how much) .* (?:to|in|into)|"
-         r"(?:km|miles|kg|lbs|celsius|fahrenheit|meters?|feet|inches?|liters?|gallons?) (?:to|in|into)",
-         "unit_convert"),
         (r"(?:convert|exchange|how much) .* (?:usd|eur|gbp|jpy|cad|aud|chf|cny|currency)|"
          r"(?:usd|eur|gbp|jpy|cad|aud|chf|cny) (?:to|in|into)",
          "currency_convert"),
+        (r"(?:convert|how many|how much) .* (?:to|in|into)|"
+         r"(?:km|miles|kg|lbs|celsius|fahrenheit|meters?|feet|inches?|liters?|gallons?) (?:to|in|into)",
+         "unit_convert"),
         (r"(?:take|capture|grab) (?:a )?screenshot|screenshot", "screenshot_capture"),
         (r"(?:read|what(?:'s| is) on|show|paste|get) (?:my )?clipboard", "clipboard_read"),
         (r"(?:set|start|create) (?:a )?timer|timer (?:for|of)|countdown", "timer_set"),
-        (r"(?:append|add|write|save|take|jot down) (?:a )?note|note(?:pad)?:? ", "note_append"),
         (r"(?:read|open|show|cat|display) (?:the )?file|file (?:contents?|read)", "file_read"),
         (r"(?:write|save|create|overwrite) (?:to )?(?:the )?file|write (?:this|that) to", "file_write"),
         (r"(?:play|pause|skip|next|previous|volume|stop) (?:music|spotify|song|track|playback)",
@@ -768,11 +773,20 @@ class PrismAgent:
             msg_ln = len((message or "").split())
             msg_lw = (message or "").lower()
 
+            def _bad_card(c) -> bool:
+                """True when a chain/orchestrator returned a raw dict or planner noise."""
+                if c is None:
+                    return False
+                b = getattr(c, 'body', '') or ''
+                return b.startswith('{') or 'replanned' in b or b.startswith('[{')
+
             # Tier 0: orchestrator
             orch = getattr(self, '_orchestrator', None)
             if card is None and orch and message and orch.should_orchestrate(message):
                 try:
                     card = orch.orchestrate(message, self._execute, context)
+                    if _bad_card(card):
+                        card = None
                 except Exception as e:
                     logger.debug("Orchestrator failed: %s", e)
                     card = None
@@ -790,6 +804,8 @@ class PrismAgent:
                 try:
                     card = self._chain_expert.run(
                         message, self._execute, context)
+                    if _bad_card(card):
+                        card = None
                 except Exception as e:
                     logger.debug("Expert chain failed: %s", e)
                     card = None
@@ -798,6 +814,8 @@ class PrismAgent:
             if card is None and message and msg_ln > 5 and self._chain.should_chain(message):
                 try:
                     card = self._chain.run(message, self._execute, context)
+                    if _bad_card(card):
+                        card = None
                 except Exception as e:
                     logger.debug("Chain failed: %s", e)
                     card = None
@@ -808,6 +826,8 @@ class PrismAgent:
                     plan = self._composer.decompose(message)
                     if plan:
                         card = self._composer.execute(plan, self._execute, context)
+                    if _bad_card(card):
+                        card = None
                 except Exception as e:
                     logger.debug("Composer failed: %s", e)
                     card = None
@@ -968,9 +988,33 @@ class PrismAgent:
             diagnosis = DomainDecisionModel(config).evaluate(profile, factors)
             return domain_card(domain_key, diagnosis)
 
+        if intent == "squad_risk":
+            if self._kde:
+                try:
+                    result = self._kde.ask(message)
+                    output = getattr(result, 'output', result)
+                    if isinstance(output, list) and output and hasattr(output[0], 'risk_level'):
+                        return squad_card(output)
+                    if isinstance(output, str) and output and "No video" not in output:
+                        return text_card(output, "Squad Risk")
+                except Exception as exc:
+                    logger.debug("KDE squad_risk failed: %s", exc)
+            # Fallback — route message through prediction engine directly
+            try:
+                from prediction_engine import InjuryRiskPredictor
+                predictor = InjuryRiskPredictor()
+                result = predictor.assess(message)
+                return text_card(str(result), "Squad Risk")
+            except Exception:
+                pass
+            return text_card(
+                "Squad risk assessment requires player data. "
+                "Try: 'what is the injury risk for [player name]' or connect a squad data source.",
+                "Squad Risk")
+
         _KDE_INTENTS = {
-            "plan", "predict_match", "squad_risk", "moment", "session",
-            "transfer", "reflect", "status",
+            "plan", "predict_match", "moment", "session",
+            "transfer", "reflect",
         }
         if self._kde and intent in _KDE_INTENTS:
             try:
@@ -1189,11 +1233,25 @@ class PrismAgent:
             return text_card(body, f"Connecting: {service_name}")
 
         if intent == "web_search":
-            results = self._search.search(message, n=5)
+            _q = re.sub(
+                r'^(?:search(?:\s+the\s+web|\s+online|\s+for)?|look\s+up|'
+                r'find\s+(?:out|info|information)\s+(?:about|on)|'
+                r'research|who\s+is|where\s+is|when\s+(?:did|does|is)|'
+                r'what(?:\'s| is) (?:the )?(?:latest|current|today))[:\s]+',
+                '', message, flags=re.IGNORECASE,
+            ).strip().rstrip('?.')
+            results = self._search.search(_q or message, n=5)
             if not results:
                 answer = self._search.quick_answer(message)
                 if answer:
                     return text_card(answer, "Search result")
+                # Fall through to web_search organ (DDG Lite)
+                organ_fn = self._organ_loader.get("web_search")
+                if organ_fn is not None:
+                    try:
+                        return organ_fn("web_search", message, ctx)
+                    except Exception:
+                        pass
                 return text_card("No results found.", "Search")
             router = getattr(self, '_router', None)
             if router and results:
