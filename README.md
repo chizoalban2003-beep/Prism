@@ -35,6 +35,76 @@ PRISM is a local personal AI assistant that decides, plans, and acts for any use
 
 ## Architecture
 
+### Nucleus-Organ Topology
+
+PRISM's execution model is a Nucleus-Organ topology with three-layer security:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  NUCLEUS  (prism_agent.py)                                      │
+│  Executive bootstrapper — routes, gates, and orchestrates       │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │  L1 ConstitutionGuard  (prism_constitution.py)            │  │
+│  │  Immutable at startup — loaded once from constitution.yaml│  │
+│  │  • 9 capability types with risk levels                    │  │
+│  │  • Absolute limits (max 10 syntheses/session)             │  │
+│  │  • Never synthesise subprocess or telephony organs        │  │
+│  │  • Per-intent capability requirements                     │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │  L2 ORGAN_POLICY  (per-organ mutable gate)                │  │
+│  │  risk_level · requires_approval · irreversible            │  │
+│  │  max_per_session · approval expiry (5 min)                │  │
+│  └───────────────────────────────────────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────────┐  │
+│  │  L3 BudManager  (prism_bud_manager.py)                    │  │
+│  │  Ephemeral scoped agents — spawn → execute → decommission │  │
+│  │  • _scoped_ctx(): only keys the declared capabilities     │  │
+│  │    grant are visible to the organ during execution        │  │
+│  │  • _bud_id token injected; removed on decommission        │  │
+│  │  • synthesis_allowed() enforces L1 session cap            │  │
+│  └───────────────────────────────────────────────────────────┘  │
+└───────────────────────────┬─────────────────────────────────────┘
+                            │ hot-swappable at runtime
+              ┌─────────────▼─────────────────────────────┐
+              │  ORGAN LAYER  (33 bundled + user/LLM)     │
+              │  Each organ declares capabilities manifest │
+              │  internet_read/write · filesystem_r/w      │
+              │  subprocess · telephony · system_ui        │
+              │  smart_home · notifications                │
+              └───────────────────────────────────────────┘
+```
+
+**Three-layer execution gate** in `_execute()`:
+
+```
+L1 ConstitutionGuard.check(intent)
+    → BLOCKED: returns error card, no organ invoked
+    → ALLOWED ↓
+L2 ORGAN_POLICY approval gate
+    → requires_approval=True: stores pending, returns confirm prompt
+    → APPROVED ↓
+L3 BudManager.spawn(intent) → BudHandle (scoped ctx)
+       └─ execute(handle, organ_fn) → decommission in finally
+```
+
+**LogicPolicy feedback loop** — the `llm→logic+logicpolicy→policy→llm` loop:
+
+After each chain step, `_logicpolicy_meta(logic)` collects risk level, capabilities, irreversibility, and L1 constitution verdict, injecting them into `state.accumulated`:
+
+```
+Step 1 — LLM node:    decides to call web_search
+Step 1 — Logic:       web_search(query)  [risk=low  caps=[internet_read]  L1=allowed]
+Step 1 — LogicPolicy: risk=low  caps=[internet_read]  L1=allowed
+Step 2 — LLM node:    sees LogicPolicy context → informed routing decision
+Step 2 — Logic:       note_append(result)  [risk=low  caps=[filesystem_write]  L1=allowed]
+...
+```
+
+The chain is never blind to what the previous organ was capable of or whether L1 would block a follow-on action.
+
+---
+
 ```
 User input (chat / voice / CLI / REST API)
          │
@@ -200,6 +270,9 @@ Background loop:
 | Multi-step task orchestration | `prism_orchestrator.py` | Working — DAG decomposition, parallel execution, 5 chain profiles |
 | Cross-session goals | `prism_horizon.py` | Working — persists HorizonGoals across restarts; resumes on session start |
 | Approval gate | `prism_agent.py` | Working — `requires_approval` organs block until explicit confirmation |
+| L1 Constitution (immutable rules) | `prism_constitution.py` + `constitution.yaml` | Working — loaded once at startup; blocks forbidden capabilities before any organ runs |
+| BudManager (scoped ephemeral agents) | `prism_bud_manager.py` | Working — every organ runs in a scoped Bud; ctx filtered to declared capabilities; decommissioned after execute |
+| LogicPolicy chain loop | `prism_chain.py` | Working — risk/caps/L1-verdict injected into accumulated state after each step; every LLM node sees previous organ's policy metadata |
 | Adaptive reasoning chain | `prism_chain.py` | Working — alternating LLM→Logic+Policy→Evaluator spine, branches |
 | Expert reasoning chain | `prism_chain_expert.py` | Working — Router/Evaluator/BranchJudge/Synthesiser specialised nodes |
 | Evaluator quality gate | `prism_chain.py` | Working — per-step 1-5 score, early exit when sufficient |
@@ -970,6 +1043,23 @@ To have PRISM synthesise a new organ: say **"build me an organ that does X"** or
 | `policy_inspect` | `organs/policy_inspect.py` | low | no | Dump `ORGAN_POLICY` for every loaded organ |
 | `policy_update` | `organs/policy_update.py` | low | no | Update a live organ's policy at runtime |
 
+### ORGAN_META — capability manifest
+
+Every organ declares its capability manifest, used by the L1 ConstitutionGuard and BudManager to scope execution context:
+
+```python
+ORGAN_META = {
+    "intent":      "web_search",
+    "description": "DuckDuckGo web search",
+    "version":     "1.0",
+    "capabilities": ["internet_read"],   # 9 types: internet_read/write,
+                                          # filesystem_read/write, subprocess,
+                                          # telephony, system_ui, smart_home, notifications
+}
+```
+
+`OrganLoader.get_organ_capabilities(intent)` returns the capability list. `BudManager._scoped_ctx()` filters the full execution context to only the keys each declared capability grants — organs cannot access credentials or secrets beyond their declared scope.
+
 ### ORGAN_POLICY — per-organ risk declarations
 
 Every organ declares its own risk contract at module level:
@@ -1199,7 +1289,12 @@ PRISM/
 │   ├── domain_configs.py       Medical · Financial · Legal · HR · Supply Chain · Climate
 │   └── domain_validator.py     Expert-label accuracy validation
 │
-└── tests/                      1469 pytest tests — all passing
+├── Security & topology
+│   ├── constitution.yaml           L1 immutable capability rules (loaded once at startup)
+│   ├── prism_constitution.py       ConstitutionGuard — check(), may_synthesize(), capability_risk()
+│   └── prism_bud_manager.py        BudManager — spawn/execute/decommission scoped ephemeral agents
+│
+└── tests/                      1529+ pytest tests — all passing
 ```
 
 ---
@@ -1225,7 +1320,7 @@ PRISM/
 
 ```bash
 python -m pytest tests/ -q
-# 1469+ tests pass in ~115 seconds
+# 1529+ tests pass in ~200 seconds
 
 # With coverage report:
 python -m pytest tests/ -q --cov=. --cov-report=term-missing:skip-covered

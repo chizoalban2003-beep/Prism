@@ -216,7 +216,7 @@ class PrismAgent:
         (r"(?:take|capture|grab) (?:a )?screenshot|screenshot", "screenshot_capture"),
         (r"(?:read|what(?:'s| is) on|show|paste|get) (?:my )?clipboard", "clipboard_read"),
         (r"(?:set|start|create) (?:a )?timer|timer (?:for|of)|countdown", "timer_set"),
-        (r"(?:read|open|show|cat|display) (?:the )?file|file (?:contents?|read)", "file_read"),
+        (r"(?:read|open|show|cat|display) (?:my |the )?file|file (?:contents?|read)", "file_read"),
         (r"(?:write|save|create|overwrite) (?:to )?(?:the )?file|write (?:this|that) to", "file_write"),
         (r"(?:play|pause|skip|next|previous|volume|stop) (?:music|spotify|song|track|playback)",
          "spotify_control"),
