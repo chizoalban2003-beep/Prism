@@ -57,6 +57,11 @@ class PrismAgent:
     """
 
     INTENTS = [
+        # Live financial/crypto data — must precede plan ("today") and wikipedia ("what is")
+        (r"stock (?:price|market|quote)|share price|market cap|"
+         r"bitcoin|ethereum|crypto (?:price|market)|coin price|"
+         r"(?:price|value) of (?:bitcoin|ethereum|[A-Z]{2,5})\b",
+         "web_search"),
         (r"(?!.*\bto (?:french|spanish|german|japanese|chinese|arabic|russian|hindi|italian"
          r"|portuguese)\b)(?:plan|morning|daily|today|schedule)", "plan"),
         (r"how (?:do|can|should) i|plan (?:for|to)|strategy for|help me (?:with|plan)|"
@@ -71,7 +76,8 @@ class PrismAgent:
         (r"portfolio|invest|allocation|bonds|equity", "domain_financial"),
         (r"legal|case|litigat|settle|arbitrat", "domain_legal"),
         (r"hire|hiring|recruit|talent|headcount", "domain_hr"),
-        (r"supply|procurement|inventory|stock", "domain_supply"),
+        (r"supply chain|procurement|inventory|(?:stock|restock) (?:level|order|management)|out of stock",
+         "domain_supply"),
         (r"climate|carbon|emission|energy\.policy", "domain_climate"),
         (r"what (?:do you )?know about me|my profile|who am i|crystallise|persona|how well do you know me",
          "my_profile"),
@@ -216,6 +222,10 @@ class PrismAgent:
          "spotify_control"),
         (r"(?:generate|create|make|qr) (?:a )?qr (?:code)?|qr code for", "qr_generate"),
         (r"(?:run|execute|shell|bash|cmd|terminal|command)(?:\s|:)", "shell_run"),
+        (r"(?:make|place|give|dial) (?:a )?(?:phone )?call|"
+         r"(?:call|phone|ring) (?:someone|them|him|her|my |the )|"
+         r"phone call to|\bcall \d",
+         "phone_call"),
         (r"github (?:issue|pr|pull request|repo)|(?:create|list|open) (?:an? )?issue", "github_issue"),
         (r"(?:send|post) (?:a )?(?:message )?(?:to|on) discord|discord", "discord_send"),
         (r"(?:send|post) (?:a )?(?:message )?(?:to|on) telegram|telegram", "telegram_send"),
