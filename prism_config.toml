@@ -104,3 +104,8 @@ sample_rate = 16000       # Hz — 16000 recommended for Whisper
 account_sid = ""          # ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 auth_token  = ""          # from console.twilio.com
 from_number = ""          # your Twilio number, e.g. +14155552671
+
+# ── Smart home via Home Assistant (optional) ──────────────────────────────────
+[smarthome]
+ha_url   = ""             # e.g. http://homeassistant.local:8123
+ha_token = ""             # Long-lived access token from HA profile page

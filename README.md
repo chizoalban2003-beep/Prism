@@ -191,8 +191,8 @@ Personal Assistant Layer (all local):
 
 Background loop:
   PrismProactive  →  11 triggers: calendar_warning · morning_brief · reminder_fire
-                    budget_overrun · recovery_check · wearable_sync · calibration_prompt
-                    disk_space · horizon_deadline · evening_summary · sleep_quality
+                    budget_warning · recovery_alert · wearable_sync · calibration_prompt
+                    disk_space · horizon_deadline · evening_summary · task_done
   PrismMemory     →  short/long-term memory (SQLite + TF-IDF)
   PrismPerception →  context (time, biometrics, system state)
   PrismVoice      →  STT input (Whisper local / SpeechRecognition)
@@ -377,10 +377,12 @@ The following patterns are **always blocked** regardless of LLM output:
 | `os.system(` | Shell injection |
 | `eval(` / `exec(` | Arbitrary code execution |
 | `shutil.rmtree` | Recursive deletion |
-| `os.remove(` | File deletion |
+| `os.remove(` / `os.unlink(` | File deletion |
 | `socket.connect` | Raw socket access |
-| `.chmod(` | Permission changes |
-| `open(..., "w"` | Unguarded file write |
+| `.chmod(` / `.chown(` | Permission changes |
+| `.fork(` / `.spawn(` / `.execv(` | Process spawning |
+| `.symlink(` | Symlink creation |
+| `__import__` | Dynamic import bypass |
 
 ---
 
@@ -896,7 +898,7 @@ github_repo   = "owner/repo"
 
 # Smart home (Home Assistant) — optional
 [smarthome]
-ha_url   = "http://homeassistant.local:8123"
+ha_url   = ""                       # e.g. http://homeassistant.local:8123
 ha_token = ""                       # Long-lived access token from HA profile
 
 # Phone calls + SMS via Twilio — optional
@@ -1323,7 +1325,11 @@ PRISM/
 │   ├── prism_constitution.py       ConstitutionGuard — check(), may_synthesize(), capability_risk()
 │   └── prism_bud_manager.py        BudManager — spawn/execute/decommission scoped ephemeral agents
 │
-└── tests/                      1529+ pytest tests — all passing
+├── LLM setup
+│   ├── prism_setup_llm.py          CLI wizard — auto-detects providers, tests, writes config
+│   └── prism_settings_llm.py       Web settings page at /settings/llm + JSON API helpers
+│
+└── tests/                      1,563 pytest tests — all passing
 ```
 
 ---
@@ -1349,7 +1355,7 @@ PRISM/
 
 ```bash
 python -m pytest tests/ -q
-# 1529+ tests pass in ~200 seconds
+# 1,563 tests pass in ~180 seconds
 
 # With coverage report:
 python -m pytest tests/ -q --cov=. --cov-report=term-missing:skip-covered
@@ -1450,14 +1456,15 @@ agent.register("my_tool", ["my", "tool", "keywords"],
 
 ---
 
-## What is still missing for a full local personal assistant
+## Current state
 
-All major gaps from the initial build have been bridged. The table below reflects the current state:
+All major capabilities are implemented and tested. The table below is the authoritative feature status as of the last full audit (1,563 tests, 0 failing).
 
 | Capability | Status | Notes |
 |---|---|---|
 | Voice input (Whisper) | **Working** | `prism_voice.py` — local Whisper; `pip install openai-whisper` |
-| LLM fallback (Claude API) | **Working** | `prism_llm_router.py` — auto-falls back when Ollama unavailable |
+| LLM routing | **Working** | Ollama · Claude API · OpenAI · any OpenAI-compatible endpoint; auto-fallback chain |
+| LLM setup wizard | **Working** | `python3 prism_setup_llm.py` or `/settings/llm` in web UI |
 | Google Calendar OAuth | **Working** | Set `[calendar] google_token` in config |
 | Contact auto-extraction | **Working** | LLM extracts contacts from memory entries when Ollama available |
 | Linear task integration | **Working** | GraphQL API via `[tasks] linear_api_key` |
@@ -1467,6 +1474,9 @@ All major gaps from the initial build have been bridged. The table below reflect
 | Autonomous tool synthesis | **Working** | AST safety + subprocess sandbox + pip auto-install + cache |
 | iOS / Android companion | **Working (PWA)** | `prism_pwa.py` — installable PWA at `/mobile`; push via ntfy.sh; no app store needed |
 | Token refresh for Google OAuth | **Working** | Auto-refresh via `google_creds.json` — stores `access_token`, `refresh_token`, `client_id`, `client_secret`, `expiry` |
+| Nucleus-Organ topology | **Working** | L1 Constitution → L2 ORGAN_POLICY → L3 BudManager three-layer security gate |
+| LogicPolicy chain loop | **Working** | risk/caps/L1-verdict injected into chain state after every step |
+| Organ capability manifests | **Working** | All 33 organs declare capability type; BudManager scopes ctx to declared caps only |
 | Horizon goals | `prism_horizon.py` | **Working** — cross-session goal watching; say "watch for X when Y" in chat |
 | Organ library | `organs/` + `~/.prism/organs/` | **Working** — 33 bundled organs; user-creatable; LLM-synthesisable on demand |
 | Identity layer | `prism_soul.py` | Working — belief graph, user-defined lenses, stated vs observed delta, LLM context injection |
