@@ -1651,7 +1651,8 @@ class KDEHandler(BaseHTTPRequestHandler):
                                      "context_keys": list(facts.keys())})
 
             elif path == "/settings/llm":
-                from prism_settings_llm import write_llm_config, test_provider as _tp
+                from prism_settings_llm import test_provider as _tp
+                from prism_settings_llm import write_llm_config
                 p   = body.get("provider", "")
                 key = body.get("key", "")
                 host= body.get("host", "")

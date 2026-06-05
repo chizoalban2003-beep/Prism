@@ -413,8 +413,8 @@ class PrismAgent:
 
         # L1 Constitution guard + Bud execution manager
         try:
-            from prism_constitution import ConstitutionGuard
             from prism_bud_manager import BudManager
+            from prism_constitution import ConstitutionGuard
             self._constitution = ConstitutionGuard()
             self._bud_mgr = BudManager(constitution_guard=self._constitution)
         except Exception as e:

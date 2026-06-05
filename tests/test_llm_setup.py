@@ -5,14 +5,8 @@ LLM config path (full [llm] dict → LLMRouter constructor).
 from __future__ import annotations
 
 import json
-import os
-import shutil
-import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-
-import pytest
-
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -261,7 +255,9 @@ class TestAgentLLMRouterConfigPath:
             "preferred": "claude",
             "fallback": ["ollama/mistral", "openai"],
         })
-        import builtins, prism_agent
+        import builtins
+
+        import prism_agent
         real_open = builtins.open
         def mock_open(path, *a, **kw):
             if "prism_config" in str(path):
@@ -322,7 +318,7 @@ class TestLLMRouterFullConfig:
             assert claude_opts[0].available is True
 
     def test_router_best_returns_claude_over_stdlib(self):
-        from prism_llm_router import LLMRouter, LLMOption
+        from prism_llm_router import LLMOption, LLMRouter
         r = LLMRouter(config={"claude_api_key": "sk-fake"})
         with patch.object(r, "discover", return_value=[
             LLMOption("claude", "claude-sonnet-4-20250514", "https://api.anthropic.com",
@@ -334,7 +330,7 @@ class TestLLMRouterFullConfig:
             assert best.provider == "claude"
 
     def test_router_best_returns_none_when_only_stdlib(self):
-        from prism_llm_router import LLMRouter, LLMOption
+        from prism_llm_router import LLMOption, LLMRouter
         r = LLMRouter()
         with patch.object(r, "discover", return_value=[
             LLMOption("stdlib", "stdlib", "", available=True, capability=0),

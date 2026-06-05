@@ -179,7 +179,7 @@ class TestBudManager:
 
     def test_active_count(self):
         h1 = self.mgr.spawn("a", "m", {}, [])
-        h2 = self.mgr.spawn("b", "m", {}, [])
+        self.mgr.spawn("b", "m", {}, [])
         assert self.mgr.active_count() == 2
         self.mgr.decommission(h1)
         assert self.mgr.active_count() == 1
@@ -325,7 +325,6 @@ class TestAgentTopologyIntegration:
         shell_run requires subprocess capability.  If somehow an organ without
         that capability were loaded, the constitution should block execution.
         """
-        from prism_organ_loader import OrganLoader
         from prism_responses import text_card
         agent = self._make_agent()
         # Patch organ_loader to return a fake shell_run organ with no capabilities
@@ -481,9 +480,9 @@ class TestChainLogicPolicyLoop:
         meta, lp_summary = chain._logicpolicy_meta("unit_convert")
         # Build the accumulated line as run() does
         accumulated = (
-            f"\n\n[Step 1 — unit_convert]\n"
-            f"Asked: convert 5km to miles\n"
-            f"Got: 3.107 miles"
+            "\n\n[Step 1 — unit_convert]\n"
+            "Asked: convert 5km to miles\n"
+            "Got: 3.107 miles"
             + (f"\nLogicPolicy: {lp_summary}" if lp_summary else "")
         )
         assert "LogicPolicy:" in accumulated

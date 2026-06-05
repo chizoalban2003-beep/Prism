@@ -8,7 +8,6 @@ from __future__ import annotations
 import json
 import os
 import sys
-import time
 import urllib.request
 from pathlib import Path
 
@@ -17,8 +16,13 @@ _CONFIG_PATH = Path(__file__).parent / "prism_config.toml"
 # ── colours ──────────────────────────────────────────────────────────────────
 _T = sys.stdout.isatty()
 def _c(code): return f"\033[{code}m" if _T else ""
-G  = _c("92"); R  = _c("31"); Y  = _c("93"); C  = _c("96")
-DIM= _c("2");  B  = _c("1");  Z  = _c("0")
+G   = _c("92")
+R   = _c("31")
+Y   = _c("93")
+C   = _c("96")
+DIM = _c("2")
+B   = _c("1")
+Z   = _c("0")
 
 # ── TOML helpers ─────────────────────────────────────────────────────────────
 
@@ -147,12 +151,12 @@ def _ask(prompt, default=""):
 def _setup_claude(cfg: dict) -> dict | None:
     existing = cfg.get("llm", {}).get("claude_api_key", "")
     print(f"\n  {B}Claude API (Anthropic){Z}")
-    print(f"  Get a key at: https://console.anthropic.com\n")
+    print("  Get a key at: https://console.anthropic.com\n")
     key = _ask("API key (sk-ant-...)", existing)
     if not key:
         _err("No key entered — skipping Claude")
         return None
-    print(f"  Testing... ", end="", flush=True)
+    print("  Testing... ", end="", flush=True)
     ok, msg = _test_claude(key)
     if ok:
         _ok(msg)
@@ -168,9 +172,9 @@ def _setup_claude(cfg: dict) -> dict | None:
 def _setup_ollama(cfg: dict) -> dict | None:
     existing_host = cfg.get("llm", {}).get("ollama_host", "http://localhost:11434")
     print(f"\n  {B}Ollama (local LLM){Z}")
-    print(f"  Install: https://ollama.ai  then  ollama pull mistral\n")
+    print("  Install: https://ollama.ai  then  ollama pull mistral\n")
     host = _ask("Ollama host", existing_host)
-    print(f"  Testing... ", end="", flush=True)
+    print("  Testing... ", end="", flush=True)
     ok, models = _test_ollama(host)
     if ok:
         _ok(f"running — {len(models)} model(s): {', '.join(models[:5]) or 'none pulled yet'}")
@@ -198,12 +202,12 @@ def _setup_ollama(cfg: dict) -> dict | None:
 def _setup_openai(cfg: dict) -> dict | None:
     existing = cfg.get("llm", {}).get("openai_api_key", "")
     print(f"\n  {B}OpenAI{Z}")
-    print(f"  Get a key at: https://platform.openai.com/api-keys\n")
+    print("  Get a key at: https://platform.openai.com/api-keys\n")
     key = _ask("API key (sk-...)", existing)
     if not key:
         _err("No key entered — skipping OpenAI")
         return None
-    print(f"  Testing... ", end="", flush=True)
+    print("  Testing... ", end="", flush=True)
     ok, msg = _test_openai_compat("https://api.openai.com", key)
     if ok:
         _ok(msg)
@@ -221,8 +225,8 @@ def _setup_compat(cfg: dict) -> dict | None:
     existing_host = cfg.get("llm", {}).get("openai_host", "")
     existing_key  = cfg.get("llm", {}).get("openai_api_key", "")
     print(f"\n  {B}OpenAI-compatible endpoint{Z}")
-    print(f"  Supports: Groq, Together AI, LM Studio, llama.cpp, Gemini, Mistral AI\n")
-    print(f"  Examples:")
+    print("  Supports: Groq, Together AI, LM Studio, llama.cpp, Gemini, Mistral AI\n")
+    print("  Examples:")
     print(f"    {DIM}Groq     https://api.groq.com{Z}")
     print(f"    {DIM}Together https://api.together.xyz{Z}")
     print(f"    {DIM}LM Studio http://localhost:1234{Z}")
@@ -231,7 +235,7 @@ def _setup_compat(cfg: dict) -> dict | None:
     key  = _ask("API key (or 'local' for keyless)", existing_key or "local")
     if key == "local":
         key = "local"
-    print(f"  Testing... ", end="", flush=True)
+    print("  Testing... ", end="", flush=True)
     ok, msg = _test_openai_compat(host, key)
     if ok:
         _ok(msg)
@@ -249,7 +253,7 @@ def _setup_compat(cfg: dict) -> dict | None:
 def run_wizard() -> None:
     _hr()
     print(f"\n  {B}{C}PRISM — LLM Setup{Z}")
-    print(f"  Connect an LLM to power PRISM's reasoning chains.\n")
+    print("  Connect an LLM to power PRISM's reasoning chains.\n")
 
     cfg = _read_config()
     llm = cfg.get("llm", {})
@@ -276,17 +280,30 @@ def run_wizard() -> None:
         oai_ok = ok
 
     print()
-    _ok(f"Ollama at {ollama_host}  —  {'running, ' + str(len(models)) + ' model(s)' if ollama_ok else 'not running'}") if ollama_ok else _err(f"Ollama at {ollama_host}  —  not running")
-    _ok("Claude API key found and valid") if claude_ok else (_info("Claude API key set (not tested)") if api_key else _err("Claude API key not set"))
-    _ok("OpenAI key found and valid") if oai_ok else (_info("OpenAI key set (not tested)") if oai_key else _err("OpenAI key not set"))
+    if ollama_ok:
+        _ok(f"Ollama at {ollama_host}  —  running, {len(models)} model(s)")
+    else:
+        _err(f"Ollama at {ollama_host}  —  not running")
+    if claude_ok:
+        _ok("Claude API key found and valid")
+    elif api_key:
+        _info("Claude API key set (not tested)")
+    else:
+        _err("Claude API key not set")
+    if oai_ok:
+        _ok("OpenAI key found and valid")
+    elif oai_key:
+        _info("OpenAI key set (not tested)")
+    else:
+        _err("OpenAI key not set")
 
     print(f"\n  {B}Choose a provider:{Z}")
-    print(f"    [1]  Ollama (local)              — free, private, needs install")
-    print(f"    [2]  Claude API (Anthropic)       — best quality, needs API key")
-    print(f"    [3]  OpenAI                       — GPT-4o, needs API key")
-    print(f"    [4]  OpenAI-compatible            — Groq, Gemini, LM Studio, Together")
-    print(f"    [5]  Fallback chain               — set preferred + ordered fallbacks")
-    print(f"    [0]  Skip")
+    print("    [1]  Ollama (local)              — free, private, needs install")
+    print("    [2]  Claude API (Anthropic)       — best quality, needs API key")
+    print("    [3]  OpenAI                       — GPT-4o, needs API key")
+    print("    [4]  OpenAI-compatible            — Groq, Gemini, LM Studio, Together")
+    print("    [5]  Fallback chain               — set preferred + ordered fallbacks")
+    print("    [0]  Skip")
     print()
 
     choice = _ask("Choice", "0")
@@ -310,8 +327,8 @@ def run_wizard() -> None:
             updates.update(r)
     elif choice == "5":
         print(f"\n  {B}Fallback chain{Z}")
-        print(f"  Enter providers in preferred order, comma-separated.")
-        print(f"  Examples: claude, ollama/mistral, openai\n")
+        print("  Enter providers in preferred order, comma-separated.")
+        print("  Examples: claude, ollama/mistral, openai\n")
         chain = _ask("Chain (e.g. ollama/mistral,claude)", "")
         if chain:
             parts = [p.strip() for p in chain.split(",") if p.strip()]
@@ -336,8 +353,8 @@ def run_wizard() -> None:
     _info(f"Active provider: {merged.get('preferred', 'auto-detect')}")
     if merged.get("ollama_model"):
         _info(f"Ollama model:    {merged['ollama_model']}")
-    print(f"\n  Restart PRISM for changes to take effect.")
-    print(f"  Or run  python3 kde_cli.py server --port 8742\n")
+    print("\n  Restart PRISM for changes to take effect.")
+    print("  Or run  python3 kde_cli.py server --port 8742\n")
     _hr()
 
 

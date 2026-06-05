@@ -21,7 +21,6 @@ Usage
 from __future__ import annotations
 
 import logging
-from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
@@ -41,9 +40,7 @@ def _load_yaml(path: Path) -> dict:
     # Minimal YAML parser: handle the flat/list structure we use
     import re
     data: dict = {}
-    current_key: Optional[str] = None
     current_list: Optional[list] = None
-    list_key: Optional[str] = None
     indent_stack: list[tuple[int, dict]] = [(0, data)]
 
     with open(path, encoding="utf-8") as f:

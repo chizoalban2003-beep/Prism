@@ -4,12 +4,16 @@ Exercises: routing, L1 constitution, BudManager, capability manifests,
            LogicPolicy loop, organ execution, synthesis blocking.
 No LLM required — runs fully in stdlib mode.
 """
-import sys, time, json, traceback
-sys.path.insert(0, "/home/chizoalban2003/Prism")
+import sys
+import time
+import traceback
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))
 
 from prism_agent import PrismAgent
+from prism_chain import PrismChain
 from prism_constitution import get_guard
-from prism_bud_manager import BudManager
 from prism_organ_loader import OrganLoader
 
 RESET = "\033[0m"
@@ -86,11 +90,11 @@ g = get_guard()
 
 check("constitution loaded",        g is not None)
 ok_ws, _ = g.check("web_search", ["internet_read"])
-check("web_search → allowed",       ok_ws == True)
+check("web_search → allowed",       ok_ws)
 ok_pc, _ = g.check("phone_call", ["telephony"])
-check("phone_call → allowed",       ok_pc == True)
+check("phone_call → allowed",       ok_pc)
 ok_sh, _ = g.check("shell_run", ["subprocess"])
-check("shell_run → allowed (exec)", ok_sh == True)
+check("shell_run → allowed (exec)", ok_sh)
 
 # Synthesis blocking
 check("may_synthesize(internet_read)", g.may_synthesize("internet_read"))
@@ -239,8 +243,6 @@ for blocked_intent in ["shell_run_v2", "phone_auto_dialler"]:
 
 # ── 9. LogicPolicy metadata collection ────────────────────────────────────────
 hdr("9. LogicPolicy Chain Metadata")
-
-from prism_chain import PrismChain
 
 chain = PrismChain(organ_loader=loader)
 meta, summary = chain._logicpolicy_meta("web_search")
