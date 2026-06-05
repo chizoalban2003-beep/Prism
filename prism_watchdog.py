@@ -59,8 +59,16 @@ class PrismWatchdog:
             self._check()
 
     def _check(self) -> None:
+        try:
+            from prism_metrics import metrics as _metrics
+        except Exception:
+            _metrics = None
+
         status = self._pipeline.status()
         dm     = status["pending"]
+
+        if _metrics:
+            _metrics.record_dm(dm)
 
         if dm > self._dm_threshold:
             _log.warning("Watchdog: Dm=%d exceeds threshold %d — pipeline may be slow",
@@ -72,6 +80,8 @@ class PrismWatchdog:
             )
             self._pipeline.start()
             self._resurrections += 1
+            if _metrics:
+                _metrics.inc("pipeline_restarts")
 
     def status(self) -> dict:
         return {

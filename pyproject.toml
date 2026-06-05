@@ -83,6 +83,7 @@ py-modules = [
     "prism_llm_router",
     "prism_horizon",
     "prism_memory_graph",
+    "prism_metrics",
     "prism_settings_llm",
     "prism_setup_llm",
     "prism_shadow_pipeline",

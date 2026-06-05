@@ -64,18 +64,31 @@ class PrismShadowPipeline:
     # ── Internal loop ─────────────────────────────────────────────────────────
 
     def _run(self) -> None:
+        try:
+            from prism_metrics import metrics as _metrics
+        except Exception:
+            _metrics = None
+
         while not self._stop.is_set():
+            t0 = time.monotonic()
             try:
                 n = self._graph.commit_pending()
                 if n:
                     self._committed_total += n
                     self._last_commit_ts = time.monotonic()
+                    elapsed = time.monotonic() - t0
                     _log.debug("Pipeline committed %d entries (total=%d)",
                                n, self._committed_total)
+                    if _metrics:
+                        _metrics.inc("commits_total", n)
+                        _metrics.record_latency(elapsed)
+                        _metrics.record_dm(self._graph.consistency_psi())
             except Exception as exc:
                 self._restarts += 1
                 _log.warning("Pipeline error (restart %d/%d): %s",
                              self._restarts, self._max_restarts, exc)
+                if _metrics:
+                    _metrics.inc("pipeline_restarts")
                 if self._restarts >= self._max_restarts:
                     _log.error("Pipeline exceeded max restarts — halting")
                     break

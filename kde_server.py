@@ -97,6 +97,7 @@ Routes:
   GET  /organs                      → list loaded organ intents and descriptions
   GET  /organ_bus/history           → recent inter-engine signals (?n=20)
   GET  /organ_bus/subscribers       → registered organ subscriptions
+  GET  /metrics                     → observability report (Ψ, Lr, Dm, canary, ρ) (?window_s=300)
   GET  /stream/chat                 → SSE stream of chain steps (?message=...) [text/event-stream]
   GET  /context                     → active context + all profiles (JSON)
   GET  /outcomes/stats              → OutcomeTracker stats (?days=30)
@@ -678,6 +679,11 @@ class KDEHandler(BaseHTTPRequestHandler):
                 from prism_settings_llm import get_llm_settings_html
                 self._respond(get_llm_settings_html().encode("utf-8"), 200,
                               "text/html; charset=utf-8")
+
+            elif path == "/metrics":
+                from prism_metrics import metrics as _m
+                window = float(qs.get("window_s", 300))
+                self._json_response(_m.report(window_s=window))
 
             elif path == "/tasks":
                 if self.task_queue is None:
