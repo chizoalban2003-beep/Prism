@@ -37,58 +37,65 @@ def _load_yaml(path: Path) -> dict:
             return yaml.safe_load(f) or {}
     except ImportError:
         pass
-    # Minimal YAML parser: handle the flat/list structure we use
+    # Minimal YAML parser with look-ahead to distinguish list vs dict children.
     import re
+    with open(path, encoding="utf-8") as f:
+        sig_lines = [
+            (len(raw) - len(raw.lstrip()), raw.rstrip().lstrip())
+            for raw in f
+            if raw.strip() and not raw.lstrip().startswith("#")
+        ]
+
+    def _coerce(s: str):
+        try:
+            return int(s)
+        except ValueError:
+            pass
+        try:
+            return float(s)
+        except ValueError:
+            pass
+        return s.strip('"').strip("'")
+
     data: dict = {}
     current_list: Optional[list] = None
     indent_stack: list[tuple[int, dict]] = [(0, data)]
 
-    with open(path, encoding="utf-8") as f:
-        for raw in f:
-            line = raw.rstrip()
-            if not line or line.lstrip().startswith("#"):
-                continue
-            stripped = line.lstrip()
-            indent = len(line) - len(stripped)
+    for idx, (indent, stripped) in enumerate(sig_lines):
+        # List item
+        if stripped.startswith("- "):
+            if current_list is not None:
+                current_list.append(_coerce(stripped[2:].strip()))
+            continue
 
-            # List item
-            if stripped.startswith("- "):
-                val = stripped[2:].strip()
-                if current_list is not None:
-                    current_list.append(val)
-                continue
+        m = re.match(r'^([\w][\w_-]*)\s*:\s*(.*)', stripped)
+        if not m:
+            continue
+        key, val = m.group(1), m.group(2).strip()
 
-            # Key: value or Key:
-            m = re.match(r'^(\w[\w_]*)\s*:\s*(.*)', stripped)
-            if not m:
-                continue
-            key, val = m.group(1), m.group(2).strip()
+        # Pop stack back to current indent level
+        while len(indent_stack) > 1 and indent <= indent_stack[-1][0]:
+            indent_stack.pop()
+        parent = indent_stack[-1][1]
 
-            # Pop stack to current indent level
-            while len(indent_stack) > 1 and indent <= indent_stack[-1][0]:
-                indent_stack.pop()
-            parent = indent_stack[-1][1]
-
-            if val == "":
-                # Nested dict or upcoming list
+        if val == "":
+            # Look ahead to decide: list or nested dict?
+            next_stripped = sig_lines[idx + 1][1] if idx + 1 < len(sig_lines) else ""
+            if next_stripped.startswith("- "):
+                lst: list = []
+                parent[key] = lst
+                current_list = lst
+            else:
                 nested: dict = {}
                 parent[key] = nested
                 indent_stack.append((indent, nested))
                 current_list = None
-            elif val.startswith("[") and val.endswith("]"):
-                inner = val[1:-1]
-                parent[key] = [v.strip() for v in inner.split(",") if v.strip()]
-                current_list = None
-            else:
-                # Try int/float, then string
-                try:
-                    parent[key] = int(val)
-                except ValueError:
-                    try:
-                        parent[key] = float(val)
-                    except ValueError:
-                        parent[key] = val.strip('"').strip("'")
-                current_list = None
+        elif val.startswith("[") and val.endswith("]"):
+            parent[key] = [_coerce(v.strip()) for v in val[1:-1].split(",") if v.strip()]
+            current_list = None
+        else:
+            parent[key] = _coerce(val)
+            current_list = None
     return data
 
 
