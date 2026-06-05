@@ -1,0 +1,6 @@
+{
+  "skip_perf_gate": false,
+  "reason": "Describe why the SLO cannot be met right now (e.g. known regression, CI hardware degraded)",
+  "expires": "YYYY-MM-DD",
+  "owner": "github-username"
+}

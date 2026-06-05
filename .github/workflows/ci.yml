@@ -42,6 +42,9 @@ jobs:
             --cov=. --cov-report=xml --cov-report=term-missing:skip-covered \
             --ignore=tests/test_device_agent.py
 
+      - name: Performance gate (TAD §8 SLO)
+        run: python3 -m pytest tests/test_performance_gate.py -q --tb=short
+
       - name: Type-check with mypy
         run: >
           python3 -m mypy
