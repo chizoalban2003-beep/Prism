@@ -109,3 +109,12 @@ from_number = ""          # your Twilio number, e.g. +14155552671
 [smarthome]
 ha_url   = ""             # e.g. http://homeassistant.local:8123
 ha_token = ""             # Long-lived access token from HA profile page
+
+# ── Spectrum Logic (VEAX decision vector) ─────────────────────────────────────
+# Each axis is a float 0.0–1.0.  Defaults (0.5) preserve existing behaviour.
+# Run `python3 prism_daemon.py --setup-spectrum` to tune interactively.
+[spectrum]
+V = 0.5   # Verification: 0=accept all results, 1=require high evaluator score
+E = 0.5   # Evolution:    0=anchor bias (protect existing memory), 1=high plasticity
+A = 0.5   # Autonomy:     0=full human oversight, 1=autonomous execution
+X = 0.5   # Explanation:  0=execution mode (silent), 1=deep audit (full traces)

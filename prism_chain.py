@@ -163,7 +163,8 @@ Rules:
                   soul=None,
                   organ_loader=None,
                   outcome_tracker=None,
-                  context_id: str = "default"):
+                  context_id: str = "default",
+                  config: dict | None = None):
         self._router             = llm_router
         self._policy             = policy_engine
         self._push               = push
@@ -178,6 +179,10 @@ Rules:
         self._outcome_tracker    = outcome_tracker
         self._context_id         = context_id
         self._persona            = None
+
+        # ── Spectrum middleware (VEAX vector) ─────────────────────────────────
+        from prism_spectrum_middleware import load_spectrum
+        self._spectrum_gates, self._spectrum_network = load_spectrum(config)
 
         # Thread-safety note: _state_lock protects the internal results list
         # in _execute_branch. The append to state.steps happens in run() which
@@ -472,17 +477,48 @@ Rules:
                 # lp_summary closes the loop: the LLM knows exactly what the
                 # previous organ was capable of and whether constitution allowed it.
                 eval_note = f"\nEval: {eval_score}/5" + (f" — still missing: {gap}" if gap else "")
+                # ── X axis: format LogicPolicy trace at configured verbosity ──
+                lp_formatted = self._spectrum_gates.format_logicpolicy(
+                    lp_summary, lp_meta)
+
                 state.accumulated += (
                     f"\n\n[Step {step_num} — {decision.next_logic}]\n"
                     f"Asked: {decision.next_message[:150]}\n"
                     f"Got: {logic_result[:350]}"
-                    + (f"\nLogicPolicy: {lp_summary}" if lp_summary else "")
+                    + (f"\nLogicPolicy: {lp_formatted}" if lp_formatted else "")
                     + (f"\nPolicy: {policy_note}" if policy_note else "")
                     + eval_note
                 )
                 logger.info("[chain %s] Step %d (%s) eval=%d/5 done in %.0fms",
                             state.chain_id, step_num,
                             decision.next_logic, eval_score, elapsed)
+
+                # ── V axis: spectrum verification threshold ───────────────────
+                # At V=0.5 the threshold is 3 — same as the old hard-coded ≥4
+                # guard but now user-tunable. Only skip if score is below threshold.
+                if not self._spectrum_gates.accepts_result(eval_score):
+                    logger.debug(
+                        "[chain %s] V-gate: step %d score %d below threshold %d — continuing",
+                        state.chain_id, step_num, eval_score,
+                        self._spectrum_gates.verification_threshold(),
+                    )
+
+                # ── A axis: approval gate for irreversible organs ─────────────
+                if lp_meta.get("irreversible") and self._spectrum_gates.requires_approval(True):
+                    logger.info(
+                        "[chain %s] A-gate: step %d organ '%s' is irreversible — "
+                        "pausing for approval (A=%.2f)",
+                        state.chain_id, step_num, decision.next_logic, self._spectrum_gates.A,
+                    )
+                    if self._push:
+                        try:
+                            self._push.send(
+                                "PRISM needs your approval",
+                                f"Chain step {step_num} wants to run '{decision.next_logic}' "
+                                f"(irreversible). Reply 'approve' to continue.",
+                            )
+                        except Exception:
+                            pass
 
                 # Early exit: evaluator says result is sufficient (score ≥ 4)
                 if sufficient:
