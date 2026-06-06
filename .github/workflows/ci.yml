@@ -32,6 +32,8 @@ jobs:
         run: |
           python3 -m pip install -e ".[dev]" || python3 -m pip install -e .
           python3 -m pip install pytest-cov
+          # Install safe optional extras (excludes playwright/whisper/pyaudio which need heavy system deps)
+          python3 -m pip install anthropic aiohttp pdfplumber openpyxl twilio || true
 
       - name: Lint with ruff
         run: python3 -m ruff check .
@@ -41,6 +43,7 @@ jobs:
           python3 -m pytest -x -q --tb=short \
             --cov=. --cov-report=xml --cov-report=term-missing:skip-covered \
             --ignore=tests/test_device_agent.py
+            # test_device_agent.py requires physical hardware (Apple Watch / GoPro); skipped in CI
 
       - name: Performance gate (TAD §8 SLO)
         run: python3 -m pytest tests/test_performance_gate.py -q --tb=short
@@ -51,6 +54,8 @@ jobs:
           prism_agent.py prism_chain.py prism_llm_router.py
           prism_orchestrator.py prism_organ_loader.py prism_horizon.py
           prism_outcome_tracker.py prism_memory.py
+          prism_bud_manager.py prism_memory_graph.py prism_spectrum_middleware.py
+          prism_wal.py prism_watchdog.py prism_shadow_pipeline.py prism_metrics.py
           --ignore-missing-imports --no-error-summary || true
 
       - name: Security scan (high severity only)

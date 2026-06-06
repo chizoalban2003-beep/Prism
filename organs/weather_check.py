@@ -6,6 +6,13 @@ ORGAN_META = {
     "capabilities": ["internet_read"],
 }
 
+ORGAN_POLICY = {
+    "risk_level":        "low",
+    "requires_approval": False,
+    "irreversible":      False,
+    "max_per_session":   None,
+}
+
 
 def execute(intent: str, message: str, ctx: dict):
     import json as _json

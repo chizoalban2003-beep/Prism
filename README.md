@@ -67,7 +67,7 @@ PRISM's execution model is a Nucleus-Organ topology with three-layer security:
 └───────────────────────────┬─────────────────────────────────────┘
                             │ hot-swappable at runtime
               ┌─────────────▼─────────────────────────────┐
-              │  ORGAN LAYER  (33 bundled + user/LLM)     │
+              │  ORGAN LAYER  (35 bundled + user/LLM)     │
               │  Each organ declares capabilities manifest │
               │  internet_read/write · filesystem_r/w      │
               │  subprocess · telephony · system_ui        │
@@ -159,7 +159,7 @@ User input (chat / voice / CLI / REST API)
     │  AdaptiveFulcrum.observe() ← online learn     │
     └────────────────────────────────────────────────┘
 
-Organ Layer — 33 bundled organs, extensible at runtime:
+Organ Layer — 35 bundled organs, extensible at runtime:
   ┌──────────────────────────────────────────────────────────────┐
   │  OrganLoader (prism_organ_loader.py)                         │
   │  Discovers organs from ./organs/ (bundled) and              │
@@ -199,6 +199,49 @@ Background loop:
   TaskQueue       →  async background tasks with live progress
   PrismCalibration→  conversational feedback → model adjustment
 ```
+
+### Layered Memory Architecture
+
+PRISM's memory uses a three-tier write-ahead-log design for local-first durability:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  Hot Buffer        in-process dict, zero-latency reads       │
+│  Write-Ahead Log   crash-durable SQLite WAL, idempotent IDs  │
+│  Cold Layer        validated persistent graph (SQLite)       │
+├──────────────────────────────────────────────────────────────┤
+│  MemoryAggregator  hot wins on conflict — freshest truth     │
+│  Shadow Pipeline   background thread drains hot→cold (5 s)  │
+│  Watchdog          30 s heartbeat, auto-resurrects pipeline  │
+│  Ψ (psi)           pending WAL entries; 0 = equilibrium      │
+└──────────────────────────────────────────────────────────────┘
+```
+
+Crash recovery: `replay_wal()` reconstructs any uncommitted writes on restart — zero data loss even under SIGKILL. Verified by the CHAOS-001/002/003 test suite.
+
+### VEAX Spectrum Logic
+
+Every chain execution is governed by four continuous parameters you control in real time:
+
+| Axis | Range | Low end | High end |
+|---|---|---|---|
+| **V** Verification | 0.0–1.0 | accept all results | require strict proof |
+| **E** Evolution | 0.0–1.0 | protect existing memory | always overwrite |
+| **A** Autonomy | 0.0–1.0 | require human approval | fully autonomous |
+| **X** Explanation | 0.0–1.0 | silent execution | full structured traces |
+
+Control via natural language — *"use audit mode"*, *"increase autonomy to 0.8"*, *"be more cautious today"* — or directly: `veax_control` organ handles show / preset / set / delta. Five named presets: `scout` · `audit` · `execution` · `review` · `balanced`. Changes persist to `~/.prism/spectrum_state.json` and take effect on the next chain run without restart.
+
+### Three-Layered Observability
+
+```
+L1 Counters   wal_replays · pipeline_restarts · commits_total · canary_runs
+L2 Latency    reconciliation Lr — rolling 5-min mean; alert when Lr > 60 s
+L3 Drift      Dm = pending WAL entries; critical alert when Dm growing AND Lr high
+Canary probe  synthetic write→WAL→commit→read round-trip; tracks ρ (degradation slope)
+```
+
+GET `/metrics?window_s=300` returns the full JSON report. A canary run is scheduled every 24 h by the horizon planner. CI enforces a **500 ms SLO** on the round-trip; break-glass via `DEBT_WAIVER.json`.
 
 ---
 
@@ -1036,7 +1079,7 @@ PRISM's organ system is the execution backbone of the personal assistant layer. 
 
 To have PRISM synthesise a new organ: say **"build me an organ that does X"** or **"I need a tool that fetches my Strava runs"**. The LLM generates a complete organ file, the AST safety visitor validates it, and it persists to `~/.prism/organs/` for reuse in all future sessions.
 
-### All 33 bundled organs
+### All 35 bundled organs
 
 | Intent | Module | Risk | Approval | Description |
 |---|---|---|---|---|
@@ -1073,6 +1116,8 @@ To have PRISM synthesise a new organ: say **"build me an organ that does X"** or
 | `policy_audit` | `organs/policy_audit.py` | low | no | Query the SQLite policy audit log |
 | `policy_inspect` | `organs/policy_inspect.py` | low | no | Dump `ORGAN_POLICY` for every loaded organ |
 | `policy_update` | `organs/policy_update.py` | low | no | Update a live organ's policy at runtime |
+| `canary_check` | `organs/canary_check.py` | low | no | Synthetic pipeline health probe — measures write→WAL→commit latency and ρ |
+| `veax_control` | `organs/veax_control.py` | low | no | Read or update the VEAX spectrum vector (show/preset/NL tuning) |
 
 ### ORGAN_META — capability manifest
 
@@ -1458,7 +1503,7 @@ agent.register("my_tool", ["my", "tool", "keywords"],
 
 ## Current state
 
-All major capabilities are implemented and tested. The table below is the authoritative feature status as of the last full audit (1,563 tests, 0 failing).
+All major capabilities are implemented and tested. The table below is the authoritative feature status as of the last full audit (1,786 tests, 0 failing).
 
 | Capability | Status | Notes |
 |---|---|---|
@@ -1476,12 +1521,21 @@ All major capabilities are implemented and tested. The table below is the author
 | Token refresh for Google OAuth | **Working** | Auto-refresh via `google_creds.json` — stores `access_token`, `refresh_token`, `client_id`, `client_secret`, `expiry` |
 | Nucleus-Organ topology | **Working** | L1 Constitution → L2 ORGAN_POLICY → L3 BudManager three-layer security gate |
 | LogicPolicy chain loop | **Working** | risk/caps/L1-verdict injected into chain state after every step |
-| Organ capability manifests | **Working** | All 33 organs declare capability type; BudManager scopes ctx to declared caps only |
+| Organ capability manifests | **Working** | All 35 organs declare capability type; BudManager scopes ctx to declared caps only |
 | Horizon goals | `prism_horizon.py` | **Working** — cross-session goal watching; say "watch for X when Y" in chat |
-| Organ library | `organs/` + `~/.prism/organs/` | **Working** — 33 bundled organs; user-creatable; LLM-synthesisable on demand |
+| Organ library | `organs/` + `~/.prism/organs/` | **Working** — 35 bundled organs; user-creatable; LLM-synthesisable on demand |
 | Identity layer | `prism_soul.py` | Working — belief graph, user-defined lenses, stated vs observed delta, LLM context injection |
 | Identity ceremony | `prism_identity_ceremony.py` | Working — 7-question LLM-facilitated onboarding, heuristic fallback |
 | Continuous daemon | `prism_daemon.py` | Working — systemd-compatible, OrganBus flush, horizon evaluation, --ceremony flag |
+| Layered memory graph | `prism_memory_graph.py` | **Working** — hot buffer + WAL + cold layer; `replay_wal()` crash recovery; `consistency_psi()` |
+| Write-ahead log | `prism_wal.py` | **Working** — append-only, idempotent seq_ids, thread-safe; drains on commit |
+| Shadow pipeline | `prism_shadow_pipeline.py` | **Working** — background hot→cold drain (5 s interval); auto-restart on crash |
+| Watchdog | `prism_watchdog.py` | **Working** — 30 s heartbeat; monitors Dm; resurrects dead pipeline |
+| VEAX spectrum control | `prism_spectrum_middleware.py`, `organs/veax_control.py` | **Working** — NL tuning, presets, cross-session persistence |
+| Three-layered observability | `prism_metrics.py` | **Working** — L1 counters, L2 Lr latency, L3 Dm drift, canary ρ |
+| Canary health probe | `organs/canary_check.py` | **Working** — synthetic WAL round-trip, measures degradation slope |
+| Chaos test suite | `tests/test_chaos.py` | **Working** — CHAOS-001/002/003 + ConsistencyOracle; 23 tests |
+| CI performance gate | `tests/test_performance_gate.py` | **Working** — 500 ms SLO; DEBT_WAIVER.json break-glass |
 
 ---
 
