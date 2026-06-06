@@ -8,11 +8,16 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from prism_memory_graph import PrismMemoryGraph
     from prism_soul import PrismSoul
+
+try:
+    import prism_phase as _prism_phase_mod
+except ImportError:
+    _prism_phase_mod = None  # type: ignore[assignment]
 
 _log = logging.getLogger(__name__)
 
@@ -34,15 +39,17 @@ class PrismShadowPipeline:
 
     def __init__(
         self,
-        graph:        "PrismMemoryGraph",
-        interval_s:   float = 5.0,
-        max_restarts: int   = 10,
-        soul:         "PrismSoul | None" = None,
+        graph:         "PrismMemoryGraph",
+        interval_s:    float = 5.0,
+        max_restarts:  int   = 10,
+        soul:          "PrismSoul | None" = None,
+        phase_engine:  Any | None = None,
     ) -> None:
         self._graph        = graph
         self._interval     = interval_s
         self._max_restarts = max_restarts
         self._soul         = soul
+        self._phase_engine = phase_engine
         self._restarts     = 0
         self._stop         = threading.Event()
         self._thread: threading.Thread | None = None
@@ -103,6 +110,42 @@ class PrismShadowPipeline:
                                       len(new_contradictions))
                     except Exception as ec:
                         _log.debug("Entailment check error: %s", ec)
+
+                # Phase engine feedback loop — after each commit cycle
+                if self._phase_engine is not None:
+                    try:
+                        reading = self._phase_engine.compute(soul=self._soul)
+                        if self._phase_engine.should_melt():
+                            _log.info(
+                                "[shadow] Φ_melt=%.3f → %s — applying VEAX delta",
+                                reading.phi, reading.phase.value,
+                            )
+                            deltas = self._phase_engine.veax_delta(reading.phase)
+                            if deltas:
+                                from prism_spectrum_middleware import (
+                                    SpectrumGates,
+                                    get_current_gates,
+                                    save_spectrum_state,
+                                )
+                                current = get_current_gates()
+                                if current is not None:
+                                    new_vals = {
+                                        "V": current.V,
+                                        "E": current.E,
+                                        "A": current.A,
+                                        "X": current.X,
+                                    }
+                                    for axis, val in deltas.items():
+                                        if axis in new_vals:
+                                            # LIQUID uses absolute values; others are deltas
+                                            if reading.phase.value == "LIQUID":
+                                                new_vals[axis] = max(0.0, min(1.0, val))
+                                            else:
+                                                new_vals[axis] = max(0.0, min(1.0,
+                                                    new_vals[axis] + val))
+                                    save_spectrum_state(SpectrumGates(**new_vals))
+                    except Exception as _pe:
+                        _log.debug("[shadow] phase engine error: %s", _pe)
             except Exception as exc:
                 self._restarts += 1
                 _log.warning("Pipeline error (restart %d/%d): %s",

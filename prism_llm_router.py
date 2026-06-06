@@ -8,6 +8,13 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Optional
 
+try:
+    import prism_phase as _prism_phase
+    from prism_phase import PhaseState as _PhaseState
+except ImportError:
+    _prism_phase = None  # type: ignore[assignment]
+    _PhaseState  = None  # type: ignore[assignment]
+
 logger = logging.getLogger(__name__)
 
 
@@ -153,8 +160,37 @@ class LLMRouter:
         self._last_scan  = time.time()
         return options
 
-    def best(self, min_capability: int = 1) -> Optional[LLMOption]:
-        """Return the best available LLM meeting the minimum capability."""
+    def best(self, min_capability: int = 1, phase_hint: Optional[str] = None) -> Optional[LLMOption]:
+        """
+        Return the best available LLM meeting the minimum capability.
+        phase_hint: 'fast'|'standard'|'capable'|'emergency' from CrystallizationEngine.
+        When prism_phase is available, the current phase overrides the hint.
+        """
+        # Phase-aware override (requires prism_phase available)
+        effective_hint = phase_hint
+        if _prism_phase is not None:
+            try:
+                engine = _prism_phase.get_engine()
+                # Only override if compute() has been called at least once
+                if engine.history:
+                    phase = engine.current_phase
+                    effective_hint = engine.model_hint(phase)
+            except Exception:
+                pass
+
+        if effective_hint == "fast":
+            # Prefer smallest/fastest local model (capability=1) over cloud
+            for opt in self.discover():
+                if opt.available and opt.capability >= 1 and opt.provider == "ollama":
+                    return opt
+            # Fall through to normal selection if no local available
+        elif effective_hint == "emergency":
+            # Prefer cloud (claude/openai) as fastest reliable fallback
+            for opt in self.discover():
+                if opt.available and opt.provider in ("claude", "openai_compat"):
+                    return opt
+            # Fall through to normal selection
+
         # Check preferred first
         if self._preferred:
             for opt in self.discover():
@@ -184,6 +220,7 @@ class LLMRouter:
         json_mode:            bool = False,
         conversation_history: list[dict] = None,
         speculative:          bool = False,
+        phase_hint:           Optional[str] = None,
         # list of {"role":"user"|"assistant","content":str}
     ) -> tuple[str, str]:
         """
@@ -200,6 +237,7 @@ class LLMRouter:
                 prompt, min_capability=1, max_tokens=max_tokens,
                 system=system, json_mode=json_mode,
                 conversation_history=conversation_history, speculative=False,
+                phase_hint=phase_hint,
             )
             _uncertain = ("i don't know", "uncertain", "cannot", "i'm not sure",
                           "i am not sure", "unclear", "not enough information")
@@ -208,6 +246,26 @@ class LLMRouter:
                 logger.debug("[llm_router] speculative: fast model sufficient (%s)", fast_model)
                 return fast_resp, fast_model
             logger.debug("[llm_router] speculative: escalating to min_capability=%d", min_capability)
+
+        # Phase-aware: when LIQUID, prefer fastest/cloud first regardless of ranking
+        if _prism_phase is not None:
+            try:
+                _eng = _prism_phase.get_engine()
+                if _eng.history and _eng.current_phase is _PhaseState.LIQUID:
+                    preferred = self.best(min_capability=min_capability, phase_hint="emergency")
+                    if preferred is not None:
+                        try:
+                            text = self._call_option(
+                                preferred, prompt, max_tokens, system,
+                                json_mode, conversation_history or [])
+                            if text:
+                                logger.debug("[llm_router] LIQUID phase → %s/%s",
+                                             preferred.provider, preferred.model)
+                                return text, f"{preferred.provider}/{preferred.model}"
+                        except Exception as _e:
+                            logger.warning("[llm_router] LIQUID preferred failed: %s", _e)
+            except Exception:
+                pass
 
         for opt in self.discover():
             if not opt.available or opt.capability < min_capability:

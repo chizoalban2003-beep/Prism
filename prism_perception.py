@@ -322,6 +322,96 @@ class SportReadinessModel:
 
 
 # ---------------------------------------------------------------------------
+# BiometricVEAXBridge — threshold-based VEAX auto-update from biometrics
+# ---------------------------------------------------------------------------
+
+class BiometricVEAXBridge:
+    """
+    Applies VEAX deltas based on biometric signal values.
+    Rules are threshold-based, not LLM-based — zero latency.
+    Call apply(factors) after each perception batch.
+    """
+
+    # (factor_id, comparison, threshold, veax_deltas, cooldown_s)
+    _RULES: list[tuple[str, str, float, dict[str, float], float]] = [
+        ("sport_readiness",    "<",  0.40, {"A": -0.10},                3600),
+        ("sport_readiness",    "<",  0.30, {"A": -0.15, "V": +0.10},    3600),
+        ("sport_readiness",    ">",  0.80, {"A": +0.05},                1800),
+        ("hrv_recovery",       "<",  0.30, {"V": -0.10, "E": -0.10},    3600),
+        ("hrv_recovery",       ">",  0.80, {"E": +0.10},                1800),
+        ("stress_level",       ">",  0.70, {"X": +0.15, "A": -0.10},   1800),
+        ("stress_level",       ">",  0.85, {"V": +0.10},                1800),
+        ("sleep_quality",      "<",  0.40, {"V": -0.10, "E": -0.10},    7200),
+        ("sleep_quality",      ">",  0.80, {"E": +0.05, "X": -0.05},    3600),
+        ("cognitive_readiness",">",  0.80, {"E": +0.10, "V": +0.05},    1800),
+        ("cognitive_readiness","<",  0.40, {"A": -0.15, "X": +0.10},    3600),
+    ]
+
+    def __init__(self) -> None:
+        # Maps rule index → last-fired timestamp
+        self._last_fired: dict[int, float] = {}
+
+    def apply(self, factors: dict[str, float]) -> dict[str, float]:
+        """
+        Evaluate all rules against current factor values.
+        Accumulates net deltas, clamps each axis to [0, 1].
+        If any delta fires: loads current gates, builds new gates,
+        calls save_spectrum_state().
+        Returns the net delta dict (empty if nothing fired).
+        """
+        now      = time.time()
+        net: dict[str, float] = {}
+
+        for idx, (fid, cmp, thresh, deltas, cooldown) in enumerate(self._RULES):
+            value = factors.get(fid)
+            if value is None:
+                continue
+            # Evaluate comparison
+            fired = (cmp == "<" and value < thresh) or (cmp == ">" and value > thresh)
+            if not fired:
+                continue
+            # Cooldown check
+            last = self._last_fired.get(idx, 0.0)
+            if now - last < cooldown:
+                continue
+            # Fire
+            self._last_fired[idx] = now
+            for axis, delta in deltas.items():
+                net[axis] = net.get(axis, 0.0) + delta
+
+        if not net:
+            return {}
+
+        # Apply deltas to current VEAX gates
+        try:
+            from prism_spectrum_middleware import (
+                SpectrumGates,
+                get_current_gates,
+                save_spectrum_state,
+            )
+            current = get_current_gates()
+            if current is None:
+                from prism_spectrum_middleware import load_spectrum
+                current = load_spectrum()
+            new_vals: dict[str, float] = {
+                "V": current.V,
+                "E": current.E,
+                "A": current.A,
+                "X": current.X,
+            }
+            for axis, delta in net.items():
+                if axis in new_vals:
+                    new_vals[axis] = max(0.0, min(1.0, new_vals[axis] + delta))
+            new_gates = SpectrumGates(**new_vals)
+            save_spectrum_state(new_gates)
+            logger.debug("[BiometricVEAXBridge] applied deltas %s → new VEAX %s", net, new_vals)
+        except Exception as exc:
+            logger.debug("[BiometricVEAXBridge] VEAX update failed: %s", exc)
+
+        return net
+
+
+# ---------------------------------------------------------------------------
 # Biometric channel — reads from device_hub wearable data
 # ---------------------------------------------------------------------------
 
@@ -685,12 +775,13 @@ class ContextFuser:
     DECAY_HALF_LIFE = 120.0  # older signals count less (2-min half-life)
 
     def __init__(self, signal_queue: queue.Queue):
-        self._q       = signal_queue
+        self._q           = signal_queue
         self._signals: dict[str, list[ContextSignal]] = {}
-        self._lock    = threading.Lock()
-        self._stop    = threading.Event()
-        self._thread  = threading.Thread(
+        self._lock        = threading.Lock()
+        self._stop        = threading.Event()
+        self._thread      = threading.Thread(
             target=self._fuse_loop, daemon=True, name="prism-fuser")
+        self._veax_bridge = BiometricVEAXBridge()
 
     def start(self) -> None:
         self._thread.start()
@@ -726,13 +817,21 @@ class ContextFuser:
         active = list({s.channel for sigs in self._signals.values()
                        for s in sigs if s.timestamp > now - 60})
 
-        return ContextState(
+        state = ContextState(
             factors          = factors,
             confidence       = confidence,
             active_channels  = active,
             last_updated     = now,
             summary          = self._summarise(factors),
         )
+
+        # Zero-latency VEAX auto-update from biometric factors
+        try:
+            self._veax_bridge.apply(factors)
+        except Exception as _bve:
+            logger.debug("[ContextFuser] veax_bridge error: %s", _bve)
+
+        return state
 
     def _fuse_loop(self) -> None:
         while not self._stop.wait(0.1):
