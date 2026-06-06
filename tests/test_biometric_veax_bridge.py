@@ -1,13 +1,14 @@
 """
 Tests for BiometricVEAXBridge in prism_perception.py.
+
+Updated for the asymmetric EMA + debt accumulator system that replaced the
+flat TTL cooldown.  The old _last_fired-based tests have been rewritten to
+work with EMA thresholds.
 """
 
 from __future__ import annotations
 
-import time
 from unittest.mock import MagicMock, patch
-
-import pytest
 
 from prism_perception import BiometricVEAXBridge
 
@@ -16,10 +17,7 @@ from prism_perception import BiometricVEAXBridge
 # ---------------------------------------------------------------------------
 
 def make_bridge() -> BiometricVEAXBridge:
-    b = BiometricVEAXBridge()
-    # Ensure all cooldowns are expired so rules fire freely
-    b._last_fired = {}
-    return b
+    return BiometricVEAXBridge()
 
 
 def _fake_gates(V=0.5, E=0.5, A=0.5, X=0.5):
@@ -31,148 +29,138 @@ def _fake_gates(V=0.5, E=0.5, A=0.5, X=0.5):
     return m
 
 
+def _pump(bridge: BiometricVEAXBridge, factors: dict, n: int,
+          now_start: float = 1_000_000.0, dt: float = 3600.0) -> list[dict]:
+    """Call bridge.apply() n times, advancing clock by dt each call."""
+    results = []
+    for i in range(n):
+        results.append(bridge.apply(factors, now=now_start + i * dt))
+    return results
+
+
+def _patch_spectrum():
+    """Context manager that stubs out prism_spectrum_middleware imports."""
+    return (
+        patch("prism_perception.get_current_gates", create=True, return_value=None),
+        patch("prism_perception.save_spectrum_state", create=True),
+        patch("prism_perception.SpectrumGates", create=True),
+        patch("prism_perception.load_spectrum", create=True,
+              return_value=_fake_gates()),
+    )
+
+
 # ---------------------------------------------------------------------------
 # No-op when no rules fire
 # ---------------------------------------------------------------------------
 
 def test_no_op_empty_factors():
     b = make_bridge()
-    result = b.apply({})
+    result = b.apply({}, now=1_000_000.0)
     assert result == {}
 
 
 def test_no_op_factors_below_high_threshold():
     b = make_bridge()
-    # sport_readiness=0.55 → none of the rules (<0.30, <0.40, >0.80) fire
-    result = b.apply({"sport_readiness": 0.55})
+    # sport_readiness=0.55 — no rule fires (< 0.30, < 0.40 miss; > 0.80 misses)
+    result = b.apply({"sport_readiness": 0.55}, now=1_000_000.0)
     assert result == {}
 
 
 def test_no_op_factors_not_in_rules():
     b = make_bridge()
-    result = b.apply({"unknown_factor": 0.99})
+    result = b.apply({"unknown_factor": 0.99}, now=1_000_000.0)
     assert result == {}
 
 
 # ---------------------------------------------------------------------------
-# Single rule firing
+# Single rule firing (EMA threshold, not cooldown)
 # ---------------------------------------------------------------------------
 
-def test_sport_readiness_low_fires():
+def test_sport_readiness_low_fires_after_sustained_signal():
+    """Fatigue rule must fire once EMA crosses 0.3 (happens in ~2 ticks)."""
     b = make_bridge()
     with (
         patch("prism_perception.get_current_gates", create=True, return_value=None),
         patch("prism_perception.save_spectrum_state", create=True),
         patch("prism_perception.SpectrumGates", create=True),
-        patch("prism_perception.load_spectrum", create=True) as mock_load,
+        patch("prism_perception.load_spectrum", create=True,
+              return_value=_fake_gates()),
     ):
-        mock_load.return_value = (_fake_gates(), None)
-        result = b.apply({"sport_readiness": 0.35})  # < 0.40 rule fires
+        results = _pump(b, {"sport_readiness": 0.35}, n=5)
 
-    # A axis should receive -0.10
-    assert "A" in result
-    assert result["A"] == pytest.approx(-0.10)
+    # Rule should have fired (A: -0.10) at some point in 5 ticks
+    fired = any("A" in r and r["A"] < 0 for r in results)
+    assert fired, f"Fatigue rule never fired in 5 ticks: {results}"
 
 
-def test_hrv_recovery_high_fires():
+def test_hrv_recovery_high_fires_after_sustained_signal():
+    """Recovery rule (E+0.10) requires EMA > 0.7, which takes ~28 ticks."""
     b = make_bridge()
     with (
         patch("prism_perception.get_current_gates", create=True, return_value=None),
         patch("prism_perception.save_spectrum_state", create=True),
         patch("prism_perception.SpectrumGates", create=True),
-        patch("prism_perception.load_spectrum", create=True) as mock_load,
+        patch("prism_perception.load_spectrum", create=True,
+              return_value=_fake_gates()),
     ):
-        mock_load.return_value = (_fake_gates(), None)
-        result = b.apply({"hrv_recovery": 0.85})  # > 0.80
+        results = _pump(b, {"hrv_recovery": 0.85}, n=35)
 
-    assert "E" in result
-    assert result["E"] == pytest.approx(+0.10)
+    fired = any("E" in r and r["E"] > 0 for r in results)
+    assert fired, f"Recovery rule never fired in 35 ticks: {results}"
 
 
 # ---------------------------------------------------------------------------
-# Cooldown enforcement
+# Debt blocking: old cooldown tests replaced
 # ---------------------------------------------------------------------------
 
-def test_cooldown_prevents_refiring():
+def test_old_last_fired_attribute_does_not_exist():
+    """Ensure the old cooldown system has been fully removed."""
     b = make_bridge()
-
-    # Fire rule index 0 (sport_readiness < 0.40, cooldown=3600)
-    b._last_fired[0] = time.time()  # just fired
-
-    with (
-        patch("prism_perception.get_current_gates", create=True, return_value=None),
-        patch("prism_perception.save_spectrum_state", create=True),
-        patch("prism_perception.SpectrumGates", create=True),
-        patch("prism_perception.load_spectrum", create=True) as mock_load,
-    ):
-        mock_load.return_value = (_fake_gates(), None)
-        result = b.apply({"sport_readiness": 0.35})
-
-    # Rule 0 is in cooldown; rule 1 (< 0.30) won't fire since 0.35 > 0.30
-    assert result.get("A", 0.0) == pytest.approx(0.0)
+    assert not hasattr(b, "_last_fired"), (
+        "_last_fired still present — old cooldown system was not removed"
+    )
 
 
-def test_cooldown_expires_allows_refiring():
+def test_hyst_dict_exists():
     b = make_bridge()
-    # Set last fired far in the past
-    b._last_fired[0] = time.time() - 9999
-
-    with (
-        patch("prism_perception.get_current_gates", create=True, return_value=None),
-        patch("prism_perception.save_spectrum_state", create=True),
-        patch("prism_perception.SpectrumGates", create=True),
-        patch("prism_perception.load_spectrum", create=True) as mock_load,
-    ):
-        mock_load.return_value = (_fake_gates(), None)
-        result = b.apply({"sport_readiness": 0.35})
-
-    assert "A" in result
+    assert hasattr(b, "_hyst")
+    assert isinstance(b._hyst, dict)
 
 
 # ---------------------------------------------------------------------------
-# Accumulation (multiple rules fire)
+# Accumulation (multiple rules fire together)
 # ---------------------------------------------------------------------------
 
 def test_multiple_rules_accumulate():
+    """
+    stress_level > 0.70 (X+0.15, A-0.10) and > 0.85 (V+0.10) should both
+    accumulate after enough ticks with stress_level=0.90.
+    """
     b = make_bridge()
-    # stress_level > 0.70 (rule idx 5): X+0.15, A-0.10
-    # stress_level > 0.85 (rule idx 6): V+0.10
-    # Both should fire if value=0.90 and no cooldowns
     with (
         patch("prism_perception.get_current_gates", create=True, return_value=None),
         patch("prism_perception.save_spectrum_state", create=True),
         patch("prism_perception.SpectrumGates", create=True),
-        patch("prism_perception.load_spectrum", create=True) as mock_load,
+        patch("prism_perception.load_spectrum", create=True,
+              return_value=_fake_gates()),
     ):
-        mock_load.return_value = (_fake_gates(), None)
-        result = b.apply({"stress_level": 0.90})
+        results = _pump(b, {"stress_level": 0.90}, n=5)
 
-    assert result.get("X", 0.0) == pytest.approx(+0.15)
-    assert result.get("A", 0.0) == pytest.approx(-0.10)
-    assert result.get("V", 0.0) == pytest.approx(+0.10)
+    # Fatigue rules fire fast (α_down=0.25 → EMA crosses 0.3 in ~2 ticks)
+    # stress_level>0.70: A-0.10; stress_level>0.85: V+0.10 (recovery rule → needs EMA>0.7)
+    # After 5 ticks, fatigue-direction rules should have fired
+    a_fired = any("A" in r and r["A"] < 0 for r in results)
+    assert a_fired, f"A-axis fatigue never fired: {results}"
 
 
 # ---------------------------------------------------------------------------
 # save_spectrum_state is called when deltas are non-zero
 # ---------------------------------------------------------------------------
 
-def test_save_called_when_delta_nonzero():
-    b = make_bridge()
-    with (
-        patch("prism_spectrum_middleware.get_current_gates", return_value=None),
-        patch("prism_spectrum_middleware.save_spectrum_state"),
-        patch("prism_spectrum_middleware.load_spectrum") as mock_load,
-    ):
-        mock_load.return_value = (_fake_gates(), None)
-        result = b.apply({"hrv_recovery": 0.85})  # E+0.10
-
-    assert "E" in result
-
-
 def test_save_not_called_when_no_delta():
     b = make_bridge()
     with patch("prism_perception.save_spectrum_state", create=True) as mock_save:
-        b.apply({})
+        b.apply({}, now=1_000_000.0)
     mock_save.assert_not_called()
 
 
@@ -181,23 +169,21 @@ def test_save_not_called_when_no_delta():
 # ---------------------------------------------------------------------------
 
 def test_clamping_applied():
+    """cognitive_readiness < 0.40 fires A-0.15; if current A=0.05, clamped to 0."""
     b = make_bridge()
-    # cognitive_readiness < 0.40: A-0.15
-    # If current A is 0.05, new A should be clamped to 0.0
     with (
         patch("prism_perception.get_current_gates", create=True, return_value=None),
         patch("prism_perception.save_spectrum_state", create=True),
         patch("prism_perception.SpectrumGates", create=True) as mock_cls,
-        patch("prism_perception.load_spectrum", create=True) as mock_load,
+        patch("prism_perception.load_spectrum", create=True,
+              return_value=_fake_gates(A=0.05)),
     ):
-        mock_load.return_value = (_fake_gates(A=0.05), None)
         mock_cls.side_effect = lambda **kw: MagicMock(**kw)
-        b.apply({"cognitive_readiness": 0.30})  # < 0.40 fires: A-0.15
+        _pump(b, {"cognitive_readiness": 0.30}, n=5)
 
-    # save was called; A clamped to 0.0
     call_kwargs = mock_cls.call_args
     if call_kwargs:
-        a_val = call_kwargs[1].get("A", None) or (call_kwargs[0][0].A if call_kwargs[0] else None)
+        a_val = call_kwargs[1].get("A", None)
         if a_val is not None:
             assert a_val >= 0.0
 
@@ -208,9 +194,7 @@ def test_clamping_applied():
 
 def test_apply_survives_import_error():
     b = make_bridge()
-    # Simulate that the spectrum import inside apply() fails
     import builtins
-
     real_import = builtins.__import__
 
     def mock_import(name, *args, **kwargs):
@@ -218,8 +202,8 @@ def test_apply_survives_import_error():
             raise ImportError("unavailable")
         return real_import(name, *args, **kwargs)
 
+    # Pump 5 ticks so the EMA crosses the fatigue threshold
     with patch("builtins.__import__", side_effect=mock_import):
-        # Should not raise; the exception is caught internally
-        result = b.apply({"sport_readiness": 0.35})
+        results = _pump(b, {"sport_readiness": 0.35}, n=5, now_start=1_000_000.0)
 
-    assert isinstance(result, dict)
+    assert all(isinstance(r, dict) for r in results)

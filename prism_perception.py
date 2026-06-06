@@ -322,61 +322,138 @@ class SportReadinessModel:
 
 
 # ---------------------------------------------------------------------------
-# BiometricVEAXBridge — threshold-based VEAX auto-update from biometrics
+# BiometricVEAXBridge — asymmetric EMA + debt accumulator VEAX auto-update
 # ---------------------------------------------------------------------------
+
+@dataclass
+class _HysteresisState:
+    """Per-rule EMA + debt accumulator state."""
+    ema:     float = 0.0   # signal strength estimate in [0, 1]
+    debt:    float = 0.0   # fatigue debt accumulated from downward deltas
+    last_ts: float = 0.0   # unix timestamp of last update (0 = never)
+
 
 class BiometricVEAXBridge:
     """
-    Applies VEAX deltas based on biometric signal values.
-    Rules are threshold-based, not LLM-based — zero latency.
-    Call apply(factors) after each perception batch.
+    Applies VEAX deltas based on biometric signal values using an asymmetric
+    EMA + debt accumulator system that prevents spurious recovery after brief
+    positive spikes during sustained fatigue.
+
+    Design:
+      - α_down = 0.25 for all axes (fast fatigue accumulation, ~2 ticks to cross 0.3)
+      - α_up varies per axis (slow recovery):
+          V: 0.016 (τ ≈ 72h at 1h ticks)
+          E: 0.042 (τ ≈ 24h)
+          A: 0.25  (τ ≈ 4h, fastest)
+          X: 0.05  (τ ≈ 20h)
+      - Debt accumulates on downward VEAX deltas; decays at 0.1/hour
+      - Upward VEAX deltas are blocked when debt > 0.5
+      - Fatigue rules fire when EMA > 0.3; recovery rules require EMA > 0.7
+
+    Call apply(factors, now=None) after each perception batch.
     """
 
-    # (factor_id, comparison, threshold, veax_deltas, cooldown_s)
-    _RULES: list[tuple[str, str, float, dict[str, float], float]] = [
-        ("sport_readiness",    "<",  0.40, {"A": -0.10},                3600),
-        ("sport_readiness",    "<",  0.30, {"A": -0.15, "V": +0.10},    3600),
-        ("sport_readiness",    ">",  0.80, {"A": +0.05},                1800),
-        ("hrv_recovery",       "<",  0.30, {"V": -0.10, "E": -0.10},    3600),
-        ("hrv_recovery",       ">",  0.80, {"E": +0.10},                1800),
-        ("stress_level",       ">",  0.70, {"X": +0.15, "A": -0.10},   1800),
-        ("stress_level",       ">",  0.85, {"V": +0.10},                1800),
-        ("sleep_quality",      "<",  0.40, {"V": -0.10, "E": -0.10},    7200),
-        ("sleep_quality",      ">",  0.80, {"E": +0.05, "X": -0.05},    3600),
-        ("cognitive_readiness",">",  0.80, {"E": +0.10, "V": +0.05},    1800),
-        ("cognitive_readiness","<",  0.40, {"A": -0.15, "X": +0.10},    3600),
+    # (factor_id, comparison, threshold, veax_deltas, primary_axis)
+    # primary_axis: the VEAX axis whose α_up governs this rule's recovery speed.
+    # "fatigue" rules have negative deltas; "recovery" rules have positive deltas.
+    _RULES: list[tuple[str, str, float, dict[str, float], str]] = [
+        ("sport_readiness",    "<",  0.40, {"A": -0.10},              "A"),
+        ("sport_readiness",    "<",  0.30, {"A": -0.15, "V": +0.10},  "A"),
+        ("sport_readiness",    ">",  0.80, {"A": +0.05},              "A"),
+        ("hrv_recovery",       "<",  0.30, {"V": -0.10, "E": -0.10},  "V"),
+        ("hrv_recovery",       ">",  0.80, {"E": +0.10},              "E"),
+        ("stress_level",       ">",  0.70, {"X": +0.15, "A": -0.10}, "X"),
+        ("stress_level",       ">",  0.85, {"V": +0.10},              "V"),
+        ("sleep_quality",      "<",  0.40, {"V": -0.10, "E": -0.10}, "V"),
+        ("sleep_quality",      ">",  0.80, {"E": +0.05, "X": -0.05}, "E"),
+        ("cognitive_readiness",">",  0.80, {"E": +0.10, "V": +0.05}, "E"),
+        ("cognitive_readiness","<",  0.40, {"A": -0.15, "X": +0.10}, "A"),
     ]
 
-    def __init__(self) -> None:
-        # Maps rule index → last-fired timestamp
-        self._last_fired: dict[int, float] = {}
+    # Per-axis slow-recovery α values (τ in hours at 1h ticks = -1/ln(1-α_up))
+    _AXIS_ALPHA_UP: dict[str, float] = {
+        "V": 0.016,   # τ ≈ 72h — verification trust, very slow to rebuild
+        "E": 0.042,   # τ ≈ 24h — evolution latitude
+        "A": 0.25,    # τ ≈ 4h  — autonomy, fastest recovery
+        "X": 0.05,    # τ ≈ 20h — explanation verbosity
+    }
+    _ALPHA_DOWN: float = 0.25  # fast fatigue accumulation for all axes
 
-    def apply(self, factors: dict[str, float]) -> dict[str, float]:
+    # EMA thresholds: fatigue rules fire above FATIGUE_THRESH, recovery above RECOVERY_THRESH
+    _FATIGUE_THRESH:  float = 0.3
+    _RECOVERY_THRESH: float = 0.7
+
+    # Debt threshold above which upward deltas are blocked
+    _DEBT_BLOCK_THRESH: float = 0.5
+
+    # Debt decay rate: units per hour
+    _DEBT_DECAY_RATE: float = 0.1
+
+    def __init__(self) -> None:
+        # Maps rule index → per-rule hysteresis state
+        self._hyst: dict[int, _HysteresisState] = {}
+
+    def _state(self, idx: int) -> _HysteresisState:
+        if idx not in self._hyst:
+            self._hyst[idx] = _HysteresisState()
+        return self._hyst[idx]
+
+    def _is_recovery_rule(self, deltas: dict[str, float]) -> bool:
+        """A rule is a recovery rule if any of its deltas is strictly positive."""
+        return any(v > 0.0 for v in deltas.values())
+
+    def apply(self, factors: dict[str, float], now: float | None = None) -> dict[str, float]:
         """
-        Evaluate all rules against current factor values.
-        Accumulates net deltas, clamps each axis to [0, 1].
-        If any delta fires: loads current gates, builds new gates,
-        calls save_spectrum_state().
+        Evaluate all rules against current factor values using asymmetric EMA.
         Returns the net delta dict (empty if nothing fired).
         """
-        now      = time.time()
+        if now is None:
+            now = time.time()
+
         net: dict[str, float] = {}
 
-        for idx, (fid, cmp, thresh, deltas, cooldown) in enumerate(self._RULES):
+        for idx, (fid, cmp, thresh, deltas, primary_axis) in enumerate(self._RULES):
             value = factors.get(fid)
             if value is None:
                 continue
-            # Evaluate comparison
-            fired = (cmp == "<" and value < thresh) or (cmp == ">" and value > thresh)
-            if not fired:
+
+            state = self._state(idx)
+
+            # Default dt to 3600s (1 hour) on first call
+            dt = (now - state.last_ts) if state.last_ts > 0.0 else 3600.0
+
+            # Evaluate whether the rule condition is met
+            condition_met = (cmp == "<" and value < thresh) or (cmp == ">" and value > thresh)
+
+            # Asymmetric EMA update
+            alpha_up = self._AXIS_ALPHA_UP.get(primary_axis, 0.05)
+            if condition_met:
+                state.ema = state.ema + self._ALPHA_DOWN * (1.0 - state.ema)
+            else:
+                state.ema = state.ema - alpha_up * state.ema
+
+            # Debt update
+            # Decay debt regardless of whether condition fired
+            state.debt = max(0.0, state.debt - self._DEBT_DECAY_RATE * (dt / 3600.0))
+            # Accumulate debt when condition fires and rule has downward (fatigue) deltas
+            if condition_met and any(v < 0.0 for v in deltas.values()):
+                state.debt += sum(abs(v) for v in deltas.values()) * 0.5
+
+            state.last_ts = now
+
+            # Determine EMA threshold based on rule type
+            is_recovery = self._is_recovery_rule(deltas)
+            threshold = self._RECOVERY_THRESH if is_recovery else self._FATIGUE_THRESH
+
+            # Check if EMA crosses the firing threshold
+            if state.ema <= threshold:
                 continue
-            # Cooldown check
-            last = self._last_fired.get(idx, 0.0)
-            if now - last < cooldown:
-                continue
-            # Fire
-            self._last_fired[idx] = now
+
+            # Apply per-axis debt blocking for upward deltas
             for axis, delta in deltas.items():
+                if delta > 0.0 and state.debt > self._DEBT_BLOCK_THRESH:
+                    # Upward delta blocked by accumulated debt
+                    continue
                 net[axis] = net.get(axis, 0.0) + delta
 
         if not net:
@@ -392,7 +469,9 @@ class BiometricVEAXBridge:
             current = get_current_gates()
             if current is None:
                 from prism_spectrum_middleware import load_spectrum
-                current = load_spectrum()
+                loaded = load_spectrum()
+                # load_spectrum may return (gates, network) tuple or just gates
+                current = loaded[0] if isinstance(loaded, tuple) else loaded
             new_vals: dict[str, float] = {
                 "V": current.V,
                 "E": current.E,
@@ -439,11 +518,11 @@ class BiometricChannel(PerceptionChannel):
             except Exception as e:
                 logger.debug("Biometric channel error: %s", e)
 
-    def ingest(self, hrv_ms: float = None, heart_rate: int = None,
-                sleep_hrs: float = None, steps: int = None,
-                soreness: int = None,
-                high_intensity_mins: float = None,
-                training_load: float = None) -> None:
+    def ingest(self, hrv_ms: Optional[float] = None, heart_rate: Optional[int] = None,
+                sleep_hrs: Optional[float] = None, steps: Optional[int] = None,
+                soreness: Optional[int] = None,
+                high_intensity_mins: Optional[float] = None,
+                training_load: Optional[float] = None) -> None:
         """
         Direct ingestion for manual or wearable-pushed data.
         Call this when a wearable sync occurs.
@@ -542,7 +621,7 @@ class VoiceChannel(PerceptionChannel):
                  whisper_model: str = "base",
                  wake_word:     str = "hey prism",
                  enabled:       bool = True,
-                 on_transcript: Callable = None):
+                 on_transcript: Optional[Callable] = None):
         super().__init__(signal_queue, enabled)
         self._whisper_model  = whisper_model
         self._wake_word      = wake_word.lower()
@@ -930,11 +1009,12 @@ class PrismPerception:
         ollama_host:     str  = "http://localhost:11434",
         whisper_model:   str  = "base",
         wake_word:       str  = "hey prism",
-        on_voice_command: Callable = None,
+        on_voice_command: Optional[Callable] = None,
     ):
-        self._q       = queue.Queue()
+        self._q: queue.Queue = queue.Queue()
         self._fuser   = ContextFuser(self._q)
         self._channels: list[PerceptionChannel] = []
+        self._typing: Optional[TypingPatternChannel] = None
 
         if enable_system:
             self._channels.append(SystemContextChannel(self._q))
@@ -942,8 +1022,6 @@ class PrismPerception:
         if enable_typing:
             self._typing = TypingPatternChannel(self._q)
             self._channels.append(self._typing)
-        else:
-            self._typing = None
 
         if enable_biometric:
             self._channels.append(BiometricChannel(self._q, device_hub))
