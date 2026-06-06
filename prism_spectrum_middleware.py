@@ -19,6 +19,8 @@ is unchanged.
 """
 from __future__ import annotations
 
+import json as _json
+import threading as _threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -198,11 +200,20 @@ def load_spectrum(config: dict | None = None) -> tuple[SpectrumGates, DecisionNe
     """
     Load spectrum config and return (SpectrumGates, DecisionNetwork).
     Safe to call with config=None — falls back to prism_config.toml,
-    then to 0.5 defaults.
+    then to 0.5 defaults.  When no explicit config is supplied, layers
+    in any persisted state from ~/.prism/spectrum_state.json so that
+    runtime tuning (via veax_control organ) survives across sessions.
     """
-    vals  = _load_spectrum_config(config)
+    vals = _load_spectrum_config(config)
+    if config is None:
+        state = _load_spectrum_state()
+        if state:
+            for k in ("V", "E", "A", "X"):
+                if k in state:
+                    vals[k] = float(max(0.0, min(1.0, state[k])))
     gates = SpectrumGates(**vals)
     net   = build_spectrum_network(gates)
+    set_current_gates(gates)
     return gates, net
 
 
@@ -239,3 +250,133 @@ def spectrum_summary(gates: SpectrumGates, network: DecisionNetwork) -> dict[str
         "beam_positions":  beam_positions,
         "primary_planks":  primary_planks,
     }
+
+
+# ── Runtime state management ──────────────────────────────────────────────────
+# Module-level singleton so any module (organs, chain) shares in-session state.
+
+_STATE_PATH   = Path.home() / ".prism" / "spectrum_state.json"
+_state_lock   = _threading.Lock()
+_current_gates: SpectrumGates | None = None
+
+
+def get_current_gates() -> SpectrumGates | None:
+    """Return the live in-session SpectrumGates (None before first load_spectrum call)."""
+    with _state_lock:
+        return _current_gates
+
+
+def set_current_gates(gates: SpectrumGates) -> None:
+    """Update the in-session singleton.  Called by load_spectrum and save_spectrum_state."""
+    global _current_gates
+    with _state_lock:
+        _current_gates = gates
+
+
+def _load_spectrum_state() -> dict | None:
+    """Read ~/.prism/spectrum_state.json.  Returns None if absent or unreadable."""
+    try:
+        return _json.loads(_STATE_PATH.read_text())
+    except Exception:
+        return None
+
+
+def save_spectrum_state(gates: SpectrumGates, preset: str | None = None) -> None:
+    """Persist VEAX values to ~/.prism/spectrum_state.json and sync singleton."""
+    from datetime import datetime, timezone
+    data: dict[str, Any] = gates.to_dict()
+    data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    if preset:
+        data["preset"] = preset
+    _STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _STATE_PATH.write_text(_json.dumps(data, indent=2))
+    set_current_gates(gates)
+
+
+# ── Named presets ─────────────────────────────────────────────────────────────
+
+VEAX_PRESETS: dict[str, dict[str, float]] = {
+    "scout":     {"V": 0.3, "E": 0.8, "A": 0.6, "X": 0.3},
+    "audit":     {"V": 0.9, "E": 0.2, "A": 0.3, "X": 0.9},
+    "execution": {"V": 0.5, "E": 0.5, "A": 0.8, "X": 0.1},
+    "review":    {"V": 0.8, "E": 0.3, "A": 0.2, "X": 0.8},
+    "balanced":  {"V": 0.5, "E": 0.5, "A": 0.5, "X": 0.5},
+}
+
+
+# ── Text rendering ────────────────────────────────────────────────────────────
+
+def render_gates(gates: SpectrumGates, preset: str | None = None) -> str:
+    """Return a text-slider visualisation of the current VEAX state."""
+    def bar(v: float) -> str:
+        filled = round(v * 10)
+        return "█" * filled + "░" * (10 - filled)
+
+    _axis_labels: dict[str, tuple[str, str, str]] = {
+        "V": ("Verification ", "accept all",     "strict proof"),
+        "E": ("Evolution    ", "anchor bias",    "high plasticity"),
+        "A": ("Autonomy     ", "full oversight", "autonomous"),
+        "X": ("Explanation  ", "silent exec",    "full audit"),
+    }
+    lines: list[str] = []
+    for axis, (name, lo, hi) in _axis_labels.items():
+        val  = getattr(gates, axis)
+        side = hi if val >= 0.5 else lo
+        lines.append(f"  {axis} [{name}] {bar(val)} {val:.2f}  ← {side}")
+
+    approval = (
+        "always" if gates.A < 0.3 else
+        "never"  if gates.A > 0.7 else
+        "irreversible only"
+    )
+    lines += [
+        "",
+        f"  V-threshold={gates.verification_threshold()}  "
+        f"verbosity={gates.logicpolicy_verbosity()}  "
+        f"approval={approval}",
+    ]
+    if preset:
+        lines.append(f"  Preset: {preset}")
+    return "\n".join(lines)
+
+
+# ── NL → VEAX inference ───────────────────────────────────────────────────────
+
+def nl_to_veax(message: str, current: SpectrumGates, router: Any) -> dict[str, Any]:
+    """
+    Parse a natural-language VEAX adjustment request via the LLM router.
+
+    Returns a dict with:
+      action    — 'get' | 'set' | 'delta' | 'preset' | 'reset'
+      V/E/A/X   — float  (set: absolute value; delta: signed amount to add)
+      preset    — str    (only for 'preset' action)
+      reasoning — str
+    """
+    system = (
+        "You are a VEAX spectrum vector parser for an AI assistant configuration system.\n"
+        "Parse user messages about adjusting AI behaviour into structured JSON updates.\n\n"
+        "VEAX axes (floats 0.0–1.0):\n"
+        "  V (Verification): 0=accept all inputs, 1=require strict formal proof\n"
+        "  E (Evolution):    0=anchor/protect existing memory, 1=high plasticity/always overwrite\n"
+        "  A (Autonomy):     0=human must approve all actions, 1=fully autonomous execution\n"
+        "  X (Explanation):  0=silent execution mode, 1=full structured audit traces\n\n"
+        "Named presets: scout(V=0.3,E=0.8,A=0.6,X=0.3), audit(V=0.9,E=0.2,A=0.3,X=0.9), "
+        "execution(V=0.5,E=0.5,A=0.8,X=0.1), review(V=0.8,E=0.3,A=0.2,X=0.8), "
+        "balanced(V=0.5,E=0.5,A=0.5,X=0.5)\n\n"
+        "Output valid JSON only. Fields:\n"
+        '  "action": "get" | "set" | "delta" | "preset" | "reset"\n'
+        '  "V","E","A","X": float — set=absolute value, delta=signed delta (e.g. -0.2)\n'
+        '  "preset": string — only for preset action\n'
+        '  "reasoning": one sentence explaining your interpretation\n'
+        "Omit axis keys not mentioned. For 'get', omit all axis keys."
+    )
+    prompt = (
+        f"Current VEAX: V={current.V:.2f}, E={current.E:.2f}, "
+        f"A={current.A:.2f}, X={current.X:.2f}\n\n"
+        f"User message: {message}"
+    )
+    try:
+        resp, _ = router.call(prompt, system=system, json_mode=True, max_tokens=300, min_capability=0)
+        return _json.loads(resp)
+    except Exception:
+        return {"action": "get", "reasoning": "parse error — showing current state"}

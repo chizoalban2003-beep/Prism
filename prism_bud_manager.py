@@ -59,6 +59,7 @@ _CAPABILITY_CTX_KEYS: dict[str, list[str]] = {
     "system_ui":        [],
     "notifications":    [],
     "smart_home":       [],
+    "spectrum_control": [],  # uses module singleton; no extra ctx keys needed
     # Always included regardless of capability
     "_always": [
         "organ_loader", "policy_engine", "router",

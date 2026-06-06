@@ -208,6 +208,13 @@ Rules:
 
     # ── Public API ────────────────────────────────────────────────────────────
 
+    def _sync_spectrum(self) -> None:
+        """Pick up in-session VEAX updates made by the veax_control organ."""
+        from prism_spectrum_middleware import get_current_gates
+        live = get_current_gates()
+        if live is not None and live is not self._spectrum_gates:
+            self._spectrum_gates = live
+
     def should_chain(self, message: str) -> bool:
         """
         Heuristic: is this request complex enough to warrant a chain?
@@ -251,6 +258,8 @@ Rules:
 
         Returns a PrismCard with the composed final answer.
         """
+
+        self._sync_spectrum()   # pick up any in-session VEAX updates
 
         if not self._router:
             logger.debug("PrismChain: no router, skipping chain")
