@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from prism_memory_graph import PrismMemoryGraph
+    from prism_soul import PrismSoul
 
 _log = logging.getLogger(__name__)
 
@@ -28,20 +29,26 @@ class PrismShadowPipeline:
         pipeline.stop()           # graceful shutdown; waits for in-flight commit
     """
 
+    # Entailment check runs every N commit cycles to amortize the cost
+    _ENTAILMENT_INTERVAL = 12
+
     def __init__(
         self,
         graph:        "PrismMemoryGraph",
         interval_s:   float = 5.0,
         max_restarts: int   = 10,
+        soul:         "PrismSoul | None" = None,
     ) -> None:
         self._graph        = graph
         self._interval     = interval_s
         self._max_restarts = max_restarts
+        self._soul         = soul
         self._restarts     = 0
         self._stop         = threading.Event()
         self._thread: threading.Thread | None = None
         self._committed_total = 0
         self._last_commit_ts: float = 0.0
+        self._commit_cycles: int = 0
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 
@@ -77,12 +84,25 @@ class PrismShadowPipeline:
                     self._committed_total += n
                     self._last_commit_ts = time.monotonic()
                     elapsed = time.monotonic() - t0
+                    self._commit_cycles += 1
                     _log.debug("Pipeline committed %d entries (total=%d)",
                                n, self._committed_total)
                     if _metrics:
                         _metrics.inc("commits_total", n)
                         _metrics.record_latency(elapsed)
                         _metrics.record_dm(self._graph.consistency_psi())
+
+                # Periodic soul entailment check (every _ENTAILMENT_INTERVAL cycles)
+                if (self._soul is not None
+                        and self._commit_cycles > 0
+                        and self._commit_cycles % self._ENTAILMENT_INTERVAL == 0):
+                    try:
+                        new_contradictions = self._soul.run_entailment_check()
+                        if new_contradictions:
+                            _log.info("Entailment check: %d new contradictions found",
+                                      len(new_contradictions))
+                    except Exception as ec:
+                        _log.debug("Entailment check error: %s", ec)
             except Exception as exc:
                 self._restarts += 1
                 _log.warning("Pipeline error (restart %d/%d): %s",

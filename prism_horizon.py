@@ -540,6 +540,57 @@ class HorizonPlanner:
     # Internal helpers
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _deterministic_condition(condition: str, ctx: dict) -> bool | None:
+        """
+        Evaluate simple numeric/date/presence conditions without an LLM call.
+        Returns True/False if the pattern is recognized, None to fall through to LLM.
+
+        Recognized patterns (case-insensitive):
+          - "<key> >= <number>"  /  "<key> > <number>"
+          - "<key> <= <number>"  /  "<key> < <number>"
+          - "<key> == <number>"  /  "<key> != <number>"
+          - "day is <weekday>" — True if today matches
+          - "<key> exists" / "<key> present" — True if key has a truthy value
+        """
+        import re as _re
+        from datetime import datetime as _dt
+
+        cond = condition.strip().lower()
+
+        # Numeric comparison: "hrv >= 60" / "price < 100" etc.
+        m = _re.match(r"(\w+)\s*(>=|<=|>|<|==|!=)\s*([0-9.+-]+)", cond)
+        if m:
+            key, op, val_str = m.group(1), m.group(2), m.group(3)
+            if key in ctx:
+                try:
+                    lhs = float(ctx[key])
+                    rhs = float(val_str)
+                    return {
+                        ">=": lhs >= rhs,
+                        "<=": lhs <= rhs,
+                        ">":  lhs >  rhs,
+                        "<":  lhs <  rhs,
+                        "==": lhs == rhs,
+                        "!=": lhs != rhs,
+                    }[op]
+                except (TypeError, ValueError):
+                    pass
+
+        # Day-of-week: "day is monday"
+        m = _re.match(r"day\s+is\s+(\w+)", cond)
+        if m:
+            target = m.group(1)[:3]
+            today = _dt.now().strftime("%a").lower()
+            return today == target
+
+        # Presence check: "temperature exists" / "user_name present"
+        m = _re.match(r"(\w+)\s+(exists|present)", cond)
+        if m:
+            return bool(ctx.get(m.group(1)))
+
+        return None  # unrecognized — let LLM handle it
+
     def _evaluate_trigger(self, goal: HorizonGoal) -> bool:
         """Return True if the goal's trigger condition is currently met."""
         # 1. Probe function (highest-fidelity — checks the real world directly)
@@ -553,11 +604,19 @@ class HorizonPlanner:
                 )
                 return False
 
-        # 2. LLM-based natural-language evaluation
+        # 2. Deterministic router — zero-latency for numeric/date/presence patterns
+        det = self._deterministic_condition(
+            goal.trigger_condition, dict(goal.accumulated_context)
+        )
+        if det is not None:
+            logger.debug("HorizonPlanner: deterministic eval %s → %s", goal.goal_id, det)
+            return det
+
+        # 3. LLM-based natural-language evaluation
         if self._llm is not None:
             return self._llm_evaluate(goal)
 
-        # 3. No probe, no LLM — ask the user
+        # 4. No probe, no LLM — ask the user
         logger.debug(
             "HorizonPlanner: cannot evaluate %s — no probe or LLM", goal.goal_id
         )

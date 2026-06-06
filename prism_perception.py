@@ -23,12 +23,14 @@ Privacy principles (enforced in code):
 
 from __future__ import annotations
 
+import json as _json_mod
 import logging
 import math
 import queue
 import threading
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
@@ -246,6 +248,80 @@ class TypingPatternChannel(PerceptionChannel):
 
 
 # ---------------------------------------------------------------------------
+# Sport readiness model
+# ---------------------------------------------------------------------------
+
+class SportReadinessModel:
+    """
+    Composite sport readiness score from wearable biometrics.
+    Weights are calibrated per sport based on the primary physiological demands.
+    Score in [0, 1]; labels: 'peak' ≥0.80, 'ready' ≥0.60, 'caution' ≥0.40, 'rest' <0.40.
+    """
+
+    # (hrv_weight, sleep_weight, intensity_weight, soreness_weight)
+    _SPORT_WEIGHTS: dict[str, tuple[float, float, float, float]] = {
+        "football":    (0.30, 0.25, 0.25, 0.20),
+        "basketball":  (0.25, 0.25, 0.30, 0.20),
+        "rugby":       (0.20, 0.25, 0.30, 0.25),
+        "tennis":      (0.35, 0.30, 0.20, 0.15),
+        "cycling":     (0.35, 0.25, 0.25, 0.15),
+        "default":     (0.30, 0.30, 0.20, 0.20),
+    }
+
+    def __init__(self, sport: str = "default") -> None:
+        self.sport = sport.lower()
+
+    def _weights(self) -> tuple[float, float, float, float]:
+        return self._SPORT_WEIGHTS.get(self.sport, self._SPORT_WEIGHTS["default"])
+
+    def score(
+        self,
+        hrv_ms: float | None = None,
+        sleep_hrs: float | None = None,
+        high_intensity_mins: float | None = None,
+        soreness: float | None = None,
+    ) -> float:
+        """Weighted composite readiness score in [0, 1]."""
+        wh, ws, wi, wsor = self._weights()
+        components: list[tuple[float, float]] = []
+
+        if hrv_ms is not None:
+            hrv_norm = max(0.0, min(1.0, (hrv_ms - 20.0) / 80.0))
+            components.append((hrv_norm, wh))
+
+        if sleep_hrs is not None:
+            sleep_norm = max(0.0, min(1.0, (sleep_hrs - 4.0) / 5.0))
+            components.append((sleep_norm, ws))
+
+        if high_intensity_mins is not None:
+            # 0 mins = fully rested; >90 mins in last 24h = fatigued
+            intensity_fatigue = max(0.0, min(1.0, high_intensity_mins / 90.0))
+            components.append((1.0 - intensity_fatigue, wi))
+
+        if soreness is not None:
+            soreness_norm = max(0.0, min(1.0, soreness / 10.0))
+            components.append((1.0 - soreness_norm, wsor))
+
+        if not components:
+            return 0.5
+        total_w = sum(w for _, w in components)
+        return sum(v * w for v, w in components) / total_w
+
+    def label(self, score: float) -> str:
+        if score >= 0.80:
+            return "peak"
+        if score >= 0.60:
+            return "ready"
+        if score >= 0.40:
+            return "caution"
+        return "rest"
+
+    def to_factor(self, score: float) -> float:
+        """Convert readiness score to a 0–1 decision factor."""
+        return round(score, 4)
+
+
+# ---------------------------------------------------------------------------
 # Biometric channel — reads from device_hub wearable data
 # ---------------------------------------------------------------------------
 
@@ -258,9 +334,11 @@ class BiometricChannel(PerceptionChannel):
     NAME = "biometric"
 
     def __init__(self, signal_queue: queue.Queue,
-                 device_hub=None, enabled: bool = True):
+                 device_hub=None, enabled: bool = True,
+                 sport: str = "default"):
         super().__init__(signal_queue, enabled)
         self._hub = device_hub
+        self._sport_model = SportReadinessModel(sport)
 
     def _run(self) -> None:
         while not self._stop.wait(300.0):   # every 5 minutes
@@ -273,10 +351,14 @@ class BiometricChannel(PerceptionChannel):
 
     def ingest(self, hrv_ms: float = None, heart_rate: int = None,
                 sleep_hrs: float = None, steps: int = None,
-                soreness: int = None) -> None:
+                soreness: int = None,
+                high_intensity_mins: float = None,
+                training_load: float = None) -> None:
         """
         Direct ingestion for manual or wearable-pushed data.
         Call this when a wearable sync occurs.
+        high_intensity_mins: minutes of high-intensity exercise in the last 24h
+        training_load: subjective session RPE * duration (arbitrary units)
         """
         if hrv_ms is not None:
             # HRV: <30ms = very stressed, >80ms = well recovered
@@ -310,6 +392,24 @@ class BiometricChannel(PerceptionChannel):
             self._emit("physical_soreness", soreness_norm, 0.85,
                        f"soreness {soreness}/10")
 
+        if training_load is not None:
+            # Normalise against a ~400 AU daily ceiling (e.g. RPE 8 × 50min)
+            load_norm = max(0.0, min(1.0, training_load / 400.0))
+            self._emit("training_load", load_norm, 0.80, f"load {training_load:.0f}au")
+
+        # Sport readiness composite signal (only when at least one biometric is present)
+        sport_inputs = [hrv_ms, sleep_hrs, high_intensity_mins, soreness]
+        if any(v is not None for v in sport_inputs):
+            readiness_score = self._sport_model.score(
+                hrv_ms=hrv_ms,
+                sleep_hrs=sleep_hrs,
+                high_intensity_mins=high_intensity_mins,
+                soreness=float(soreness) if soreness is not None else None,
+            )
+            label = self._sport_model.label(readiness_score)
+            self._emit("sport_readiness", self._sport_model.to_factor(readiness_score),
+                       0.88, f"{self._sport_model.sport} readiness: {label} ({readiness_score:.2f})")
+
     def _read_wearables(self) -> None:
         if not self._hub:
             return
@@ -317,11 +417,13 @@ class BiometricChannel(PerceptionChannel):
             data = self._hub.latest_health_snapshot()
             if data:
                 self.ingest(
-                    hrv_ms     = data.get("hrv"),
-                    heart_rate = data.get("heart_rate"),
-                    sleep_hrs  = data.get("sleep_hours"),
-                    steps      = data.get("steps"),
-                    soreness   = data.get("soreness"),
+                    hrv_ms              = data.get("hrv"),
+                    heart_rate          = data.get("heart_rate"),
+                    sleep_hrs           = data.get("sleep_hours"),
+                    steps               = data.get("steps"),
+                    soreness            = data.get("soreness"),
+                    high_intensity_mins = data.get("high_intensity_mins"),
+                    training_load       = data.get("training_load"),
                 )
         except Exception:
             pass
@@ -669,6 +771,35 @@ class ContextFuser:
 # Main perception engine
 # ---------------------------------------------------------------------------
 
+def _try_ingest_health_dir(
+    health_path: Path,
+    seen: set[str],
+    ingest_fn: Callable,
+    sport: str = "default",
+) -> None:
+    """Read new JSON health dump files from a directory and ingest them."""
+    if not health_path.is_dir():
+        return
+    for fp in health_path.glob("*.json"):
+        key = fp.name
+        if key in seen:
+            continue
+        try:
+            data = _json_mod.loads(fp.read_text())
+            ingest_fn(
+                hrv_ms              = data.get("hrv"),
+                heart_rate          = data.get("heart_rate"),
+                sleep_hrs           = data.get("sleep_hours"),
+                steps               = data.get("steps"),
+                soreness            = data.get("soreness"),
+                high_intensity_mins = data.get("high_intensity_mins"),
+                training_load       = data.get("training_load"),
+            )
+            seen.add(key)
+        except Exception as exc:
+            logging.getLogger(__name__).debug("health dir ingest error %s: %s", fp.name, exc)
+
+
 class PrismPerception:
     """
     Orchestrates all perception channels.
@@ -755,6 +886,26 @@ class PrismPerception:
             if isinstance(ch, BiometricChannel):
                 ch.ingest(**kwargs)
                 break
+
+    def watch_health_dir(self, path: str, sport: str = "default") -> None:
+        """
+        Poll a directory for JSON health dumps (e.g. Apple Health exports).
+        Ingests any new file dropped into `path` since the last poll.
+        Runs in a background thread; safe to call once after start().
+        """
+        import threading as _threading
+        health_path = Path(path)
+        seen: set[str] = set()
+
+        def _poll() -> None:
+            while True:
+                _try_ingest_health_dir(health_path, seen, self.ingest_biometrics, sport)
+                import time as _t
+                _t.sleep(60.0)
+
+        t = _threading.Thread(target=_poll, daemon=True, name="prism-health-watch")
+        t.start()
+        logger.info("PrismPerception: watching health dir %s (sport=%s)", path, sport)
 
     def record_keypress(self) -> None:
         """Call from keyboard hook to feed typing pattern channel."""

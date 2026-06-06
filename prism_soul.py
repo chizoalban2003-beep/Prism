@@ -456,11 +456,14 @@ class PrismSoul:
     # Delta report
     # ------------------------------------------------------------------
 
-    def delta_report(self) -> List[dict]:
+    def delta_report(self, run_check: bool = False) -> List[dict]:
         """
         Find stated/observed pairs connected by a 'contradicts' edge.
         Returns list of {"stated": text, "observed": text, "strength": float}.
+        If run_check=True, also runs run_entailment_check() first to surface new contradictions.
         """
+        if run_check:
+            self.run_entailment_check()
         contradicts_edges = self.list_edges(relation="contradicts")
         results = []
         for edge in contradicts_edges:
@@ -474,6 +477,86 @@ class PrismSoul:
             elif a.source == "observed" and b.source == "stated":
                 results.append({"stated": b.text, "observed": a.text, "strength": edge.strength})
         return results
+
+    @staticmethod
+    def _keyword_sim(a: str, b: str) -> float:
+        """Jaccard similarity on content words (length ≥ 4, not stopwords)."""
+        _STOP = frozenset({
+            "that", "this", "with", "from", "have", "been", "will", "would", "could",
+            "should", "more", "very", "also", "when", "then", "than", "they", "them",
+            "what", "which", "some", "does", "into", "over", "your", "like", "time",
+        })
+        def _tokens(text: str) -> set[str]:
+            import re as _re
+            words = _re.findall(r"[a-z]+", text.lower())
+            return {w for w in words if len(w) >= 4 and w not in _STOP}
+
+        ta, tb = _tokens(a), _tokens(b)
+        if not ta or not tb:
+            return 0.0
+        return len(ta & tb) / len(ta | tb)
+
+    def run_entailment_check(self, sim_threshold: float = 0.15) -> List[dict]:
+        """
+        Compare stated beliefs against lens observation trends.
+        When a stated belief overlaps with a lens that shows a consistently
+        negative trend, create an observed belief node and a 'contradicts' edge.
+        Returns list of newly created contradiction dicts.
+        """
+        stated = [b for b in self.list_beliefs(belief_type=None) if b.source == "stated"]
+        lenses = self.list_lenses()
+        created: List[dict] = []
+
+        for lens in lenses:
+            obs = lens.observations
+            if len(obs) < 3:
+                continue
+            # Trend: mean of last-3 vs mean of first-3
+            recent_vals = [o["value"] for o in obs[-3:] if isinstance(o.get("value"), (int, float))]
+            early_vals  = [o["value"] for o in obs[:3]  if isinstance(o.get("value"), (int, float))]
+            if not recent_vals or not early_vals:
+                continue
+            trend = sum(recent_vals) / len(recent_vals) - sum(early_vals) / len(early_vals)
+            if trend >= -0.1:
+                continue  # no significant negative trend
+
+            for belief in stated:
+                sim = self._keyword_sim(belief.text, lens.description)
+                if sim < sim_threshold:
+                    continue
+
+                # Avoid duplicate observed belief nodes for this (lens, belief) pair
+                obs_text = f"Observed: {lens.name} shows declining trend ({trend:+.2f})"
+                existing_obs = [
+                    b for b in self.list_beliefs(belief_type=None)
+                    if b.source == "observed" and lens.name in b.text
+                ]
+                if existing_obs:
+                    obs_node_id = existing_obs[0].node_id
+                else:
+                    obs_node_id = self.add_belief(
+                        text=obs_text,
+                        belief_type=belief.belief_type,
+                        source="observed",
+                        confidence=min(0.9, abs(trend)),
+                    )
+
+                # Add contradicts edge if not already present
+                existing_edges = self.list_edges(relation="contradicts")
+                already_linked = any(
+                    (e.from_id == belief.node_id and e.to_id == obs_node_id) or
+                    (e.from_id == obs_node_id and e.to_id == belief.node_id)
+                    for e in existing_edges
+                )
+                if not already_linked:
+                    self.add_edge(belief.node_id, obs_node_id, "contradicts", strength=sim)
+                    created.append({
+                        "stated":   belief.text,
+                        "observed": obs_text,
+                        "sim":      round(sim, 3),
+                        "trend":    round(trend, 3),
+                    })
+        return created
 
     # ------------------------------------------------------------------
     # LLM helpers

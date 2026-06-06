@@ -321,9 +321,14 @@ GET `/metrics?window_s=300` returns the full JSON report. A canary run is schedu
 | Evaluator quality gate | `prism_chain.py` | Working — per-step 1-5 score, early exit when sufficient |
 | Logic composition (DAG) | `prism_composer.py` | Working — LLM decomposes task → parallel/sequential DAG |
 | Outcome learning | `prism_outcome_tracker.py` | Working — Bayesian belief updates on done/abandoned/corrected outcomes |
+| Outcome → Fulcrum feedback | `prism_outcome_tracker.py` + `prism_spectrum_middleware.py` | Working — every recorded outcome feeds `AdaptiveFulcrum.observe()` so the VEAX network self-calibrates from real results |
 | Crystallised user persona | `prism_persona.py` | Working — behavioural profile grows from every interaction |
 | Continuous crystallisation | `prism_crystalliser.py` | Working — heuristic (every turn) + LLM deep analysis (hourly daemon) |
 | Living narrative | `prism_narrative.py` | Working — weekly/monthly synthesis stored to memory; `my narrative` to read |
+| WAL batch commit | `prism_wal.py` + `prism_memory_graph.py` | Working — `append_batch` / `mark_committed_batch` / `upsert_nodes_batch` reduce 100-node commit from ~1400 ms to <20 ms |
+| Soul contradiction detector | `prism_soul.py` | Working — `run_entailment_check()` scans stated beliefs vs lens trends; creates `contradicts` edges via Jaccard similarity |
+| Horizon deterministic router | `prism_horizon.py` | Working — `_deterministic_condition()` handles numeric / date / presence triggers with zero LLM calls |
+| Sport biometric ingestion | `prism_perception.py` | Working — `SportReadinessModel` scores HRV/sleep/intensity/soreness per sport; emits `sport_readiness` signal; `watch_health_dir()` polls JSON health dumps |
 
 ---
 
@@ -1374,7 +1379,7 @@ PRISM/
 │   ├── prism_setup_llm.py          CLI wizard — auto-detects providers, tests, writes config
 │   └── prism_settings_llm.py       Web settings page at /settings/llm + JSON API helpers
 │
-└── tests/                      1,563 pytest tests — all passing
+└── tests/                      1,846 pytest tests — all passing
 ```
 
 ---
@@ -1400,7 +1405,7 @@ PRISM/
 
 ```bash
 python -m pytest tests/ -q
-# 1,563 tests pass in ~180 seconds
+# 1,846 tests pass in ~180 seconds
 
 # With coverage report:
 python -m pytest tests/ -q --cov=. --cov-report=term-missing:skip-covered

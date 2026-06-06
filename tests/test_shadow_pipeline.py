@@ -62,7 +62,11 @@ class TestShadowPipelineCommits:
         graph.write_node(_node("n2"))
         pipeline.start()
         deadline = time.monotonic() + 2.0
-        while graph.consistency_psi() > 0 and time.monotonic() < deadline:
+        # Wait for both psi to drop AND committed_total to reflect the batch
+        while (
+            (graph.consistency_psi() > 0 or pipeline.status()["committed_total"] < 2)
+            and time.monotonic() < deadline
+        ):
             time.sleep(0.01)
         assert pipeline.status()["committed_total"] >= 2
 
@@ -112,24 +116,23 @@ class TestChaos001PipelineCrash:
 
 class TestChaos002DiskError:
     def test_cold_layer_intact_after_commit_failure(self, graph, monkeypatch):
-        """If cold.upsert_node raises, cold layer must remain clean."""
+        """If cold.upsert_nodes_batch raises, cold layer must remain clean."""
         from prism_memory_graph import _ColdLayer
-        original = _ColdLayer.upsert_node
+        original_batch = _ColdLayer.upsert_nodes_batch
 
         call_count = {"n": 0}
-        def failing_upsert(self, node):
+        def failing_batch(self, nodes):
             call_count["n"] += 1
             if call_count["n"] == 1:
                 raise OSError("Simulated disk error")
-            return original(self, node)
+            return original_batch(self, nodes)
 
-        monkeypatch.setattr(_ColdLayer, "upsert_node", failing_upsert)
+        monkeypatch.setattr(_ColdLayer, "upsert_nodes_batch", failing_batch)
 
         graph.write_node(_node("safe"))
         graph.write_node(_node("safe2"))
-        graph.commit_pending()  # first entry fails; second never reached
-        # Cold layer has no corrupted half-writes
-        # safe node stayed in WAL (still pending)
+        graph.commit_pending()  # batch raises; entire batch stays pending
+        # Cold layer has no corrupted half-writes; both nodes stayed in WAL
         assert graph.consistency_psi() >= 1
 
 

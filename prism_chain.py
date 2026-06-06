@@ -210,10 +210,13 @@ Rules:
 
     def _sync_spectrum(self) -> None:
         """Pick up in-session VEAX updates made by the veax_control organ."""
-        from prism_spectrum_middleware import get_current_gates
+        from prism_spectrum_middleware import get_current_gates, get_current_network
         live = get_current_gates()
         if live is not None and live is not self._spectrum_gates:
             self._spectrum_gates = live
+        live_net = get_current_network()
+        if live_net is not None and live_net is not self._spectrum_network:
+            self._spectrum_network = live_net
 
     def should_chain(self, message: str) -> bool:
         """

@@ -214,6 +214,7 @@ def load_spectrum(config: dict | None = None) -> tuple[SpectrumGates, DecisionNe
     gates = SpectrumGates(**vals)
     net   = build_spectrum_network(gates)
     set_current_gates(gates)
+    set_current_network(net)
     return gates, net
 
 
@@ -255,9 +256,10 @@ def spectrum_summary(gates: SpectrumGates, network: DecisionNetwork) -> dict[str
 # ── Runtime state management ──────────────────────────────────────────────────
 # Module-level singleton so any module (organs, chain) shares in-session state.
 
-_STATE_PATH   = Path.home() / ".prism" / "spectrum_state.json"
-_state_lock   = _threading.Lock()
-_current_gates: SpectrumGates | None = None
+_STATE_PATH      = Path.home() / ".prism" / "spectrum_state.json"
+_state_lock      = _threading.Lock()
+_current_gates:   SpectrumGates   | None = None
+_current_network: DecisionNetwork | None = None
 
 
 def get_current_gates() -> SpectrumGates | None:
@@ -271,6 +273,19 @@ def set_current_gates(gates: SpectrumGates) -> None:
     global _current_gates
     with _state_lock:
         _current_gates = gates
+
+
+def get_current_network() -> DecisionNetwork | None:
+    """Return the live in-session DecisionNetwork (None before first load_spectrum call)."""
+    with _state_lock:
+        return _current_network
+
+
+def set_current_network(net: DecisionNetwork) -> None:
+    """Update the in-session network singleton."""
+    global _current_network
+    with _state_lock:
+        _current_network = net
 
 
 def _load_spectrum_state() -> dict | None:

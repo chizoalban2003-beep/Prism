@@ -129,6 +129,7 @@ class OutcomeTracker:
         logger.debug("[outcome_tracker] recorded %s → %s (chain %s)", goal[:40], outcome, chain_id)
 
         self._incremental_soul_update(rec)
+        self._fulcrum_feedback(rec)
 
         # Notify crystalliser
         crystalliser = self._crystalliser
@@ -252,6 +253,30 @@ class OutcomeTracker:
             self._soul_update_for_record(rec, self._soul)
         except Exception as exc:
             logger.debug("[outcome_tracker] soul update failed: %s", exc)
+
+    def _fulcrum_feedback(self, rec: OutcomeRecord) -> None:
+        """Feed real outcome payoff into the live DecisionNetwork's AdaptiveFulcrums."""
+        try:
+            from prism_spectrum_middleware import get_current_network, observe_outcome
+            net = get_current_network()
+            if net is None:
+                return
+            # Map outcome string → actual payoff in [0, 1]
+            payoff_map = {
+                "done":           1.0,
+                "abandoned":      0.1,
+                "user_corrected": 0.3,
+                "error":          0.0,
+            }
+            actual = payoff_map.get(rec.outcome, 0.5)
+            # Predict from step efficiency: fewer steps for same goal → higher payoff
+            predicted = min(1.0, 1.0 / max(1, rec.steps_count / 5)) if rec.steps_count else 0.5
+            # Use policy_flags as a proxy for how cautious the position was (0=exec, 1=full_oversight)
+            position = min(1.0, rec.policy_flags / 10.0) if rec.policy_flags else 0.5
+            observe_outcome(net, logic="outcome_feedback", actual_payoff=actual,
+                            predicted_payoff=predicted, chosen_position=position)
+        except Exception as exc:
+            logger.debug("[outcome_tracker] fulcrum feedback failed: %s", exc)
 
     def _soul_update_for_record(self, rec: OutcomeRecord, soul: "PrismSoul") -> int:
         updates = 0

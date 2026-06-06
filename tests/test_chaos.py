@@ -250,47 +250,47 @@ class TestChaos001SigkillSimulation:
 
 class TestChaos002DiskError:
     """
-    Scenario: cold.upsert_node() raises on the first call (disk timeout).
+    Scenario: cold.upsert_nodes_batch() raises (disk timeout).
     The atomic commit must abort cleanly.  The cold layer must stay consistent
     (no half-written data).  Subsequent retry must succeed.
     """
 
     def test_cold_layer_clean_after_first_commit_failure(self, graph, monkeypatch):
         from prism_memory_graph import _ColdLayer
-        original = _ColdLayer.upsert_node
+        original_batch = _ColdLayer.upsert_nodes_batch
         attempt = {"n": 0}
 
-        def failing(self, node):
+        def failing_batch(self, nodes):
             attempt["n"] += 1
             if attempt["n"] == 1:
                 raise OSError("Simulated disk timeout")
-            return original(self, node)
+            return original_batch(self, nodes)
 
-        monkeypatch.setattr(_ColdLayer, "upsert_node", failing)
+        monkeypatch.setattr(_ColdLayer, "upsert_nodes_batch", failing_batch)
         graph.write_node(_node("safe1"))
         graph.write_node(_node("safe2"))
 
-        # First commit fails on first node
+        # First commit fails
         graph.commit_pending()
-        # Cold layer must not have corrupted partial writes — it raised before commit
+        # Cold layer must not have corrupted partial writes — batch raised before commit
         assert graph._cold.get_node("safe1") is None
 
     def test_retry_after_disk_error_succeeds(self, graph, monkeypatch):
         from prism_memory_graph import _ColdLayer
-        original = _ColdLayer.upsert_node
+        original_batch = _ColdLayer.upsert_nodes_batch
         attempt = {"n": 0}
 
-        def fail_once(self, node):
+        def fail_once_batch(self, nodes):
             attempt["n"] += 1
             if attempt["n"] == 1:
                 raise OSError("One-time disk error")
-            return original(self, node)
+            return original_batch(self, nodes)
 
-        monkeypatch.setattr(_ColdLayer, "upsert_node", fail_once)
+        monkeypatch.setattr(_ColdLayer, "upsert_nodes_batch", fail_once_batch)
         graph.write_node(_node("retry_me"))
         graph.commit_pending()  # fails
         # Remove the fault and retry
-        monkeypatch.setattr(_ColdLayer, "upsert_node", original)
+        monkeypatch.setattr(_ColdLayer, "upsert_nodes_batch", original_batch)
         committed = graph.commit_pending()
         assert committed == 1
         assert graph._cold.get_node("retry_me") is not None
@@ -298,10 +298,10 @@ class TestChaos002DiskError:
     def test_psi_stays_non_zero_after_failed_commit(self, graph, monkeypatch):
         from prism_memory_graph import _ColdLayer
 
-        def always_fail(self, node):
+        def always_fail_batch(self, nodes):
             raise OSError("Permanent disk error")
 
-        monkeypatch.setattr(_ColdLayer, "upsert_node", always_fail)
+        monkeypatch.setattr(_ColdLayer, "upsert_nodes_batch", always_fail_batch)
         graph.write_node(_node("stuck"))
         graph.commit_pending()
         # WAL entry still pending → Ψ > 0
@@ -309,23 +309,23 @@ class TestChaos002DiskError:
 
     def test_pipeline_retries_after_transient_error(self, graph, monkeypatch):
         from prism_memory_graph import _ColdLayer
-        original = _ColdLayer.upsert_node
+        original_batch = _ColdLayer.upsert_nodes_batch
         call_count = {"n": 0}
 
-        def fail_twice(self, node):
+        def fail_twice_batch(self, nodes):
             call_count["n"] += 1
             if call_count["n"] <= 2:
                 raise OSError("Transient error")
-            return original(self, node)
+            return original_batch(self, nodes)
 
-        monkeypatch.setattr(_ColdLayer, "upsert_node", fail_twice)
+        monkeypatch.setattr(_ColdLayer, "upsert_nodes_batch", fail_twice_batch)
         graph.write_node(_node("eventually"))
         pipeline = PrismShadowPipeline(graph, interval_s=0.05, max_restarts=10)
         pipeline.start()
 
         # Remove fault after a short delay — pipeline will eventually succeed
         time.sleep(0.15)
-        monkeypatch.setattr(_ColdLayer, "upsert_node", original)
+        monkeypatch.setattr(_ColdLayer, "upsert_nodes_batch", original_batch)
 
         ConsistencyOracle(graph).assert_eventually_zero(timeout=3.0)
         pipeline.stop(timeout=2.0)
@@ -358,15 +358,23 @@ class TestChaos003SequenceTampering:
         assert graph._wal.pending_count() == 0
 
     def test_watchdog_detects_growing_dm_via_metrics(self, graph, met):
-        pipeline = PrismShadowPipeline(graph, interval_s=60.0)  # slow — won't commit
-        pipeline.start()
+        # Write nodes first, then start the pipeline so the initial run
+        # sees them (pipeline interval=60s means no second commit during the test).
+        for i in range(5):
+            graph.write_node(_node(f"n{i}"))
+
+        pipeline = PrismShadowPipeline(graph, interval_s=60.0)  # slow — won't commit again
 
         watchdog = PrismWatchdog(
             pipeline, dm_threshold=0, check_interval=0.05
         )
 
-        # Write nodes but don't commit
-        for i in range(5):
+        # Commit the batch once to establish a baseline, then add more nodes
+        pipeline.start()
+        time.sleep(0.05)  # let initial pipeline cycle drain those 5
+
+        # Write 5 more nodes — pipeline won't commit them for 60s
+        for i in range(5, 10):
             graph.write_node(_node(f"n{i}"))
 
         watchdog.start()
@@ -374,9 +382,9 @@ class TestChaos003SequenceTampering:
         watchdog.stop()
         pipeline.stop(timeout=1.0)
 
-        # Watchdog should have recorded Dm samples
+        # Watchdog should have recorded Dm samples; at least some still pending
         dm_rows = graph._wal.pending_count()
-        assert dm_rows == 5  # still uncommitted
+        assert dm_rows == 5  # the second batch is still uncommitted
 
     def test_pipeline_rejects_replaying_already_committed_entries(self, graph):
         graph.write_node(_node("n1"))

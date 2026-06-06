@@ -70,6 +70,34 @@ class PrismWAL:
             "SELECT COUNT(*) FROM wal WHERE committed=0"
         ).fetchone()[0]
 
+    def append_batch(self, entries: list[tuple[str, dict[str, Any]]]) -> list[str]:
+        """Append multiple mutations in a single transaction. Returns list of seq_ids."""
+        if not entries:
+            return []
+        now = time.time()
+        seq_ids = [uuid.uuid4().hex for _ in entries]
+        rows = [
+            (sid, op, json.dumps(payload), now, 0)
+            for sid, (op, payload) in zip(seq_ids, entries)
+        ]
+        with self._lock:
+            self._conn.executemany(
+                "INSERT INTO wal(seq_id, op, payload, ts, committed) VALUES (?,?,?,?,?)", rows
+            )
+            self._conn.commit()
+        return seq_ids
+
+    def mark_committed_batch(self, seq_ids: list[str]) -> None:
+        """Mark multiple entries committed in a single transaction."""
+        if not seq_ids:
+            return
+        placeholders = ",".join("?" * len(seq_ids))
+        with self._lock:
+            self._conn.execute(
+                f"UPDATE wal SET committed=1 WHERE seq_id IN ({placeholders})", seq_ids
+            )
+            self._conn.commit()
+
     def drain_committed(self, older_than_days: int = 7) -> int:
         """Delete committed entries older than N days. Returns count removed."""
         cutoff = time.time() - older_than_days * 86400
