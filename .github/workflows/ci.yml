@@ -56,7 +56,7 @@ jobs:
           prism_outcome_tracker.py prism_memory.py
           prism_bud_manager.py prism_memory_graph.py prism_spectrum_middleware.py
           prism_wal.py prism_watchdog.py prism_shadow_pipeline.py prism_metrics.py
-          prism_phase.py
+          prism_phase.py prism_perception.py
           --ignore-missing-imports --no-error-summary || true
 
       - name: Security scan (high severity only)

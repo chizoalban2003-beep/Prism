@@ -329,7 +329,7 @@ GET `/metrics?window_s=300` returns the full JSON report. A canary run is schedu
 | Soul contradiction detector | `prism_soul.py` | Working — `run_entailment_check()` scans stated beliefs vs lens trends; creates `contradicts` edges via Jaccard similarity |
 | Horizon deterministic router | `prism_horizon.py` | Working — `_deterministic_condition()` handles numeric / date / presence triggers with zero LLM calls |
 | Sport biometric ingestion | `prism_perception.py` | Working — `SportReadinessModel` scores HRV/sleep/intensity/soreness per sport; emits `sport_readiness` signal; `watch_health_dir()` polls JSON health dumps |
-| Biometric→VEAX auto-bridge | `prism_perception.py` (`BiometricVEAXBridge`) | Working — 11 threshold rules fire zero-latency VEAX deltas from wearable factors; per-rule cooldowns; clamps all axes to [0,1] |
+| Biometric→VEAX auto-bridge | `prism_perception.py` (`BiometricVEAXBridge`) | Working — asymmetric EMA + debt accumulator (replaces flat TTL cooldown); α_down=0.25 for all axes; per-axis α_up (V:0.016, E:0.042, A:0.25, X:0.05); debt blocks premature recovery; clamps all axes to [0,1] |
 | Φ_melt crystallization engine | `prism_phase.py` (`CrystallizationEngine`) | Working — hardware telemetry + soul contradiction rate → Φ scalar → CRYSTAL/STABLE/VISCOUS/LIQUID phases; VEAX deltas and model hints per phase |
 | Phase-aware LLM routing | `prism_llm_router.py` | Working — LIQUID phase prefers cloud/fastest provider; CRYSTAL prefers local; backward-compatible try/except guard |
 | Phase feedback loop | `prism_shadow_pipeline.py` | Working — after each commit cycle, Φ_melt computed; if should_melt() → VEAX deltas applied; closes hardware-pressure→VEAX loop |
@@ -1384,7 +1384,7 @@ PRISM/
 │   ├── prism_setup_llm.py          CLI wizard — auto-detects providers, tests, writes config
 │   └── prism_settings_llm.py       Web settings page at /settings/llm + JSON API helpers
 │
-└── tests/                      1,889 pytest tests — all passing
+└── tests/                      1,923 pytest tests — all passing
 ```
 
 ---
@@ -1410,7 +1410,7 @@ PRISM/
 
 ```bash
 python -m pytest tests/ -q --ignore=tests/test_device_agent.py
-# 1,889 tests pass in ~180 seconds
+# 1,923 tests pass in ~180 seconds
 
 # With coverage report:
 python -m pytest tests/ -q --ignore=tests/test_device_agent.py --cov=. --cov-report=term-missing:skip-covered
@@ -1513,7 +1513,7 @@ agent.register("my_tool", ["my", "tool", "keywords"],
 
 ## Current state
 
-All major capabilities are implemented and tested. The table below is the authoritative feature status as of the last full audit (1,889 tests, 0 failing).
+All major capabilities are implemented and tested. The table below is the authoritative feature status as of the last full audit (1,923 tests, 0 failing).
 
 | Capability | Status | Notes |
 |---|---|---|
