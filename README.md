@@ -1384,7 +1384,7 @@ PRISM/
 │   ├── prism_setup_llm.py          CLI wizard — auto-detects providers, tests, writes config
 │   └── prism_settings_llm.py       Web settings page at /settings/llm + JSON API helpers
 │
-└── tests/                      1,923 pytest tests — all passing
+└── tests/                      1,984 pytest tests — all passing
 ```
 
 ---
@@ -1410,7 +1410,7 @@ PRISM/
 
 ```bash
 python -m pytest tests/ -q --ignore=tests/test_device_agent.py
-# 1,923 tests pass in ~180 seconds
+# 1,984 tests pass in ~180 seconds
 
 # With coverage report:
 python -m pytest tests/ -q --ignore=tests/test_device_agent.py --cov=. --cov-report=term-missing:skip-covered
@@ -1513,7 +1513,7 @@ agent.register("my_tool", ["my", "tool", "keywords"],
 
 ## Current state
 
-All major capabilities are implemented and tested. The table below is the authoritative feature status as of the last full audit (1,923 tests, 0 failing).
+All major capabilities are implemented and tested. The table below is the authoritative feature status as of the last full audit (1,984 tests, 0 failing).
 
 | Capability | Status | Notes |
 |---|---|---|
@@ -1546,6 +1546,11 @@ All major capabilities are implemented and tested. The table below is the author
 | Canary health probe | `organs/canary_check.py` | **Working** — synthetic WAL round-trip, measures degradation slope |
 | Chaos test suite | `tests/test_chaos.py` | **Working** — CHAOS-001/002/003 + ConsistencyOracle; 23 tests |
 | CI performance gate | `tests/test_performance_gate.py` | **Working** — 500 ms SLO; DEBT_WAIVER.json break-glass |
+| Allostatic baseline shifting | `prism_perception.py` | **Working** — double-order hysteresis; slow_ema + baseline_shift [0,0.3]; 15 tests |
+| VEAX Jacobian debt dynamics | `prism_perception.py` | **Working** — coupled ODE dS/dt=M·S for VEAX debt cross-axis coupling; 12 tests |
+| Anticipatory phase shifting | `prism_phase.py` | **Working** — PhasePredictor with ΔH slope regression + heavy-proc detection; 12 tests |
+| Biological ΔB signal in Φ_melt | `prism_phase.py` | **Working** — VEAXDebtDynamics wired into CrystallizationEngine; 8 tests |
+| LoRA / task-adapter registry | `prism_lora_registry.py` | **Working** — phase+bio_debt-aware adapter selection; CPU prompt-template fallback; 14 tests |
 
 ---
 

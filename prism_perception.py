@@ -322,15 +322,93 @@ class SportReadinessModel:
 
 
 # ---------------------------------------------------------------------------
+# VEAXDebtDynamics — coupled ODE system for VEAX debt decay (Vector II)
+# ---------------------------------------------------------------------------
+
+class VEAXDebtDynamics:
+    """
+    Coupled ODE system for VEAX debt decay.
+    dS/dt = M·S + U  where S = [V_debt, E_debt, A_debt, X_debt]^T
+
+    Biological coupling rationale:
+    - High A_debt (amygdala/stress) suppresses V and E recovery (PFC hijack)
+    - High V_debt (executive fatigue) slightly disinhibits A (loss of PFC control)
+    - High A_debt suppresses X recovery (stress kills articulation)
+    - High E_debt suppresses X (can't explain unconsolidated learning)
+
+    Stability: solution is clamped to [0, 2] after each Euler step, guaranteeing
+    boundedness regardless of off-diagonal coupling magnitudes.
+    """
+
+    # Axis index mapping
+    _IDX: dict[str, int] = {"V": 0, "E": 1, "A": 2, "X": 3}
+
+    # Diagonal: natural decay rates (1/τ per hour)
+    # Off-diagonal: coupling terms (how debt[col] affects recovery of debt[row])
+    # Negative off-diagonal = suppression of recovery
+    # Positive off-diagonal = facilitation (rare)
+    _M: list[list[float]] = [
+        [-1 / 72,   0.008,  -0.150,   0.000],   # V row: suppressed by A
+        [ 0.008,  -1 / 24,  -0.100,  -0.040],   # E row: suppressed by A and X
+        [ 0.040,   0.015,  -1 / 4,    0.000],   # A row: disinhibited by V/E fatigue
+        [ 0.000,  -0.060,  -0.100,  -1 / 20],   # X row: suppressed by E and A
+    ]
+
+    def __init__(self) -> None:
+        self._debt: list[float] = [0.0, 0.0, 0.0, 0.0]  # [V, E, A, X]
+        self._last_ts: float = 0.0
+
+    def add_debt(self, axis: str, amount: float) -> None:
+        """Called when a fatigue rule fires for a given axis."""
+        idx = self._IDX.get(axis)
+        if idx is not None:
+            self._debt[idx] = min(2.0, self._debt[idx] + abs(amount))
+
+    def step(self, dt_hours: float, U: list[float] | None = None) -> list[float]:
+        """
+        Euler integration step. U = external biological input [V, E, A, X].
+        Returns current debt vector [V, E, A, X].
+        """
+        if dt_hours <= 0:
+            return list(self._debt)
+        if U is None:
+            U = [0.0, 0.0, 0.0, 0.0]
+
+        # dS/dt = M·S + U
+        S = self._debt
+        dS = [0.0, 0.0, 0.0, 0.0]
+        for i in range(4):
+            coupled = sum(self._M[i][j] * S[j] for j in range(4))
+            dS[i] = coupled + U[i]
+
+        # Euler step, clamp to [0, 2]
+        for i in range(4):
+            self._debt[i] = max(0.0, min(2.0, S[i] + dS[i] * dt_hours))
+
+        return list(self._debt)
+
+    def get_axis_debt(self, axis: str) -> float:
+        idx = self._IDX.get(axis, -1)
+        return self._debt[idx] if idx >= 0 else 0.0
+
+    def global_debt(self) -> float:
+        """Normalized sum: 0=no debt, 1=fully loaded."""
+        return min(1.0, sum(self._debt) / 4.0)
+
+
+# ---------------------------------------------------------------------------
 # BiometricVEAXBridge — asymmetric EMA + debt accumulator VEAX auto-update
 # ---------------------------------------------------------------------------
 
 @dataclass
 class _HysteresisState:
-    """Per-rule EMA + debt accumulator state."""
-    ema:     float = 0.0   # signal strength estimate in [0, 1]
-    debt:    float = 0.0   # fatigue debt accumulated from downward deltas
-    last_ts: float = 0.0   # unix timestamp of last update (0 = never)
+    """Per-rule EMA + debt accumulator state (with allostatic fields)."""
+    ema:             float = 0.0   # fast EMA (current signal strength in [0, 1])
+    slow_ema:        float = 0.0   # long-term slow EMA (adapted baseline)
+    debt:            float = 0.0   # fatigue debt accumulated from downward deltas
+    allostatic_load: float = 0.0   # accumulated chronic stress area (fast > slow)
+    baseline_shift:  float = 0.0   # how much "100%" has permanently degraded [0, 0.3]
+    last_ts:         float = 0.0   # unix timestamp of last update (0 = never)
 
 
 class BiometricVEAXBridge:
@@ -392,6 +470,13 @@ class BiometricVEAXBridge:
     def __init__(self) -> None:
         # Maps rule index → per-rule hysteresis state
         self._hyst: dict[int, _HysteresisState] = {}
+        # Coupled ODE dynamics for VEAX debt (Vector II)
+        self._dynamics: VEAXDebtDynamics = VEAXDebtDynamics()
+
+    @property
+    def dynamics(self) -> VEAXDebtDynamics:
+        """Expose VEAXDebtDynamics for external access (e.g. CrystallizationEngine)."""
+        return self._dynamics
 
     def _state(self, idx: int) -> _HysteresisState:
         if idx not in self._hyst:
@@ -432,6 +517,41 @@ class BiometricVEAXBridge:
             else:
                 state.ema = state.ema - alpha_up * state.ema
 
+            # ── Allostatic tracking (Vector I) ────────────────────────────
+            # α_slow is 10x slower than α_up: very long-term adaptation memory
+            alpha_slow = alpha_up * 0.1
+            dt_hours = dt / 3600.0
+
+            # Update slow EMA (long-term adaptation baseline)
+            state.slow_ema = state.slow_ema + alpha_slow * (state.ema - state.slow_ema)
+
+            # Allostatic load: area where fast EMA chronically exceeds slow EMA
+            if state.ema > state.slow_ema:
+                # Stress incursion above adapted baseline
+                state.allostatic_load += (state.ema - state.slow_ema) * dt_hours * 0.01
+            else:
+                # Recovery: load decreases at half the accumulation rate
+                state.allostatic_load = max(
+                    0.0,
+                    state.allostatic_load - (state.slow_ema - state.ema) * dt_hours * 0.005,
+                )
+
+            # Baseline shift: very slow drift upward under sustained load, very slow recovery
+            _BETA = 0.002  # τ ≈ 2 weeks
+            if state.allostatic_load > 1.0:
+                # Only shift when meaningfully loaded
+                state.baseline_shift = min(
+                    0.30,
+                    state.baseline_shift + _BETA * (state.allostatic_load - 1.0) * dt_hours,
+                )
+            else:
+                # Macro-recovery: baseline shifts back at 5x accumulation rate when load is low
+                state.baseline_shift = max(
+                    0.0,
+                    state.baseline_shift - _BETA * 5.0 * dt_hours,
+                )
+            # ─────────────────────────────────────────────────────────────
+
             # Debt update
             # Decay debt regardless of whether condition fired
             state.debt = max(0.0, state.debt - self._DEBT_DECAY_RATE * (dt / 3600.0))
@@ -450,11 +570,31 @@ class BiometricVEAXBridge:
                 continue
 
             # Apply per-axis debt blocking for upward deltas
+            # Allostatic capacity reduction: recovery is capped at (1 - baseline_shift)
             for axis, delta in deltas.items():
-                if delta > 0.0 and state.debt > self._DEBT_BLOCK_THRESH:
-                    # Upward delta blocked by accumulated debt
-                    continue
-                net[axis] = net.get(axis, 0.0) + delta
+                if delta > 0.0:
+                    if state.debt > self._DEBT_BLOCK_THRESH:
+                        continue  # debt blocking
+                    effective_delta = delta * (1.0 - state.baseline_shift)
+                    net[axis] = net.get(axis, 0.0) + effective_delta
+                else:
+                    net[axis] = net.get(axis, 0.0) + delta
+
+            # Wire fatigue events into VEAXDebtDynamics (Vector II)
+            if condition_met and any(v < 0.0 for v in deltas.values()):
+                for axis, delta in deltas.items():
+                    if delta < 0.0:
+                        self._dynamics.add_debt(axis, abs(delta))
+
+        # Step VEAXDebtDynamics ODE once per apply() call (Vector II)
+        # Use median dt across initialized rule states (fall back to 1h)
+        all_dts = [
+            (now - s.last_ts) / 3600.0
+            for s in self._hyst.values()
+            if s.last_ts > 0.0
+        ]
+        median_dt_hours = sorted(all_dts)[len(all_dts) // 2] if all_dts else 1.0
+        self._dynamics.step(median_dt_hours)
 
         if not net:
             return {}
@@ -488,6 +628,19 @@ class BiometricVEAXBridge:
             logger.debug("[BiometricVEAXBridge] VEAX update failed: %s", exc)
 
         return net
+
+    def allostatic_report(self) -> dict[str, dict[str, float]]:
+        """Return current allostatic state per rule index. For diagnostics."""
+        return {
+            str(idx): {
+                "ema": s.ema,
+                "slow_ema": s.slow_ema,
+                "allostatic_load": s.allostatic_load,
+                "baseline_shift": s.baseline_shift,
+                "debt": s.debt,
+            }
+            for idx, s in self._hyst.items()
+        }
 
 
 # ---------------------------------------------------------------------------

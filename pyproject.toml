@@ -82,6 +82,7 @@ py-modules = [
     "prism_bud_manager",
     "prism_constitution",
     "prism_llm_router",
+    "prism_lora_registry",
     "prism_horizon",
     "prism_memory_graph",
     "prism_metrics",
