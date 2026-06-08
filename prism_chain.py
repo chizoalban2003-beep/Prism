@@ -687,6 +687,44 @@ Rules:
             "card_title": getattr(card, "title", ""),
         }
 
+    async def run_streaming_async(self, message: str, agent_execute_fn, base_ctx: dict):
+        """
+        Async generator version of run_streaming(). Bridges the synchronous
+        run_streaming() generator into asyncio via a queue so the ASGI server
+        can yield SSE events without blocking the event loop.
+
+        Yields the same event dicts as run_streaming():
+            {"event": "step",  ...}
+            {"event": "done",  ...}
+            {"event": "error", ...}
+        """
+        import asyncio
+        import threading
+
+        loop = asyncio.get_event_loop()
+        q: asyncio.Queue = asyncio.Queue()
+        _SENTINEL = object()
+
+        def _produce():
+            try:
+                for evt in self.run_streaming(message, agent_execute_fn, base_ctx):
+                    loop.call_soon_threadsafe(q.put_nowait, evt)
+            except Exception as exc:
+                loop.call_soon_threadsafe(
+                    q.put_nowait, {"event": "error", "message": str(exc)}
+                )
+            finally:
+                loop.call_soon_threadsafe(q.put_nowait, _SENTINEL)
+
+        t = threading.Thread(target=_produce, daemon=True)
+        t.start()
+
+        while True:
+            item = await q.get()
+            if item is _SENTINEL:
+                break
+            yield item
+
     def resume(self, goal_id: str, agent_execute_fn, base_ctx: dict) -> "PrismCard":
         """
         Resume an interrupted chain from its last checkpoint.

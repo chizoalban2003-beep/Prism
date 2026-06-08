@@ -6,7 +6,14 @@ import os
 import time
 import urllib.request
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any, AsyncIterator, Optional
+
+try:
+    import httpx as _httpx
+    _HTTPX_AVAILABLE = True
+except ImportError:
+    _httpx = None  # type: ignore[assignment]
+    _HTTPX_AVAILABLE = False
 
 try:
     import prism_phase as _prism_phase
@@ -556,3 +563,293 @@ class LLMRouter:
                      "Authorization": "Bearer " + api_key})
         resp = urllib.request.urlopen(req, timeout=30)
         return json.loads(resp.read())["choices"][0]["message"]["content"]
+
+    # ── Async interface ───────────────────────────────────────────────────
+    # All methods below are additive — sync call() is untouched.
+
+    async def async_call(
+        self,
+        prompt:               str,
+        min_capability:       int = 1,
+        max_tokens:           int = 1500,
+        system:               str = "",
+        json_mode:            bool = False,
+        conversation_history: list[dict] | None = None,
+        phase_hint:           Optional[str] = None,
+    ) -> tuple[str, str]:
+        """
+        Async version of call(). Uses httpx when available for non-blocking I/O.
+        Falls back to asyncio.to_thread(self.call, ...) when httpx is absent.
+        Signature is a strict subset of call() — all existing callers of call()
+        are unaffected.
+        """
+        if not _HTTPX_AVAILABLE:
+            import asyncio
+            return await asyncio.to_thread(
+                self.call, prompt,
+                min_capability=min_capability,
+                max_tokens=max_tokens,
+                system=system,
+                json_mode=json_mode,
+                conversation_history=conversation_history,
+                phase_hint=phase_hint,
+            )
+        opt = self.best(min_capability=min_capability, phase_hint=phase_hint)
+        if opt is None:
+            return "", "none"
+        try:
+            text = await self._async_call_option(
+                opt, prompt, max_tokens, system, json_mode,
+                conversation_history or []
+            )
+            if text:
+                return text, f"{opt.provider}/{opt.model}"
+        except Exception as exc:
+            logger.warning("[async_call] %s/%s failed: %s", opt.provider, opt.model, exc)
+        return "", "none"
+
+    async def _async_call_option(
+        self,
+        opt: LLMOption,
+        prompt: str,
+        max_tokens: int,
+        system: str,
+        json_mode: bool,
+        history: list,
+    ) -> str:
+        if opt.provider == "claude":
+            return await self._async_call_claude(opt, prompt, max_tokens, system, json_mode, history)
+        if opt.provider == "ollama":
+            return await self._async_call_ollama(opt, prompt, max_tokens, system, json_mode, history)
+        if opt.provider == "openai_compat":
+            return await self._async_call_openai(opt, prompt, max_tokens, system, json_mode, history)
+        return ""
+
+    async def _async_call_claude(
+        self,
+        opt: LLMOption,
+        prompt: str,
+        max_tokens: int,
+        system: str,
+        json_mode: bool,
+        history: list,
+    ) -> str:
+        api_key = self._config.get("claude_api_key") or os.environ.get("ANTHROPIC_API_KEY", "")
+        msgs = list(history)
+        msgs.append({"role": "user", "content": prompt})
+        body: dict = {"model": opt.model, "max_tokens": max_tokens, "messages": msgs}
+        if system:
+            body["system"] = system
+        async with _httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                "https://api.anthropic.com/v1/messages",
+                json=body,
+                headers={
+                    "Content-Type": "application/json",
+                    "anthropic-version": "2023-06-01",
+                    "x-api-key": api_key,
+                },
+            )
+            resp.raise_for_status()
+            return resp.json()["content"][0]["text"]
+
+    async def _async_call_ollama(
+        self,
+        opt: LLMOption,
+        prompt: str,
+        max_tokens: int,
+        system: str,
+        json_mode: bool,
+        history: list,
+    ) -> str:
+        if history:
+            ctx = "\n".join(
+                f"{'User' if m['role'] == 'user' else 'Assistant'}: {m['content']}"
+                for m in history[-6:]
+            )
+            full_prompt = f"Previous conversation:\n{ctx}\n\nUser: {prompt}"
+        else:
+            full_prompt = prompt
+        body: dict = {"model": opt.model, "prompt": full_prompt, "stream": False}
+        if json_mode:
+            body["format"] = "json"
+        async with _httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                f"{opt.endpoint}/api/generate",
+                json=body,
+                headers={"Content-Type": "application/json"},
+            )
+            resp.raise_for_status()
+            return resp.json().get("response", "")
+
+    async def _async_call_openai(
+        self,
+        opt: LLMOption,
+        prompt: str,
+        max_tokens: int,
+        system: str,
+        json_mode: bool,
+        history: list,
+    ) -> str:
+        api_key = self._config.get("openai_api_key") or os.environ.get("OPENAI_API_KEY", "")
+        msgs = []
+        if system:
+            msgs.append({"role": "system", "content": system})
+        msgs.extend(history)
+        msgs.append({"role": "user", "content": prompt})
+        body: dict = {"model": "gpt-4o-mini", "max_tokens": max_tokens, "messages": msgs}
+        if json_mode:
+            body["response_format"] = {"type": "json_object"}
+        async with _httpx.AsyncClient(timeout=30) as client:
+            resp = await client.post(
+                f"{opt.endpoint}/v1/chat/completions",
+                json=body,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + api_key,
+                },
+            )
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"]
+
+    async def async_call_stream(
+        self,
+        prompt: str,
+        min_capability: int = 1,
+        max_tokens: int = 1500,
+        system: str = "",
+        conversation_history: list[dict] | None = None,
+    ) -> AsyncIterator[str]:
+        """
+        Async generator that yields raw text tokens as they arrive from the provider.
+        Requires httpx. Falls back to yielding the full async_call() result as one chunk.
+        """
+        if not _HTTPX_AVAILABLE:
+            text, _ = await self.async_call(
+                prompt, min_capability=min_capability, max_tokens=max_tokens,
+                system=system, conversation_history=conversation_history,
+            )
+            if text:
+                yield text
+            return
+        opt = self.best(min_capability=min_capability)
+        if opt is None:
+            return
+        if opt.provider == "claude":
+            async for token in self._stream_claude(opt, prompt, max_tokens, system,
+                                                   conversation_history or []):
+                yield token
+        elif opt.provider == "ollama":
+            async for token in self._stream_ollama(opt, prompt, conversation_history or []):
+                yield token
+        elif opt.provider == "openai_compat":
+            async for token in self._stream_openai(opt, prompt, max_tokens, system,
+                                                   conversation_history or []):
+                yield token
+        else:
+            # stdlib / unknown — fall back to full call
+            text, _ = await self.async_call(
+                prompt, min_capability=min_capability, max_tokens=max_tokens,
+                system=system, conversation_history=conversation_history,
+            )
+            if text:
+                yield text
+
+    async def _stream_claude(
+        self, opt: LLMOption, prompt: str, max_tokens: int,
+        system: str, history: list,
+    ) -> AsyncIterator[str]:
+        api_key = self._config.get("claude_api_key") or os.environ.get("ANTHROPIC_API_KEY", "")
+        msgs = list(history)
+        msgs.append({"role": "user", "content": prompt})
+        body: dict = {"model": opt.model, "max_tokens": max_tokens,
+                      "messages": msgs, "stream": True}
+        if system:
+            body["system"] = system
+        async with _httpx.AsyncClient(timeout=60) as client:
+            async with client.stream(
+                "POST", "https://api.anthropic.com/v1/messages",
+                json=body,
+                headers={
+                    "Content-Type": "application/json",
+                    "anthropic-version": "2023-06-01",
+                    "x-api-key": api_key,
+                },
+            ) as resp:
+                async for line in resp.aiter_lines():
+                    if line.startswith("data: "):
+                        chunk = line[6:]
+                        if chunk == "[DONE]":
+                            return
+                        try:
+                            data = json.loads(chunk)
+                            if data.get("type") == "content_block_delta":
+                                token = data["delta"].get("text", "")
+                                if token:
+                                    yield token
+                        except Exception:
+                            pass
+
+    async def _stream_ollama(
+        self, opt: LLMOption, prompt: str, history: list,
+    ) -> AsyncIterator[str]:
+        if history:
+            ctx = "\n".join(
+                f"{'User' if m['role'] == 'user' else 'Assistant'}: {m['content']}"
+                for m in history[-6:]
+            )
+            full_prompt = f"Previous conversation:\n{ctx}\n\nUser: {prompt}"
+        else:
+            full_prompt = prompt
+        async with _httpx.AsyncClient(timeout=60) as client:
+            async with client.stream(
+                "POST", f"{opt.endpoint}/api/generate",
+                json={"model": opt.model, "prompt": full_prompt, "stream": True},
+                headers={"Content-Type": "application/json"},
+            ) as resp:
+                async for line in resp.aiter_lines():
+                    if line:
+                        try:
+                            data = json.loads(line)
+                            token = data.get("response", "")
+                            if token:
+                                yield token
+                            if data.get("done"):
+                                return
+                        except Exception:
+                            pass
+
+    async def _stream_openai(
+        self, opt: LLMOption, prompt: str, max_tokens: int,
+        system: str, history: list,
+    ) -> AsyncIterator[str]:
+        api_key = self._config.get("openai_api_key") or os.environ.get("OPENAI_API_KEY", "")
+        msgs = []
+        if system:
+            msgs.append({"role": "system", "content": system})
+        msgs.extend(history)
+        msgs.append({"role": "user", "content": prompt})
+        body: dict = {"model": "gpt-4o-mini", "max_tokens": max_tokens,
+                      "messages": msgs, "stream": True}
+        async with _httpx.AsyncClient(timeout=60) as client:
+            async with client.stream(
+                "POST", f"{opt.endpoint}/v1/chat/completions",
+                json=body,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + api_key,
+                },
+            ) as resp:
+                async for line in resp.aiter_lines():
+                    if line.startswith("data: "):
+                        chunk = line[6:]
+                        if chunk == "[DONE]":
+                            return
+                        try:
+                            data = json.loads(chunk)
+                            token = (data.get("choices", [{}])[0]
+                                     .get("delta", {}).get("content", ""))
+                            if token:
+                                yield token
+                        except Exception:
+                            pass

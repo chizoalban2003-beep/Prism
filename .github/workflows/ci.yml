@@ -32,7 +32,9 @@ jobs:
         run: |
           python3 -m pip install -e ".[dev]" || python3 -m pip install -e .
           python3 -m pip install pytest-cov
-          # Install safe optional extras (excludes playwright/whisper/pyaudio which need heavy system deps)
+          # Async server stack
+          python3 -m pip install "fastapi>=0.111" "uvicorn[standard]>=0.29" "httpx>=0.27" "anyio[trio]>=4.0"
+          # Safe optional extras (excludes playwright/whisper/pyaudio — heavy system deps)
           python3 -m pip install anthropic aiohttp pdfplumber openpyxl twilio || true
 
       - name: Lint with ruff
@@ -48,7 +50,7 @@ jobs:
       - name: Performance gate (TAD §8 SLO)
         run: python3 -m pytest tests/test_performance_gate.py -q --tb=short
 
-      - name: Type-check with mypy
+      - name: Type-check core modules
         run: >
           python3 -m mypy
           prism_agent.py prism_chain.py prism_llm_router.py
@@ -57,8 +59,18 @@ jobs:
           prism_bud_manager.py prism_memory_graph.py prism_spectrum_middleware.py
           prism_wal.py prism_watchdog.py prism_shadow_pipeline.py prism_metrics.py
           prism_phase.py prism_perception.py prism_lora_registry.py
-          prism_silicon_policy.py
-          prism_tvm_bridge.py prism_context_budget.py prism_speculative.py prism_llm_router.py
+          prism_silicon_policy.py prism_tvm_bridge.py prism_context_budget.py
+          prism_speculative.py
+          --ignore-missing-imports --no-error-summary || true
+
+      - name: Type-check ASGI stack
+        run: >
+          python3 -m mypy
+          prism_asgi.py prism_state.py prism_daemon.py
+          prism_routes_agent.py prism_routes_analytics.py prism_routes_chain.py
+          prism_routes_core.py prism_routes_horizon.py prism_routes_infra.py
+          prism_routes_integrations.py prism_routes_media.py prism_routes_predict.py
+          prism_routes_sensors.py prism_routes_ui.py
           --ignore-missing-imports --no-error-summary || true
 
       - name: Security scan (high severity only)

@@ -271,18 +271,89 @@ def _run_ceremony(agent):
 
 
 # ---------------------------------------------------------------------------
-# HTTP server thread
+# HTTP server threads
 # ---------------------------------------------------------------------------
 
-def _server_thread(agent, host: str, port: int):
-    """Start the KDE/PRISM HTTP server in a daemon thread."""
+def _build_asgi_state(agent) -> dict:
+    """Build the full dependency dict for prism_asgi._set_state()."""
+    state: dict = {"agent": agent}
+
     try:
-        from kde_server import KDEServer
-        server = KDEServer(agent=agent, host=host, port=port)
-        logger.info("HTTP server listening on %s:%d", host, port)
-        server.serve_forever()
+        from prediction_engine import PredictionPlatform
+        state["platform"] = _get_or_build(agent, "_platform", PredictionPlatform)
+    except Exception:
+        pass
+
+    try:
+        from moment_analyzer import MomentAnalyzer
+        state["moment_analyzer"] = MomentAnalyzer()
+    except Exception:
+        pass
+
+    try:
+        from duel_analyzer import DuelAnalyzer
+        state["duel_analyzer"] = DuelAnalyzer()
+    except Exception:
+        pass
+
+    try:
+        from domain_configs import ALL_DOMAINS, DomainDecisionModel
+        state["domain_models"] = {
+            name: DomainDecisionModel(cfg) for name, cfg in ALL_DOMAINS.items()
+        }
+    except Exception:
+        state["domain_models"] = {}
+
+    try:
+        from moment_pipeline import LiveMomentPipeline
+        ma = state.get("moment_analyzer")
+        if ma is not None:
+            state["live_pipeline"] = LiveMomentPipeline(ma)
+    except Exception:
+        pass
+
+    try:
+        from prism_policy import PolicyEngine
+        state["policy_engine"] = PolicyEngine()
+    except Exception:
+        pass
+
+    try:
+        from prism_collaborator import PrismCollaborator
+        from prism_tool_finder import ToolFinder
+        state["tool_finder"] = ToolFinder(collaborator=PrismCollaborator())
+    except Exception:
+        pass
+
+    try:
+        from prism_llm_router import LLMRouter
+        state["llm_router"] = LLMRouter.from_config()
+    except Exception:
+        pass
+
+    try:
+        from prism_task_queue import TaskQueue
+        state["task_queue"] = TaskQueue()
+    except Exception:
+        pass
+
+    return state
+
+
+def _get_or_build(agent, attr: str, factory):
+    val = getattr(agent, attr, None)
+    return val if val is not None else factory()
+
+
+def _asgi_server_thread(agent, host: str, port: int):
+    """Start the FastAPI/ASGI server (primary HTTP server, Phase 4+)."""
+    try:
+        import prism_asgi
+        prism_asgi._set_state(**_build_asgi_state(agent))
+        logger.info("ASGI server starting on %s:%d", host, port)
+        prism_asgi.serve(host=host, port=port, log_level="warning")
     except Exception as exc:
-        logger.error("HTTP server failed: %s", exc)
+        logger.error("ASGI server failed: %s", exc)
         _SHUTDOWN.set()
 
 
@@ -354,13 +425,13 @@ def main():
         w.start()
     logger.info("Background workers started: %s", [w.name for w in workers])
 
-    # HTTP server
+    # Primary ASGI server (FastAPI/uvicorn — Phase 4: sole HTTP server on main port)
     if not args.no_server:
-        srv = threading.Thread(
-            target=_server_thread, args=(agent, args.host, args.port),
-            daemon=True, name="http-server",
+        asgi_srv = threading.Thread(
+            target=_asgi_server_thread, args=(agent, args.host, args.port),
+            daemon=True, name="asgi-server",
         )
-        srv.start()
+        asgi_srv.start()
 
     # Main loop — keep alive until shutdown signal
     logger.info("PRISM daemon running. Send SIGTERM or SIGINT to stop.")

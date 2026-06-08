@@ -200,6 +200,33 @@ Background loop:
   PrismCalibration→  conversational feedback → model adjustment
 ```
 
+### Async HTTP Stack
+
+PRISM's REST API runs on **FastAPI + uvicorn** (ASGI) — not the Python stdlib HTTP server. This provides:
+
+- **True concurrent requests** — uvicorn's event loop handles all connections simultaneously; no thread-per-connection serialisation
+- **Real token streaming** — `/stream/chat` yields SSE tokens as they arrive from the LLM provider via httpx async streaming; each token flushed immediately rather than waiting for full completion
+- **Non-blocking LLM I/O** — `prism_llm_router.py` exposes `async_call()` and `async_call_stream()` using httpx, with automatic fallback to `asyncio.to_thread(call())` when httpx is absent
+- **107 routes across 11 FastAPI router modules** — `prism_routes_predict`, `prism_routes_analytics`, `prism_routes_agent`, `prism_routes_chain`, `prism_routes_core`, `prism_routes_horizon`, `prism_routes_infra`, `prism_routes_integrations`, `prism_routes_media`, `prism_routes_sensors`, `prism_routes_ui`
+- **CORS** — all origins allowed at the ASGI middleware layer (appropriate for 127.0.0.1-only binding)
+
+```
+Request
+   │
+   ▼
+uvicorn (ASGI, port 8742, host 127.0.0.1)
+   │
+   ▼
+FastAPI app  (prism_asgi.py)
+   ├── CORSMiddleware
+   ├── prism_routes_core → POST /chat → asyncio.to_thread(agent.chat)
+   ├── prism_routes_predict → GET /predict/match → platform.match.predict
+   ├── GET /stream/chat → chain.run_streaming_async → asyncio.Queue bridge
+   └── … 103 more routes across 10 routers
+```
+
+The legacy `kde_server.py` (Python stdlib `http.server`) is archived and no longer started by `prism_daemon.py`.
+
 ### Layered Memory Architecture
 
 PRISM's memory uses a three-tier write-ahead-log design for local-first durability:
@@ -532,7 +559,7 @@ Auto-detects Ollama, Claude API, and OpenAI. Presents a numbered menu, tests the
 
 ### Option B — Web settings page
 
-With the server running, open **http://localhost:8742/settings/llm** — a settings page with provider cards (Ollama, Claude, OpenAI, OpenAI-compatible). Click **Test**, then **Save & use**. No restart required for provider switching.
+With the daemon running (`python3 prism_daemon.py`), open **http://localhost:8742/settings/llm** — a settings page with provider cards (Ollama, Claude, OpenAI, OpenAI-compatible). Click **Test**, then **Save & use**. No restart required for provider switching.
 
 ### Option C — Edit `prism_config.toml` directly
 
@@ -701,7 +728,7 @@ pip3 install -e ".[full]"
 python3 prism_daemon.py --ceremony
 
 # 6. Start PRISM
-python3 kde_cli.py server --port 8742
+python3 prism_daemon.py
 # Open http://localhost:8742
 ```
 
@@ -729,7 +756,7 @@ pip install -e ".[full]"
 python3 prism_daemon.py --ceremony
 
 # 5. Start PRISM
-python3 kde_cli.py server --port 8742
+python3 prism_daemon.py
 # Open http://localhost:8742
 
 # Optional: run as a background service
@@ -748,7 +775,7 @@ After=network.target
 [Service]
 User=$USER
 WorkingDirectory=$HOME/Prism
-ExecStart=$HOME/Prism/.venv/bin/python kde_cli.py server --port 8742
+ExecStart=$HOME/Prism/.venv/bin/python prism_daemon.py
 Restart=on-failure
 RestartSec=5
 
@@ -785,7 +812,7 @@ pip install -e ".[full]"
 python prism_daemon.py --ceremony
 
 # 6. Start PRISM
-python kde_cli.py server --port 8742
+python prism_daemon.py
 # Open http://localhost:8742
 ```
 
@@ -835,7 +862,7 @@ python3 prism_daemon.py --ceremony
 nano prism_config.toml
 
 # 3. Start the server
-python3 kde_cli.py server --port 8742
+python3 prism_daemon.py
 
 # 4. Open the chat and say:
 #    "my profile"        — see your crystallised identity
@@ -854,7 +881,7 @@ git clone https://github.com/chizoalban2003-beep/Prism.git
 cd Prism
 pip install -e .
 export ANTHROPIC_API_KEY="sk-ant-..."
-python3 kde_cli.py server --port 8742
+python3 prism_daemon.py
 ```
 
 Everything works without any configuration. Add integrations as you need them.
@@ -864,7 +891,7 @@ Everything works without any configuration. Add integrations as you need them.
 ### Chat interface
 
 ```bash
-python3 kde_cli.py server --port 8742
+python3 prism_daemon.py
 ```
 
 Open **http://localhost:8742** — the PRISM chat interface. Type any request in plain language:
@@ -969,11 +996,13 @@ watch_path = "~/Downloads/apple_health_export"
 
 ## REST API
 
-Start the local server (binds to 127.0.0.1 only):
+Start the daemon (binds to **127.0.0.1:8742** only — FastAPI/uvicorn ASGI):
 
 ```bash
-python kde_cli.py server --port 8742
+python3 prism_daemon.py
 ```
+
+Open **http://localhost:8742** for the chat UI. The async server handles concurrent requests and delivers true token-by-token SSE streaming at `/stream/chat`.
 
 ### Chat & General
 
@@ -1247,7 +1276,10 @@ PRISM/
 │
 ├── KDE platform
 │   ├── kde_agent.py            KDEAgent — unified sports + domain agent
-│   ├── kde_server.py           Local REST API (stdlib http.server)
+│   ├── prism_asgi.py           FastAPI/ASGI server — 107 async routes on :8742
+│   ├── prism_state.py          Shared dependency-injection state for ASGI routes
+│   ├── prism_routes_*.py       11 FastAPI router modules (predict/agent/chain/…)
+│   ├── kde_server.py           Legacy stdlib HTTP server (archived — superseded by prism_asgi)
 │   ├── prism_pwa.py            PWA mobile companion — installable app at /mobile
 │   ├── kde_dashboard.py        HTML reports + terminal dashboard
 │   ├── kde_cli.py              CLI entry point
