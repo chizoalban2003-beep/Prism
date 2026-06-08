@@ -1384,7 +1384,7 @@ PRISM/
 │   ├── prism_setup_llm.py          CLI wizard — auto-detects providers, tests, writes config
 │   └── prism_settings_llm.py       Web settings page at /settings/llm + JSON API helpers
 │
-└── tests/                      1,984 pytest tests — all passing
+└── tests/                      2,005 pytest tests — all passing
 ```
 
 ---
@@ -1410,7 +1410,7 @@ PRISM/
 
 ```bash
 python -m pytest tests/ -q --ignore=tests/test_device_agent.py
-# 1,984 tests pass in ~180 seconds
+# 2,005 tests pass in ~180 seconds
 
 # With coverage report:
 python -m pytest tests/ -q --ignore=tests/test_device_agent.py --cov=. --cov-report=term-missing:skip-covered
@@ -1513,7 +1513,7 @@ agent.register("my_tool", ["my", "tool", "keywords"],
 
 ## Current state
 
-All major capabilities are implemented and tested. The table below is the authoritative feature status as of the last full audit (1,984 tests, 0 failing).
+All major capabilities are implemented and tested. The table below is the authoritative feature status as of the last full audit (2,005 tests, 0 failing).
 
 | Capability | Status | Notes |
 |---|---|---|
@@ -1551,6 +1551,7 @@ All major capabilities are implemented and tested. The table below is the author
 | Anticipatory phase shifting | `prism_phase.py` | **Working** — PhasePredictor with ΔH slope regression + heavy-proc detection; 12 tests |
 | Biological ΔB signal in Φ_melt | `prism_phase.py` | **Working** — VEAXDebtDynamics wired into CrystallizationEngine; 8 tests |
 | LoRA / task-adapter registry | `prism_lora_registry.py` | **Working** — phase+bio_debt-aware adapter selection; CPU prompt-template fallback; 14 tests |
+| Hardware-Biometric Symbiosis | `prism_silicon_policy.py` | **Working** — (ΔB, ΔH, phase) → ExecutionBudget; TTL-cached 10 s; wired into LLM router + shadow pipeline; 21 tests |
 
 ---
 

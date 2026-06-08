@@ -629,6 +629,15 @@ class BiometricVEAXBridge:
 
         return net
 
+    def biological_pressure(self) -> float:
+        """
+        ΔB signal: normalized biological pressure from slow-τ VEAX axes.
+        V×0.6 + E×0.4, normalized to [0, 1]. Used by SiliconResponsePolicy.
+        """
+        v = self._dynamics.get_axis_debt("V")
+        e = self._dynamics.get_axis_debt("E")
+        return min(1.0, (v * 0.6 + e * 0.4) / 1.5)
+
     def allostatic_report(self) -> dict[str, dict[str, float]]:
         """Return current allostatic state per rule index. For diagnostics."""
         return {

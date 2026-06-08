@@ -89,6 +89,7 @@ py-modules = [
     "prism_settings_llm",
     "prism_setup_llm",
     "prism_shadow_pipeline",
+    "prism_silicon_policy",
     "prism_spectrum_middleware",
     "prism_wal",
     "prism_watchdog",

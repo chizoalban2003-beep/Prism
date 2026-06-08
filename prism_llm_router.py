@@ -20,6 +20,11 @@ try:
 except ImportError:
     _lora_reg = None  # type: ignore[assignment]
 
+try:
+    import prism_silicon_policy as _silicon_policy_mod
+except ImportError:
+    _silicon_policy_mod = None  # type: ignore[assignment]
+
 logger = logging.getLogger(__name__)
 
 
@@ -253,6 +258,33 @@ class LLMRouter:
                 return fast_resp, fast_model
             logger.debug("[llm_router] speculative: escalating to min_capability=%d", min_capability)
 
+        # Silicon Response Policy — apply hard budget constraints
+        _eff_capability = min_capability
+        _eff_max_tokens = max_tokens
+        _eff_speculative = speculative
+        if _silicon_policy_mod is not None:
+            try:
+                _policy = _silicon_policy_mod.get_policy()
+                _phase_name = "STABLE"
+                _delta_b = 0.0
+                if _prism_phase is not None:
+                    try:
+                        _eng = _prism_phase.get_engine()
+                        if _eng.history:
+                            _phase_name = _eng.current_phase.value
+                    except Exception:
+                        pass
+                # Get delta_b from bridge if engine has one
+                # Bridge is not directly accessible from router — use policy's own extended ΔH
+                _budget = _policy.current_budget(delta_b=_delta_b, phase_name=_phase_name)
+                _eff_capability = min(_eff_capability, _budget.capability_ceil)
+                _eff_max_tokens = min(_eff_max_tokens, _budget.max_tokens)
+                _eff_speculative = _eff_speculative or _budget.speculative
+                if _budget.throttle_reason:
+                    logger.debug("[silicon] throttling call: %s", _budget.throttle_reason)
+            except Exception as _se:
+                logger.debug("[silicon] policy error: %s", _se)
+
         # ── LoRA / task-adapter injection (Vector V) ──────────────────────
         # Select and inject system prompt template based on phase + bio_debt.
         # This is the LAST modification before the actual LLM call — we only
@@ -292,11 +324,11 @@ class LLMRouter:
             try:
                 _eng = _prism_phase.get_engine()
                 if _eng.history and _eng.current_phase is _PhaseState.LIQUID:
-                    preferred = self.best(min_capability=min_capability, phase_hint="emergency")
+                    preferred = self.best(min_capability=_eff_capability, phase_hint="emergency")
                     if preferred is not None:
                         try:
                             text = self._call_option(
-                                preferred, _effective_prompt, max_tokens, system,
+                                preferred, _effective_prompt, _eff_max_tokens, system,
                                 json_mode, conversation_history or [])
                             if text:
                                 logger.debug("[llm_router] LIQUID phase → %s/%s",
@@ -308,11 +340,11 @@ class LLMRouter:
                 pass
 
         for opt in self.discover():
-            if not opt.available or opt.capability < min_capability:
+            if not opt.available or opt.capability < _eff_capability:
                 continue
             try:
                 text = self._call_option(
-                    opt, _effective_prompt, max_tokens, system,
+                    opt, _effective_prompt, _eff_max_tokens, system,
                     json_mode, conversation_history or [])
                 if text:
                     logger.debug("LLM call via %s/%s", opt.provider, opt.model)

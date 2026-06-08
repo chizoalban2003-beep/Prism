@@ -151,6 +151,25 @@ class PrismShadowPipeline:
                                     save_spectrum_state(SpectrumGates(**new_vals))
                     except Exception as _pe:
                         _log.debug("[shadow] phase engine error: %s", _pe)
+
+                # Silicon policy update — log current budget when throttle active
+                if self._phase_engine is not None and _prism_phase_mod is not None:
+                    try:
+                        import prism_silicon_policy as _sp
+
+                        bridge_db = getattr(self, "_bridge", None)
+                        delta_b = bridge_db.biological_pressure() if bridge_db is not None else 0.0
+                        reading_phase = reading.phase.value if "reading" in dir() else "STABLE"
+                        budget = _sp.get_policy().current_budget(delta_b=delta_b, phase_name=reading_phase)
+                        if budget.throttle_reason:
+                            _log.info(
+                                "[shadow] silicon budget active: %s (tokens≤%d cap≤%d)",
+                                budget.throttle_reason,
+                                budget.max_tokens,
+                                budget.capability_ceil,
+                            )
+                    except Exception:
+                        pass
             except Exception as exc:
                 self._restarts += 1
                 _log.warning("Pipeline error (restart %d/%d): %s",
