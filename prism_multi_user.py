@@ -160,7 +160,7 @@ class UserRegistry:
                 name=name,
                 role=role,
                 db_path=str(user_dir / "memory_graph.db"),
-                soul_path=str(user_dir / "soul.md"),
+                soul_path=str(user_dir / "soul.db"),
             )
             self._profiles[user_id] = profile
             self._save_registry()
@@ -244,7 +244,7 @@ class UserRegistry:
             from prism_soul import PrismSoul  # noqa: PLC0415
 
             p = self._profiles[user_id]
-            soul = PrismSoul(soul_path=Path(p.soul_path))
+            soul = PrismSoul(db_path=str(Path(p.soul_path)))
         except Exception:
             pass
 

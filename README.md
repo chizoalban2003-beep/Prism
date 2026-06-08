@@ -207,7 +207,7 @@ PRISM's REST API runs on **FastAPI + uvicorn** (ASGI) — not the Python stdlib 
 - **True concurrent requests** — uvicorn's event loop handles all connections simultaneously; no thread-per-connection serialisation
 - **Real token streaming** — `/stream/chat` yields SSE tokens as they arrive from the LLM provider via httpx async streaming; each token flushed immediately rather than waiting for full completion
 - **Non-blocking LLM I/O** — `prism_llm_router.py` exposes `async_call()` and `async_call_stream()` using httpx, with automatic fallback to `asyncio.to_thread(call())` when httpx is absent
-- **132 routes across 16 FastAPI router modules** — `prism_routes_predict`, `prism_routes_analytics`, `prism_routes_agent`, `prism_routes_chain`, `prism_routes_core`, `prism_routes_horizon`, `prism_routes_infra`, `prism_routes_integrations`, `prism_routes_media`, `prism_routes_sensors`, `prism_routes_ui`, `prism_routes_mobile`, `prism_routes_users`, `prism_routes_federation`, `prism_routes_perception`, `prism_routes_causality`
+- **138 routes across 16 FastAPI router modules** — `prism_routes_predict`, `prism_routes_analytics`, `prism_routes_agent`, `prism_routes_chain`, `prism_routes_core`, `prism_routes_horizon`, `prism_routes_infra`, `prism_routes_integrations`, `prism_routes_media`, `prism_routes_sensors`, `prism_routes_ui`, `prism_routes_mobile`, `prism_routes_users`, `prism_routes_federation`, `prism_routes_perception`, `prism_routes_causality`
 - **CORS** — all origins allowed at the ASGI middleware layer (appropriate for 127.0.0.1-only binding)
 
 ```
