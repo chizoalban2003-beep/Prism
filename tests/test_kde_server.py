@@ -161,6 +161,7 @@ def test_ask_endpoint_routes_task(client):
 def test_server_localhost_only():
     """ASGI server must always bind to 127.0.0.1."""
     import pytest as _pt
+
     import prism_asgi
     with _pt.raises(AssertionError):
         prism_asgi.serve(host="0.0.0.0", port=19999)

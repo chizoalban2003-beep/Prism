@@ -59,15 +59,20 @@ if _FASTAPI_AVAILABLE:
 
     from prism_routes_agent import router as agent_router
     from prism_routes_analytics import router as analytics_router
+    from prism_routes_causality import router as causality_router
     from prism_routes_chain import router as chain_router
     from prism_routes_core import router as core_router
+    from prism_routes_federation import router as federation_router
     from prism_routes_horizon import router as horizon_router
     from prism_routes_infra import router as infra_router
     from prism_routes_integrations import router as integrations_router
     from prism_routes_media import router as media_router
+    from prism_routes_mobile import router as mobile_router
+    from prism_routes_perception import router as perception_router
     from prism_routes_predict import router as predict_router
     from prism_routes_sensors import router as sensors_router
     from prism_routes_ui import router as ui_router
+    from prism_routes_users import router as users_router
 
     # UI routes first so "/" doesn't get shadowed
     app.include_router(ui_router)
@@ -81,6 +86,11 @@ if _FASTAPI_AVAILABLE:
     app.include_router(horizon_router)
     app.include_router(core_router)
     app.include_router(media_router)
+    app.include_router(mobile_router)
+    app.include_router(users_router)
+    app.include_router(federation_router)
+    app.include_router(perception_router)
+    app.include_router(causality_router)
 
     # ── Built-in routes (kept from Phase 1) ──────────────────────────────
 

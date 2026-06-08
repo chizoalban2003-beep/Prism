@@ -147,6 +147,16 @@ py-modules = [
     "prism_routes_predict",
     "prism_routes_sensors",
     "prism_routes_ui",
+    "prism_mobile_sync",
+    "prism_routes_mobile",
+    "prism_multi_user",
+    "prism_routes_users",
+    "prism_federation",
+    "prism_routes_federation",
+    "prism_visual_perception",
+    "prism_routes_perception",
+    "prism_causality",
+    "prism_routes_causality",
 ]
 
 [tool.pytest.ini_options]

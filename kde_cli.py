@@ -47,8 +47,9 @@ from device_hub import DeviceType
 from kde_agent import KDEAgent
 from kde_config import build_agent_from_config, load_config
 from kde_profiles import UserProfile, UserRole, setup_wizard, write_toml
-DEFAULT_PORT = 8742
 from sports_pro import Role
+
+DEFAULT_PORT = 8742
 
 logger = logging.getLogger(__name__)
 
@@ -466,7 +467,7 @@ def cmd_server(agent: KDEAgent, args) -> None:
         webbrowser.open(f"http://localhost:{args.port}")
     except Exception:
         logger.debug("Could not open browser automatically", exc_info=True)
-    from prism_asgi import _set_state, serve
+    from prism_asgi import serve
     from prism_state import _set_state as _ss
     _ss(agent=agent)
     serve(host="127.0.0.1", port=args.port)

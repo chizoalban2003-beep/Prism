@@ -164,6 +164,7 @@ def test_normal_result_not_approval_card():
 def _make_approval_client():
     """Build a TestClient with a mock agent wired for /device/approve."""
     from fastapi.testclient import TestClient
+
     from prism_asgi import app
     from prism_state import _set_state
 

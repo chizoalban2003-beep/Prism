@@ -11,10 +11,7 @@ from __future__ import annotations
 import asyncio
 from unittest.mock import MagicMock, patch
 
-import pytest
-
 from prism_orchestrator import ChainOrchestrator, OrchestratorNode, TaskGraph
-
 
 # ---------------------------------------------------------------------------
 # Helpers

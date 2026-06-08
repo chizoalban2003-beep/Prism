@@ -855,8 +855,9 @@ class KDEAgent:
     def start_server(self, port: int = 8742, blocking: bool = False) -> str:
         """Start the local REST API via ASGI server. Returns the server URL."""
         import threading
-        from prism_state import _set_state
+
         from prism_asgi import serve
+        from prism_state import _set_state
         _set_state(agent=self, platform=getattr(self, "_platform", None))
         url = f"http://127.0.0.1:{port}"
         if blocking:
