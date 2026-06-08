@@ -1,7 +1,7 @@
 """
 prism_routes_analytics.py
 =========================
-FastAPI router for domain, moment, and duel analytics endpoints.
+FastAPI router for domain, moment, duel, and LLM cost analytics endpoints.
 
 Routes:
   GET  /domain/list
@@ -19,6 +19,12 @@ Routes:
   GET  /duel/player
   GET  /duel/summary
   POST /duel/add_match
+  GET  /analytics/tokens
+  GET  /analytics/tokens/daily
+  GET  /analytics/tokens/by-model
+  GET  /analytics/tokens/by-source
+  POST /analytics/tokens/record
+  DELETE /analytics/tokens
 """
 from __future__ import annotations
 
@@ -526,3 +532,101 @@ async def duel_add_match(request: Request):
             if records else 0.0
         ),
     }
+
+
+# ---------------------------------------------------------------------------
+# /analytics/tokens — LLM cost ledger
+# ---------------------------------------------------------------------------
+
+def _get_ledger():
+    try:
+        from prism_llm_ledger import get_ledger
+        return get_ledger()
+    except Exception:
+        return None
+
+
+@router.get("/analytics/tokens")
+async def analytics_tokens_summary(days: int = 30):
+    """Overall LLM cost summary + daily + by-model breakdowns."""
+    ledger = _get_ledger()
+    if ledger is None:
+        return JSONResponse({"error": "ledger not available"}, status_code=503)
+    import time as _t
+    since = _t.time() - days * 86400
+    return {
+        "summary":  ledger.summary(since_ts=since),
+        "by_model": ledger.by_model(days=days),
+        "by_source": ledger.by_source(days=days),
+        "days":     days,
+    }
+
+
+@router.get("/analytics/tokens/daily")
+async def analytics_tokens_daily(days: int = 30):
+    """Daily LLM token and cost totals for the last N days."""
+    ledger = _get_ledger()
+    if ledger is None:
+        return JSONResponse({"error": "ledger not available"}, status_code=503)
+    return {"daily": ledger.by_day(days=days), "days": days}
+
+
+@router.get("/analytics/tokens/by-model")
+async def analytics_tokens_by_model(days: int = 30):
+    """Per-model token and cost breakdown for the last N days."""
+    ledger = _get_ledger()
+    if ledger is None:
+        return JSONResponse({"error": "ledger not available"}, status_code=503)
+    return {"by_model": ledger.by_model(days=days), "days": days}
+
+
+@router.get("/analytics/tokens/by-source")
+async def analytics_tokens_by_source(days: int = 30):
+    """Per-caller-source (chain/agent/organ/…) breakdown for the last N days."""
+    ledger = _get_ledger()
+    if ledger is None:
+        return JSONResponse({"error": "ledger not available"}, status_code=503)
+    return {"by_source": ledger.by_source(days=days), "days": days}
+
+
+@router.post("/analytics/tokens/record")
+async def analytics_tokens_record(request: Request):
+    """
+    Manually record an LLM call. Useful for callers that bypass LLMRouter.
+    Body: {provider, model, input_tokens, output_tokens, latency_ms, source?, session_id?}
+    """
+    ledger = _get_ledger()
+    if ledger is None:
+        return JSONResponse({"error": "ledger not available"}, status_code=503)
+    try:
+        body: dict = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    provider = body.get("provider", "")
+    model    = body.get("model", "")
+    if not provider or not model:
+        return JSONResponse({"error": "'provider' and 'model' are required"}, status_code=400)
+    rec = ledger.record_call(
+        provider=provider,
+        model=model,
+        input_tokens=int(body.get("input_tokens", 0)),
+        output_tokens=int(body.get("output_tokens", 0)),
+        latency_ms=float(body.get("latency_ms", 0.0)),
+        source=body.get("source", "api"),
+        session_id=body.get("session_id", ""),
+    )
+    return {
+        "ok":       True,
+        "call_id":  rec.call_id,
+        "cost_usd": rec.cost_usd,
+    }
+
+
+@router.delete("/analytics/tokens")
+async def analytics_tokens_clear():
+    """Delete all ledger records. Returns count removed."""
+    ledger = _get_ledger()
+    if ledger is None:
+        return JSONResponse({"error": "ledger not available"}, status_code=503)
+    count = ledger.clear()
+    return {"ok": True, "deleted": count}

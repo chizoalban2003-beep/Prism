@@ -57,6 +57,7 @@ jobs:
           prism_agent.py prism_chain.py prism_llm_router.py
           prism_orchestrator.py prism_organ_loader.py prism_horizon.py
           prism_outcome_tracker.py prism_memory.py
+          prism_llm_ledger.py
           prism_bud_manager.py prism_memory_graph.py prism_spectrum_middleware.py
           prism_wal.py prism_watchdog.py prism_shadow_pipeline.py prism_metrics.py
           prism_phase.py prism_perception.py prism_lora_registry.py

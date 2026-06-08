@@ -386,11 +386,27 @@ class LLMRouter:
             if not opt.available or opt.capability < _eff_capability:
                 continue
             try:
+                _t0 = time.time()
                 text = self._call_option(
                     opt, _effective_prompt, _eff_max_tokens, system,
                     json_mode, _pruned_history)
                 if text:
                     logger.debug("LLM call via %s/%s", opt.provider, opt.model)
+                    _latency = (time.time() - _t0) * 1000
+                    try:
+                        from prism_llm_ledger import get_ledger as _get_ledger
+                        _in_tok  = len(_effective_prompt) // 4
+                        _out_tok = len(text) // 4
+                        _get_ledger().record_call(
+                            provider=opt.provider,
+                            model=opt.model,
+                            input_tokens=_in_tok,
+                            output_tokens=_out_tok,
+                            latency_ms=_latency,
+                            source=task_hint or "unknown",
+                        )
+                    except Exception:
+                        pass
                     return text, f"{opt.provider}/{opt.model}"
             except Exception as e:
                 logger.warning("LLM %s/%s failed: %s", opt.provider, opt.model, e)
