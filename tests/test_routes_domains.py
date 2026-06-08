@@ -1,6 +1,6 @@
 """
-test_kde_server_domains.py
-==========================
+test_routes_domains.py
+======================
 Tests for /domain/* and related endpoints — uses FastAPI TestClient.
 """
 from __future__ import annotations

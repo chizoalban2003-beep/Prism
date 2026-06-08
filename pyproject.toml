@@ -40,7 +40,6 @@ py-modules = [
     "kde_config",
     "kde_dashboard",
     "kde_profiles",
-    "kde_server",
     "kde_ui",
     "ksa_agent",
     "ksa_cli",

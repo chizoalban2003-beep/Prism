@@ -18,7 +18,7 @@ Design notes
 - HouseholdBus wraps an optional OrganBus for persistence/audit;
   without one it still delivers signals to all registered user handlers
   via a simple in-process deque.
-- No kde_server import anywhere in this file.
+- Integrates with prism_asgi via prism_routes_users.
 """
 from __future__ import annotations
 

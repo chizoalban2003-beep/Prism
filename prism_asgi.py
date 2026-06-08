@@ -105,7 +105,7 @@ if _FASTAPI_AVAILABLE:
         """
         True async SSE endpoint. Runs the chain in a background thread and
         bridges events into the asyncio event loop via an asyncio.Queue.
-        Unlike kde_server's /stream/chat, this does not block other requests.
+        True async — does not block other requests while the chain runs.
         """
         msg = message or q
         if not msg:

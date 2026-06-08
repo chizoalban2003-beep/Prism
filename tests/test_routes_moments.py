@@ -1,6 +1,6 @@
 """
-test_kde_server_moments.py
-==========================
+test_routes_moments.py
+======================
 Tests for /moment/* and /duel/* endpoints — uses FastAPI TestClient.
 """
 from __future__ import annotations
