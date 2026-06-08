@@ -42,6 +42,7 @@ Usage
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -482,6 +483,145 @@ class ChainOrchestrator:
                 ))
 
         return cards
+
+    # ------------------------------------------------------------------
+    # Async public API (Phase 6)
+    # ------------------------------------------------------------------
+
+    async def orchestrate_async(
+        self,
+        message:          str,
+        agent_execute_fn: Callable,
+        base_ctx:         dict,
+    ) -> "PrismCard":
+        """
+        Async entry point for orchestrate().
+
+        Identical flow to orchestrate() but uses asyncio.gather for parallel
+        node execution — non-blocking LLM calls and organ fan-out without
+        spawning a raw ThreadPoolExecutor.  Sync orchestrate() is untouched.
+        """
+        from prism_responses import text_card
+
+        graph_id   = str(uuid.uuid4())[:8]
+        context_id = base_ctx.get("context_id", "default")
+
+        try:
+            graph = await asyncio.to_thread(self._decompose, message, graph_id, context_id)
+        except Exception as exc:
+            logger.warning("[orch] async decompose failed (%s) — single chain fallback", exc)
+            return await asyncio.to_thread(self._chain_run, message, agent_execute_fn, base_ctx)
+
+        if graph is None or not graph.nodes:
+            logger.debug("[orch] no nodes — single chain fallback")
+            return await asyncio.to_thread(self._chain_run, message, agent_execute_fn, base_ctx)
+
+        logger.info("[orch] graph %s: %d node(s) for %r", graph_id, len(graph.nodes), message[:60])
+        self._persist(graph)
+
+        try:
+            await self._run_graph_async(graph, agent_execute_fn, base_ctx)
+        except Exception as exc:
+            logger.warning("[orch] async graph execution error: %s", exc)
+            graph.status = "failed"
+
+        if graph.is_complete() and not graph.final_answer:
+            graph.final_answer = await asyncio.to_thread(self._synthesise, graph)
+
+        if not graph.is_paused():
+            graph.status = "completed" if graph.is_complete() else "failed"
+        self._persist(graph)
+
+        if self._tracker:
+            from prism_outcome_tracker import OUTCOME_ABANDONED, OUTCOME_DONE
+            outcome = OUTCOME_DONE if graph.status == "completed" else OUTCOME_ABANDONED
+            try:
+                self._tracker.record(
+                    chain_id    = graph.graph_id,
+                    goal        = message[:400],
+                    outcome     = outcome,
+                    steps_count = len(graph.nodes),
+                    context_id  = context_id,
+                )
+            except Exception:
+                pass
+
+        if graph.is_paused():
+            waiting    = [n for n in graph.nodes if n.status == "waiting"]
+            conditions = "; ".join(f"{n.node_id}: {n.goal[:60]}" for n in waiting)
+            return text_card(
+                f"Task is underway — paused while waiting for external conditions.\n\n"
+                f"Waiting on: {conditions}\n\n"
+                "PRISM will resume automatically when the conditions are met.",
+                "Task in progress",
+            )
+
+        return text_card(
+            graph.final_answer or "Task completed.",
+            f"[Orchestrated] {message[:60]}",
+        )
+
+    async def _run_graph_async(
+        self,
+        graph:            TaskGraph,
+        agent_execute_fn: Callable,
+        base_ctx:         dict,
+    ) -> None:
+        """
+        Async variant of _run_graph().
+
+        Serial nodes are executed via asyncio.to_thread so the event loop
+        remains unblocked.  Parallel-safe nodes are fanned out with
+        asyncio.gather under a 60-second asyncio.wait_for timeout.
+        _execute_node() itself is unchanged.
+        """
+        max_rounds = len(graph.nodes) + 2
+        for _ in range(max_rounds):
+            if graph.is_complete() or graph.is_paused():
+                break
+
+            ready = graph.ready_nodes()
+            if not ready:
+                logger.debug("[orch] no ready nodes — graph may be stuck")
+                break
+
+            profile0 = PROFILES.get(ready[0].profile, PROFILES["analytical"])
+
+            if len(ready) == 1 or not profile0.use_parallel:
+                for node in ready:
+                    await asyncio.to_thread(
+                        self._execute_node, node, graph, agent_execute_fn, base_ctx
+                    )
+                    if graph.is_paused():
+                        break
+            else:
+                parallel_safe = [
+                    n for n in ready
+                    if not n.horizon_pause
+                    and PROFILES.get(n.profile, PROFILES["analytical"]).use_parallel
+                ]
+                serial = [n for n in ready if n not in parallel_safe]
+
+                async def _run_one(n: OrchestratorNode) -> None:
+                    await asyncio.to_thread(
+                        self._execute_node, n, graph, agent_execute_fn, base_ctx
+                    )
+
+                try:
+                    await asyncio.wait_for(
+                        asyncio.gather(*[_run_one(n) for n in parallel_safe]),
+                        timeout=60.0,
+                    )
+                except asyncio.TimeoutError:
+                    for n in parallel_safe:
+                        if n.status == "running":
+                            n.status = "failed"
+                            n.error  = "parallel timeout"
+
+                for node in serial:
+                    await asyncio.to_thread(
+                        self._execute_node, node, graph, agent_execute_fn, base_ctx
+                    )
 
     # ------------------------------------------------------------------
     # Decomposition
