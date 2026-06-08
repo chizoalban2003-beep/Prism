@@ -172,6 +172,8 @@ class OrganLoader:
         self._router  = llm_router
         # {intent: (execute_fn, organ_meta_dict)}
         self._organs:  dict[str, tuple[Callable, dict]] = {}
+        self._disabled: set[str] = set()
+        self._organ_sources: dict[str, str] = {}  # intent → "bundled" | "user"
         self._user.mkdir(parents=True, exist_ok=True)
         self._load_all()
 
@@ -179,6 +181,8 @@ class OrganLoader:
 
     def get(self, intent: str) -> Optional[Callable]:
         """Return the execute function for intent, or None if not loaded."""
+        if intent in self._disabled:
+            return None
         entry = self._organs.get(intent)
         return entry[0] if entry else None
 
@@ -205,6 +209,76 @@ class OrganLoader:
     def list_organs(self) -> list[str]:
         """Return sorted list of loaded organ intent names."""
         return sorted(self._organs.keys())
+
+    def enable(self, intent: str) -> bool:
+        """Enable a previously disabled organ. Returns True if it was disabled."""
+        if intent in self._disabled:
+            self._disabled.discard(intent)
+            return True
+        return False
+
+    def disable(self, intent: str) -> bool:
+        """Disable an organ without unloading it. Returns True if found and disabled."""
+        if intent in self._organs:
+            self._disabled.add(intent)
+            return True
+        return False
+
+    def is_enabled(self, intent: str) -> bool:
+        return intent in self._organs and intent not in self._disabled
+
+    def organ_details(self, intent: str) -> dict | None:
+        """Return full metadata dict for intent, or None if not found."""
+        entry = self._organs.get(intent)
+        if entry is None:
+            return None
+        fn, meta = entry
+        policy = getattr(fn, "_organ_policy", {})
+        return {
+            "intent":      intent,
+            "description": meta.get("description", intent),
+            "version":     meta.get("version", "1.0"),
+            "source":      self._organ_sources.get(intent, "bundled"),
+            "enabled":     intent not in self._disabled,
+            "risk_level":  policy.get("risk_level", "unknown"),
+            "requires_approval": policy.get("requires_approval", False),
+            "irreversible":      policy.get("irreversible", False),
+            "max_per_session":   policy.get("max_per_session", None),
+            "capabilities": meta.get("capabilities", []),
+        }
+
+    def list_organ_details(self) -> list[dict]:
+        """Return organ_details for all known intents, sorted by intent name."""
+        return [self.organ_details(i) for i in sorted(self._organs.keys())]
+
+    def reload(self) -> int:
+        """Re-scan bundled and user dirs. Returns number of organs now loaded."""
+        self._organs.clear()
+        self._organ_sources.clear()
+        # Keep disabled set intact so user's choices persist across reload
+        self._load_all()
+        return len(self._organs)
+
+    def delete_user_organ(self, intent: str) -> bool:
+        """
+        Delete a user-synthesized organ from disk and unregister it.
+        Bundled organs cannot be deleted (returns False).
+        Returns True on success.
+        """
+        if self._organ_sources.get(intent) != "user":
+            return False
+        path = self._user / f"{intent}.py"
+        path.unlink(missing_ok=True)
+        self._organs.pop(intent, None)
+        self._organ_sources.pop(intent, None)
+        self._disabled.discard(intent)
+        # Also remove from LOGIC_REGISTRY if present
+        try:
+            from prism_composer import LOGIC_REGISTRY
+            LOGIC_REGISTRY.pop(intent, None)
+        except ImportError:
+            pass
+        return True
 
     def execute_parallel(
         self,
@@ -311,13 +385,13 @@ class OrganLoader:
             "description": data.get("description", intent),
             "version":     "1.0",
         }
-        self._register(intent, fn, meta)
+        self._register(intent, fn, meta, source="user")
         return True
 
     # ── Loading ───────────────────────────────────────────────────────────────
 
     def _load_all(self):
-        for directory in (self._bundled, self._user):
+        for directory, source in ((self._bundled, "bundled"), (self._user, "user")):
             if not directory.exists():
                 continue
             for path in sorted(directory.glob("*.py")):
@@ -328,7 +402,7 @@ class OrganLoader:
                     continue
                 meta   = getattr(fn, "_organ_meta", {})
                 intent = meta.get("intent") or path.stem
-                self._register(intent, fn, meta)
+                self._register(intent, fn, meta, source=source)
 
     def _load_file(self, path: Path) -> Optional[Callable]:
         code = path.read_text()
@@ -353,8 +427,9 @@ class OrganLoader:
         fn._organ_policy = getattr(module, "ORGAN_POLICY", {})  # type: ignore[attr-defined]
         return fn
 
-    def _register(self, intent: str, fn: Callable, meta: dict):
+    def _register(self, intent: str, fn: Callable, meta: dict, source: str = "bundled"):
         self._organs[intent] = (fn, meta)
+        self._organ_sources[intent] = source
         # Dynamically extend LOGIC_REGISTRY so the chain router sees the new organ
         try:
             from prism_composer import LOGIC_REGISTRY

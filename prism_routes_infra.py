@@ -4,18 +4,25 @@ prism_routes_infra.py
 FastAPI router for infrastructure / platform endpoints.
 
 Routes:
-  GET  /llm/status
-  GET  /tasks
-  GET  /tasks/{task_id}
-  GET  /metrics
-  GET  /policy
-  GET  /policy/spend
-  POST /policy/set
-  POST /policy/update_from_chat
-  GET  /tools/find
-  GET  /settings/llm
-  POST /settings/llm
-  POST /settings/llm/test
+  GET    /llm/status
+  GET    /tasks
+  GET    /tasks/{task_id}
+  GET    /metrics
+  GET    /policy
+  GET    /policy/spend
+  POST   /policy/set
+  POST   /policy/update_from_chat
+  GET    /tools/find
+  GET    /settings/llm
+  POST   /settings/llm
+  POST   /settings/llm/test
+  GET    /organs
+  GET    /organs/{name}
+  POST   /organs/{name}/enable
+  POST   /organs/{name}/disable
+  DELETE /organs/{name}
+  POST   /organs/reload
+  POST   /organs/synthesize
 """
 from __future__ import annotations
 
@@ -31,6 +38,13 @@ router = APIRouter()
 
 def _get_policy_engine():
     return _state.get("policy_engine")
+
+
+def _get_organ_loader():
+    agent = _state.get("agent")
+    if agent is None:
+        return None
+    return getattr(agent, "_organ_loader", None) or _state.get("organ_loader")
 
 
 def _get_llm_router():
@@ -349,3 +363,109 @@ async def settings_llm_test(request: Request):
         model    = body.get("model", ""),
     )
     return result
+
+
+# ---------------------------------------------------------------------------
+# /organs — plugin manager
+# ---------------------------------------------------------------------------
+
+@router.get("/organs")
+async def organs_list(source: str = "", enabled_only: bool = False):
+    """List all loaded organs with metadata."""
+    loader = _get_organ_loader()
+    if loader is None:
+        return {"organs": [], "count": 0, "note": "organ_loader not initialised"}
+    items = loader.list_organ_details()
+    if source:
+        items = [o for o in items if o["source"] == source]
+    if enabled_only:
+        items = [o for o in items if o["enabled"]]
+    return {"organs": items, "count": len(items)}
+
+
+@router.post("/organs/reload")
+async def organs_reload():
+    """Re-scan bundled and user organ directories."""
+    loader = _get_organ_loader()
+    if loader is None:
+        return JSONResponse({"error": "organ_loader not initialised"}, status_code=503)
+    count = loader.reload()
+    return {"ok": True, "loaded": count}
+
+
+@router.post("/organs/synthesize")
+async def organs_synthesize(request: Request):
+    """Synthesize a new organ via LLM. Body: {intent, message}"""
+    loader = _get_organ_loader()
+    if loader is None:
+        return JSONResponse({"error": "organ_loader not initialised"}, status_code=503)
+    try:
+        body: dict = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    intent  = body.get("intent", "").strip()
+    message = body.get("message", "").strip()
+    if not intent:
+        return JSONResponse({"error": "'intent' is required"}, status_code=400)
+    if not message:
+        message = intent
+    ok = loader.synthesize(intent, message)
+    if not ok:
+        return JSONResponse(
+            {"error": f"synthesis failed for '{intent}' — check LLM router and logs"},
+            status_code=503,
+        )
+    return {"ok": True, "intent": intent, "details": loader.organ_details(intent)}
+
+
+@router.get("/organs/{name}")
+async def organs_get(name: str):
+    """Get details for a single organ by intent name."""
+    loader = _get_organ_loader()
+    if loader is None:
+        return JSONResponse({"error": "organ_loader not initialised"}, status_code=503)
+    details = loader.organ_details(name)
+    if details is None:
+        return JSONResponse({"error": f"organ '{name}' not found"}, status_code=404)
+    return details
+
+
+@router.post("/organs/{name}/enable")
+async def organs_enable(name: str):
+    """Re-enable a disabled organ."""
+    loader = _get_organ_loader()
+    if loader is None:
+        return JSONResponse({"error": "organ_loader not initialised"}, status_code=503)
+    if name not in loader._organs:
+        return JSONResponse({"error": f"organ '{name}' not found"}, status_code=404)
+    loader.enable(name)
+    return {"ok": True, "intent": name, "enabled": True}
+
+
+@router.post("/organs/{name}/disable")
+async def organs_disable(name: str):
+    """Disable an organ without removing it from disk."""
+    loader = _get_organ_loader()
+    if loader is None:
+        return JSONResponse({"error": "organ_loader not initialised"}, status_code=503)
+    ok = loader.disable(name)
+    if not ok:
+        return JSONResponse({"error": f"organ '{name}' not found"}, status_code=404)
+    return {"ok": True, "intent": name, "enabled": False}
+
+
+@router.delete("/organs/{name}")
+async def organs_delete(name: str):
+    """Delete a user-synthesized organ. Bundled organs cannot be deleted."""
+    loader = _get_organ_loader()
+    if loader is None:
+        return JSONResponse({"error": "organ_loader not initialised"}, status_code=503)
+    if name not in loader._organs:
+        return JSONResponse({"error": f"organ '{name}' not found"}, status_code=404)
+    ok = loader.delete_user_organ(name)
+    if not ok:
+        return JSONResponse(
+            {"error": f"'{name}' is a bundled organ and cannot be deleted"},
+            status_code=403,
+        )
+    return {"ok": True, "intent": name, "deleted": True}
