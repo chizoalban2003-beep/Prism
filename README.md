@@ -205,9 +205,9 @@ Background loop:
 PRISM's REST API runs on **FastAPI + uvicorn** (ASGI) — not the Python stdlib HTTP server. This provides:
 
 - **True concurrent requests** — uvicorn's event loop handles all connections simultaneously; no thread-per-connection serialisation
-- **Real token streaming** — `/stream/chat` yields SSE tokens as they arrive from the LLM provider via httpx async streaming; each token flushed immediately rather than waiting for full completion
+- **Real token streaming** — `/stream/chat` SSE yields tokens as they arrive; `/ws/chat` WebSocket provides bidirectional multi-turn chat over a persistent connection
 - **Non-blocking LLM I/O** — `prism_llm_router.py` exposes `async_call()` and `async_call_stream()` using httpx, with automatic fallback to `asyncio.to_thread(call())` when httpx is absent
-- **161 routes across 17 FastAPI router modules** — `prism_routes_predict`, `prism_routes_analytics`, `prism_routes_agent`, `prism_routes_chain`, `prism_routes_core`, `prism_routes_horizon`, `prism_routes_infra`, `prism_routes_integrations`, `prism_routes_media`, `prism_routes_sensors`, `prism_routes_ui`, `prism_routes_mobile`, `prism_routes_users`, `prism_routes_federation`, `prism_routes_perception`, `prism_routes_causality`, `prism_routes_sessions`
+- **161 routes + 1 WebSocket across 17 FastAPI router modules** — `prism_routes_predict`, `prism_routes_analytics`, `prism_routes_agent`, `prism_routes_chain`, `prism_routes_core`, `prism_routes_horizon`, `prism_routes_infra`, `prism_routes_integrations`, `prism_routes_media`, `prism_routes_sensors`, `prism_routes_ui`, `prism_routes_mobile`, `prism_routes_users`, `prism_routes_federation`, `prism_routes_perception`, `prism_routes_causality`, `prism_routes_sessions`
 - **CORS** — all origins allowed at the ASGI middleware layer (appropriate for 127.0.0.1-only binding)
 
 ```
@@ -221,7 +221,8 @@ FastAPI app  (prism_asgi.py)
    ├── CORSMiddleware
    ├── prism_routes_core → POST /chat → asyncio.to_thread(agent.chat)
    ├── prism_routes_predict → GET /predict/match → platform.match.predict
-   ├── GET /stream/chat → chain.run_streaming_async → asyncio.Queue bridge
+   ├── GET /stream/chat → chain.run_streaming_async → asyncio.Queue bridge (SSE)
+   ├── WS  /ws/chat     → chain.run_streaming_async → multi-turn WebSocket
    └── … 128 more routes across 14 routers
 ```
 

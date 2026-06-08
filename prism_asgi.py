@@ -15,7 +15,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 try:
-    from fastapi import FastAPI, Request
+    from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse, StreamingResponse
     _FASTAPI_AVAILABLE = True
@@ -135,6 +135,58 @@ if _FASTAPI_AVAILABLE:
             },
         )
 
+    # ── WebSocket bidirectional chat ──────────────────────────────────────
+
+    @app.websocket("/ws/chat")
+    async def ws_chat(websocket: WebSocket):
+        """
+        Bidirectional WebSocket chat endpoint.
+
+        Client sends:  {"message": "...", "session_id": "optional-name"}
+        Server streams: {"event": "step", "step": N, ...}
+                        {"event": "done", "answer": "...", ...}
+                        {"event": "error", "message": "..."}
+
+        The connection stays open for multiple turns — send another message
+        after receiving the "done" event for the previous turn.
+        """
+        await websocket.accept()
+
+        chain = _get_chain()
+        agent = _get_agent()
+        if chain is None or agent is None:
+            await websocket.send_json({"event": "error", "message": "agent not ready"})
+            await websocket.close(1011)
+            return
+
+        try:
+            while True:
+                data = await websocket.receive_json()
+                msg = data.get("message") or data.get("q", "")
+                if not msg:
+                    await websocket.send_json({"event": "error", "message": "'message' required"})
+                    continue
+
+                session_id = data.get("session_id") or _state.get("active_session_id")
+                answer = None
+
+                async for evt in chain.run_streaming_async(msg, agent._execute, {"source": "ws"}):
+                    await websocket.send_json(evt)
+                    if evt.get("event") == "done":
+                        answer = evt.get("answer")
+
+                if session_id and answer:
+                    try:
+                        from prism_session_manager import get_session_manager
+                        sm = get_session_manager()
+                        sm.add_message(session_id, "user", msg)
+                        sm.add_message(session_id, "assistant", answer)
+                    except Exception:
+                        pass
+
+        except WebSocketDisconnect:
+            pass
+
 else:
     # Stub so imports don't blow up when fastapi isn't installed
     class _StubApp:  # type: ignore[no-redef]
@@ -153,6 +205,11 @@ else:
 
         def add_middleware(self, *a, **kw):
             pass
+
+        def websocket(self, *a, **kw):
+            def _dec(fn):
+                return fn
+            return _dec
 
     app = _StubApp()  # type: ignore[assignment]
     logger.warning("FastAPI not installed — prism_asgi running in stub mode. "
