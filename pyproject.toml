@@ -157,6 +157,8 @@ py-modules = [
     "prism_routes_perception",
     "prism_causality",
     "prism_routes_causality",
+    "prism_routes_sessions",
+    "prism_session_manager",
 ]
 
 [tool.pytest.ini_options]

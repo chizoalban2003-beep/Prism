@@ -71,6 +71,7 @@ if _FASTAPI_AVAILABLE:
     from prism_routes_perception import router as perception_router
     from prism_routes_predict import router as predict_router
     from prism_routes_sensors import router as sensors_router
+    from prism_routes_sessions import router as sessions_router
     from prism_routes_ui import router as ui_router
     from prism_routes_users import router as users_router
 
@@ -87,6 +88,7 @@ if _FASTAPI_AVAILABLE:
     app.include_router(core_router)
     app.include_router(media_router)
     app.include_router(mobile_router)
+    app.include_router(sessions_router)
     app.include_router(users_router)
     app.include_router(federation_router)
     app.include_router(perception_router)

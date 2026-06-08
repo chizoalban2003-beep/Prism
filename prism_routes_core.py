@@ -86,7 +86,20 @@ async def chat(request: Request):
         except ImportError as exc:
             return JSONResponse({"error": str(exc), "status": 503}, status_code=503)
 
-    card = await asyncio.to_thread(agent.chat, body.get("message", ""), body.get("context", {}))
+    message = body.get("message", "")
+    card = await asyncio.to_thread(agent.chat, message, body.get("context", {}))
+
+    # Persist to named session if one is active
+    session_id = body.get("session_id") or _state.get("active_session_id")
+    if session_id and message:
+        try:
+            from prism_session_manager import get_session_manager
+            sm = get_session_manager()
+            sm.add_message(session_id, "user", message)
+            sm.add_message(session_id, "assistant", card.body if hasattr(card, "body") else str(card))
+        except Exception:
+            pass
+
     return card.to_json()
 
 
