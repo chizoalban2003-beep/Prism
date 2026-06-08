@@ -853,15 +853,22 @@ class KDEAgent:
         }
 
     def start_server(self, port: int = 8742, blocking: bool = False) -> str:
-        """Start the local REST API. Returns the server URL."""
-        from kde_server import KDEServer
-        self._server = KDEServer(
-            agent    = self,
-            port     = port,
-            platform = self._platform,
-        )
-        self._server.start(blocking=blocking)
-        return self._server.url
+        """Start the local REST API via ASGI server. Returns the server URL."""
+        import threading
+        from prism_state import _set_state
+        from prism_asgi import serve
+        _set_state(agent=self, platform=getattr(self, "_platform", None))
+        url = f"http://127.0.0.1:{port}"
+        if blocking:
+            serve(host="127.0.0.1", port=port)
+        else:
+            t = threading.Thread(
+                target=serve, kwargs={"host": "127.0.0.1", "port": port},
+                daemon=True, name="asgi-server",
+            )
+            t.start()
+            self._server_thread = t
+        return url
 
     # ── status ────────────────────────────────────────────────────────────
 

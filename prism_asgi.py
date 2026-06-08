@@ -1,10 +1,9 @@
 """
 prism_asgi.py
 =============
-FastAPI/ASGI application for PRISM — async-capable parallel server.
+FastAPI/ASGI application for PRISM — sole HTTP server on port 8742.
 
-Starts alongside kde_server.py (Phase 1: port 8743 shadow).
-Later phases migrate all routes here and retire kde_server.py.
+Replaces kde_server.py (retired after Phase 7 migration).
 
 SECURITY: Always bound to 127.0.0.1 — never expose to 0.0.0.0.
 """

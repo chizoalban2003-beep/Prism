@@ -1,7 +1,17 @@
 """
 kde_server.py
 =============
-KDE Sports Platform — Local REST API
+** DEPRECATED — archived after Phase 7 migration (2026-06-08) **
+
+All routes have been migrated to FastAPI/ASGI in:
+  prism_asgi.py          — app, serve(), CORS, SSE
+  prism_routes_*.py      — 11 APIRouter modules (107 routes)
+  prism_state.py         — shared dependency injection
+
+This file is kept for historical reference only and is no longer imported
+by any production code. Use prism_daemon.py to start the server.
+-----------------------------------------------------------------------
+KDE Sports Platform — Local REST API (original)
 
 A lightweight HTTP server using only Python's stdlib http.server.
 Exposes the KDE agent as a JSON API on localhost:8742.

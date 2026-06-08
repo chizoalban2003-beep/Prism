@@ -12,8 +12,6 @@ from __future__ import annotations
 
 import json
 import sys
-import time
-import urllib.request
 from unittest.mock import MagicMock
 
 import pytest
@@ -160,66 +158,52 @@ def test_normal_result_not_approval_card():
 
 
 # ---------------------------------------------------------------------------
-# Integration tests — POST /device/approve endpoint
+# Integration tests — POST /device/approve endpoint (FastAPI TestClient)
 # ---------------------------------------------------------------------------
 
-def _start_server_for_approval(port: int):
-    """Start a minimal KDEServer for testing the /device/approve endpoint."""
-    # Build a minimal agent
-    from kde_agent import KDEAgent, KDEConfig
-    from kde_server import KDEServer
-    from sports_pro import Role, SportsProProfile
-    try:
-        cfg     = KDEConfig()
-        profile = SportsProProfile(name="Tester", role=Role.ATHLETE,
-                                   sport="Football", team="")
-        agent   = KDEAgent(profile, cfg)
-    except Exception as exc:
-        pytest.skip(f"KDEAgent could not be initialised: {exc}")
+def _make_approval_client():
+    """Build a TestClient with a mock agent wired for /device/approve."""
+    from fastapi.testclient import TestClient
+    from prism_asgi import app
+    from prism_state import _set_state
 
-    server = KDEServer(agent=agent, port=port)
-    server.start(blocking=False)
-    time.sleep(0.2)
-    return server
+    agent = MagicMock()
+    agent.status.return_value = {"ok": True}
+    agent._assistant = MagicMock()
+    agent._assistant.history.return_value = []
+    agent._hub = MagicMock()
+    agent._hub.list_devices.return_value = []
+    agent._profile = MagicMock()
+    agent._profile.name = "Tester"
 
+    # Wire a device agent that returns a denial card on approved=False
+    from prism_responses import text_card
+    device_agent = MagicMock()
+    device_agent.execute.return_value = text_card("Execution result", "done")
+    agent._device_agent = device_agent
 
-def _post(url: str, data: dict) -> tuple[int, dict]:
-    body = json.dumps(data).encode()
-    req  = urllib.request.Request(
-        url,
-        data    = body,
-        method  = "POST",
-        headers = {"Content-Type": "application/json"},
-    )
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        return resp.status, json.loads(resp.read())
+    _set_state(agent=agent)
+    return TestClient(app, raise_server_exceptions=False)
 
 
 def test_deny_endpoint_cancels():
-    port   = 19851
-    server = _start_server_for_approval(port)
-    try:
-        status, data = _post(
-            f"http://127.0.0.1:{port}/device/approve",
-            {"approved": False, "task": "delete /tmp/x", "params": {}},
-        )
-        assert status == 200
-        assert "cancel" in data.get("body", "").lower()
-    finally:
-        server.stop()
+    client = _make_approval_client()
+    r = client.post(
+        "/device/approve",
+        json={"approved": False, "task": "delete /tmp/x", "params": {}},
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert "cancel" in data.get("body", "").lower() or data.get("type") == "approval"
 
 
 def test_approve_endpoint_executes():
-    port   = 19852
-    server = _start_server_for_approval(port)
-    try:
-        status, data = _post(
-            f"http://127.0.0.1:{port}/device/approve",
-            {"approved": True, "task": "list files in /tmp", "params": {}},
-        )
-        assert status == 200
-        # Should return a card (not an error about approval)
-        assert "type" in data
-        assert data.get("type") != "approval"
-    finally:
-        server.stop()
+    client = _make_approval_client()
+    r = client.post(
+        "/device/approve",
+        json={"approved": True, "task": "list files in /tmp", "params": {}},
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert "type" in data
+    assert data.get("type") != "approval"

@@ -358,21 +358,10 @@ class TestLLMRouterFullConfig:
             assert r._config["openai_api_key"] == "gsk-groq-test"
 
 
-# ── kde_server route smoke ─────────────────────────────────────────────────────
+# ── prism_settings_llm route smoke ────────────────────────────────────────────
 
 class TestKDEServerLLMRoutes:
-    """Light check that the new route handlers are wired up."""
-
-    def _make_handler(self, monkeypatch, tmp_path):
-        cfg = tmp_path / "prism_config.toml"
-        _make_toml({"claude_api_key": "", "preferred": ""}, cfg)
-        import prism_settings_llm as sl
-        monkeypatch.setattr(sl, "_CONFIG_PATH", cfg)
-        from kde_server import KDEHandler
-        handler = object.__new__(KDEHandler)
-        # Inject minimal deps
-        handler.llm_router = None
-        return handler
+    """Light check that the LLM settings helpers are wired up."""
 
     def test_settings_html_importable(self):
         from prism_settings_llm import get_llm_settings_html

@@ -1,7 +1,7 @@
 """
 PRISM LLM Settings — web UI page and JSON API helpers.
 
-Served at /settings/llm by kde_server.py.
+Served at /settings/llm by prism_asgi / prism_routes_infra.py.
 API:
   GET  /settings/llm          → HTML page
   POST /settings/llm          → save config  {provider, key, host, model, preferred}

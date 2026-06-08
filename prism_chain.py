@@ -616,7 +616,7 @@ Rules:
             {"event": "done",  "answer": "...", "chain_id": "..."}
             {"event": "error", "message": "..."}
 
-        Usage in kde_server SSE handler:
+        Usage in prism_asgi SSE handler — see run_streaming_async() for async variant:
             for evt in chain.run_streaming(msg, fn, ctx):
                 wfile.write(f"data: {json.dumps(evt)}\n\n".encode())
         """
