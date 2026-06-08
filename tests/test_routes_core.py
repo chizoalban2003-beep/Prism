@@ -1,8 +1,8 @@
 """
-test_kde_server.py
-==================
-Tests for the core agent routes (formerly tested via KDEServer stdlib HTTP).
-Now uses FastAPI TestClient — no real port binding, no sleep().
+test_routes_core.py
+===================
+Tests for the core agent routes.
+Uses FastAPI TestClient — no real port binding, no sleep().
 """
 from __future__ import annotations
 

@@ -44,6 +44,7 @@ jobs:
         run: |
           python3 -m pytest -x -q --tb=short \
             --cov=. --cov-report=xml --cov-report=term-missing:skip-covered \
+            --cov-fail-under=70 \
             --ignore=tests/test_device_agent.py
             # test_device_agent.py requires physical hardware (Apple Watch / GoPro); skipped in CI
 

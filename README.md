@@ -207,7 +207,7 @@ PRISM's REST API runs on **FastAPI + uvicorn** (ASGI) — not the Python stdlib 
 - **True concurrent requests** — uvicorn's event loop handles all connections simultaneously; no thread-per-connection serialisation
 - **Real token streaming** — `/stream/chat` yields SSE tokens as they arrive from the LLM provider via httpx async streaming; each token flushed immediately rather than waiting for full completion
 - **Non-blocking LLM I/O** — `prism_llm_router.py` exposes `async_call()` and `async_call_stream()` using httpx, with automatic fallback to `asyncio.to_thread(call())` when httpx is absent
-- **160+ routes across 16 FastAPI router modules** — `prism_routes_predict`, `prism_routes_analytics`, `prism_routes_agent`, `prism_routes_chain`, `prism_routes_core`, `prism_routes_horizon`, `prism_routes_infra`, `prism_routes_integrations`, `prism_routes_media`, `prism_routes_sensors`, `prism_routes_ui`, `prism_routes_mobile`, `prism_routes_users`, `prism_routes_federation`, `prism_routes_perception`, `prism_routes_causality`
+- **132 routes across 16 FastAPI router modules** — `prism_routes_predict`, `prism_routes_analytics`, `prism_routes_agent`, `prism_routes_chain`, `prism_routes_core`, `prism_routes_horizon`, `prism_routes_infra`, `prism_routes_integrations`, `prism_routes_media`, `prism_routes_sensors`, `prism_routes_ui`, `prism_routes_mobile`, `prism_routes_users`, `prism_routes_federation`, `prism_routes_perception`, `prism_routes_causality`
 - **CORS** — all origins allowed at the ASGI middleware layer (appropriate for 127.0.0.1-only binding)
 
 ```
@@ -222,7 +222,7 @@ FastAPI app  (prism_asgi.py)
    ├── prism_routes_core → POST /chat → asyncio.to_thread(agent.chat)
    ├── prism_routes_predict → GET /predict/match → platform.match.predict
    ├── GET /stream/chat → chain.run_streaming_async → asyncio.Queue bridge
-   └── … 103 more routes across 10 routers
+   └── … 128 more routes across 14 routers
 ```
 
 The legacy `kde_server.py` (Python stdlib `http.server`) is archived and no longer started by `prism_daemon.py`.
@@ -1276,7 +1276,7 @@ PRISM/
 │
 ├── KDE platform
 │   ├── kde_agent.py            KDEAgent — unified sports + domain agent
-│   ├── prism_asgi.py           FastAPI/ASGI server — 160+ async routes on :8742
+│   ├── prism_asgi.py           FastAPI/ASGI server — 132 async routes on :8742
 │   ├── prism_state.py          Shared dependency-injection state for ASGI routes
 │   ├── prism_routes_*.py       16 FastAPI router modules (predict/agent/chain/users/federation/perception/causality/…)
 │   ├── prism_multi_user.py     Multi-user registry + household bus
@@ -1284,7 +1284,6 @@ PRISM/
 │   ├── prism_federation.py     Federated mesh — peer discovery, Lamport clock, state merge
 │   ├── prism_visual_perception.py  LLaVA scene analysis + audio feature extraction
 │   ├── prism_causality.py      Causal DAG over beliefs — counterfactual explanations
-│   ├── kde_server.py           Legacy stdlib HTTP server (archived — superseded by prism_asgi)
 │   ├── prism_pwa.py            PWA mobile companion — installable app at /mobile
 │   ├── kde_dashboard.py        HTML reports + terminal dashboard
 │   ├── kde_cli.py              CLI entry point
