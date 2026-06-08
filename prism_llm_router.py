@@ -15,6 +15,11 @@ except ImportError:
     _prism_phase = None  # type: ignore[assignment]
     _PhaseState  = None  # type: ignore[assignment]
 
+try:
+    import prism_lora_registry as _lora_reg
+except ImportError:
+    _lora_reg = None  # type: ignore[assignment]
+
 logger = logging.getLogger(__name__)
 
 
@@ -221,6 +226,7 @@ class LLMRouter:
         conversation_history: list[dict] = None,
         speculative:          bool = False,
         phase_hint:           Optional[str] = None,
+        task_hint:            str = "",
         # list of {"role":"user"|"assistant","content":str}
     ) -> tuple[str, str]:
         """
@@ -237,7 +243,7 @@ class LLMRouter:
                 prompt, min_capability=1, max_tokens=max_tokens,
                 system=system, json_mode=json_mode,
                 conversation_history=conversation_history, speculative=False,
-                phase_hint=phase_hint,
+                phase_hint=phase_hint, task_hint=task_hint,
             )
             _uncertain = ("i don't know", "uncertain", "cannot", "i'm not sure",
                           "i am not sure", "unclear", "not enough information")
@@ -246,6 +252,40 @@ class LLMRouter:
                 logger.debug("[llm_router] speculative: fast model sufficient (%s)", fast_model)
                 return fast_resp, fast_model
             logger.debug("[llm_router] speculative: escalating to min_capability=%d", min_capability)
+
+        # ── LoRA / task-adapter injection (Vector V) ──────────────────────
+        # Select and inject system prompt template based on phase + bio_debt.
+        # This is the LAST modification before the actual LLM call — we only
+        # modify the sent prompt, not any stored state.
+        _effective_prompt = prompt
+        if _lora_reg is not None:
+            try:
+                _registry = _lora_reg.get_registry()
+                # Derive phase name from current engine state
+                _phase_name = "STABLE"
+                if _prism_phase is not None:
+                    try:
+                        _eng = _prism_phase.get_engine()
+                        if _eng.history:
+                            _phase_name = _eng.current_phase.value
+                    except Exception:
+                        pass
+                # Derive bio_debt from bridge if wired (bridge not held here;
+                # callers can pass bio_debt via task_hint with "bio_debt=X" prefix
+                # or by subclassing. Default to 0.0 for now.)
+                _bio_debt = 0.0
+                _adapter = _registry.select(
+                    phase_name=_phase_name,
+                    bio_debt=_bio_debt,
+                    task_hint=task_hint,
+                )
+                _effective_prompt = _registry.inject_system_prompt(prompt, _adapter)
+                logger.debug("[llm_router] lora adapter=%s phase=%s",
+                             _adapter.adapter_id, _phase_name)
+            except Exception as _le:
+                logger.debug("[llm_router] lora injection failed: %s", _le)
+                _effective_prompt = prompt
+        # ─────────────────────────────────────────────────────────────────
 
         # Phase-aware: when LIQUID, prefer fastest/cloud first regardless of ranking
         if _prism_phase is not None:
@@ -256,7 +296,7 @@ class LLMRouter:
                     if preferred is not None:
                         try:
                             text = self._call_option(
-                                preferred, prompt, max_tokens, system,
+                                preferred, _effective_prompt, max_tokens, system,
                                 json_mode, conversation_history or [])
                             if text:
                                 logger.debug("[llm_router] LIQUID phase → %s/%s",
@@ -272,7 +312,7 @@ class LLMRouter:
                 continue
             try:
                 text = self._call_option(
-                    opt, prompt, max_tokens, system,
+                    opt, _effective_prompt, max_tokens, system,
                     json_mode, conversation_history or [])
                 if text:
                     logger.debug("LLM call via %s/%s", opt.provider, opt.model)

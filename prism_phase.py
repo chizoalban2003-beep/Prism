@@ -55,6 +55,106 @@ class PhaseReading:
 
 
 # ---------------------------------------------------------------------------
+# Phase ordering helper (used by PhasePredictor and CrystallizationEngine)
+# ---------------------------------------------------------------------------
+
+_PHASE_ORDER: dict[PhaseState, int] = {
+    PhaseState.CRYSTAL: 0,
+    PhaseState.STABLE:  1,
+    PhaseState.VISCOUS: 2,
+    PhaseState.LIQUID:  3,
+}
+
+
+def _phase_order(phase: PhaseState) -> int:
+    return _PHASE_ORDER.get(phase, 1)
+
+
+# ---------------------------------------------------------------------------
+# PhasePredictor — anticipatory phase shifting (Vector III)
+# ---------------------------------------------------------------------------
+
+class PhasePredictor:
+    """
+    Predicts future phase state by analyzing ΔH slope and heavy process spawns.
+
+    Two signals:
+    1. ΔH slope: linear regression over rolling window → extrapolate to threshold
+    2. Heavy process detection: known compilation/test patterns → immediate prediction
+    """
+
+    _HEAVY_PROCS: frozenset[str] = frozenset({
+        "pytest", "cargo", "gcc", "g++", "cc", "make", "cmake",
+        "npm", "node", "webpack", "tsc",
+        "mvn", "gradle", "java",
+        "rustc", "go", "ld",
+    })
+    _WINDOW_SIZE = 6    # samples
+    _LOOKAHEAD_S = 30.0  # predict this far ahead
+
+    def __init__(self, melt_threshold: float = 0.70, viscous_threshold: float = 0.60) -> None:
+        self._melt_t    = melt_threshold
+        self._viscous_t = viscous_threshold
+        self._history: deque[tuple[float, float]] = deque(maxlen=self._WINDOW_SIZE)
+
+    def observe(self, dh: float, ts: float | None = None) -> None:
+        self._history.append((ts if ts is not None else time.monotonic(), dh))
+
+    def predict(self, current_dh: float) -> "PhaseState | None":
+        """Return predicted phase if crossing is imminent, else None."""
+        # Heavy process spawn takes priority
+        if self._heavy_proc_running():
+            return PhaseState.LIQUID
+
+        if len(self._history) < 3:
+            return None
+
+        slope = self._slope()
+        if slope <= 0:
+            return None  # load declining
+
+        # Time to threshold crossing: (threshold - current) / slope (in seconds)
+        time_to_melt    = (self._melt_t    - current_dh) / slope
+        time_to_viscous = (self._viscous_t - current_dh) / slope
+
+        if 0 < time_to_melt <= self._LOOKAHEAD_S:
+            return PhaseState.LIQUID
+        if 0 < time_to_viscous <= self._LOOKAHEAD_S:
+            return PhaseState.VISCOUS
+        return None
+
+    def _slope(self) -> float:
+        """Slope of ΔH over time window (units per second)."""
+        pts = list(self._history)
+        n = len(pts)
+        t0 = pts[0][0]
+        ts_norm = [p[0] - t0 for p in pts]
+        vals    = [p[1] for p in pts]
+        mean_t  = sum(ts_norm) / n
+        mean_v  = sum(vals) / n
+        num = sum((t - mean_t) * (v - mean_v) for t, v in zip(ts_norm, vals))
+        den = sum((t - mean_t) ** 2 for t in ts_norm)
+        return num / den if den > 0 else 0.0
+
+    def _heavy_proc_running(self) -> bool:
+        try:
+            import psutil
+            for p in psutil.process_iter(["name"]):
+                try:
+                    # Use exact name match (strip extension on Windows) to avoid
+                    # false positives like "ld-linux-x86-64.so.2" matching "ld"
+                    raw = p.info.get("name") or ""
+                    name = raw.lower().split(".")[0]  # strip .exe / .so suffix
+                    if name in self._HEAVY_PROCS:
+                        return True
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    continue
+        except Exception:
+            pass
+        return False
+
+
+# ---------------------------------------------------------------------------
 # CrystallizationEngine
 # ---------------------------------------------------------------------------
 
@@ -86,24 +186,42 @@ class CrystallizationEngine:
         self._last_entailment_result: float         = 0.0
         self._entailment_ttl:         float         = 60.0   # seconds
 
+        # Anticipatory phase predictor (Vector III)
+        self._predictor = PhasePredictor(melt_threshold, viscous_threshold)
+
     # ── Public API ────────────────────────────────────────────────────────
 
-    def compute(self, soul: Any = None) -> PhaseReading:
+    def compute(self, soul: Any = None, bridge: Any = None) -> PhaseReading:
         """
         Compute a fresh PhaseReading.
         soul.run_entailment_check() is used for ΔK; gracefully handles None.
         The entailment call is cached for _entailment_ttl seconds to avoid spam.
+        bridge: optional BiometricVEAXBridge for biological pressure (ΔB, Vector IV).
         """
         delta_h = self._compute_delta_H()
         delta_k = self._compute_delta_K(soul)
-        phi     = self.alpha * delta_h + self.beta * delta_k
-        phi     = max(0.0, min(1.0, phi))
-        phase   = self.phase_from_phi(phi)
+        delta_b = self._compute_delta_B(bridge)
+
+        # Extended Φ_melt: reweight when biological signal available (Vector IV)
+        if delta_b > 0.0:
+            phi = 0.5 * delta_h + 0.3 * delta_k + 0.2 * delta_b
+        else:
+            phi = self.alpha * delta_h + self.beta * delta_k
+
+        phi   = max(0.0, min(1.0, phi))
+        phase = self.phase_from_phi(phi)
+
+        # Anticipatory phase shifting (Vector III)
+        self._predictor.observe(delta_h)
+        predicted = self._predictor.predict(delta_h)
+        if predicted is not None and _phase_order(predicted) > _phase_order(phase):
+            phase = predicted
+
         reading = PhaseReading(phi=phi, delta_H=delta_h, delta_K=delta_k, phase=phase)
         self.history.append(reading)
         logger.debug(
-            "[phase] ΔH=%.3f ΔK=%.3f Φ=%.3f phase=%s",
-            delta_h, delta_k, phi, phase.value,
+            "[phase] ΔH=%.3f ΔK=%.3f ΔB=%.3f Φ=%.3f phase=%s",
+            delta_h, delta_k, delta_b, phi, phase.value,
         )
         return reading
 
@@ -193,6 +311,24 @@ class CrystallizationEngine:
         self._last_entailment_ts     = now
         self._last_entailment_result = delta_k
         return delta_k
+
+    def _compute_delta_B(self, bridge: Any) -> float:
+        """
+        Biological pressure from BiometricVEAXBridge (Vector IV).
+        ΔB = weighted combination of V and E debt (slow-τ axes only) to avoid
+        transient A spikes dominating.
+        Returns 0.0 if bridge is None or unavailable.
+        """
+        if bridge is None:
+            return 0.0
+        try:
+            dyn = bridge.dynamics  # VEAXDebtDynamics
+            # Weight V and E debt more (deep fatigue, not transient stress)
+            v_debt = dyn.get_axis_debt("V")
+            e_debt = dyn.get_axis_debt("E")
+            return min(1.0, (v_debt * 0.6 + e_debt * 0.4) / 1.5)
+        except Exception:
+            return 0.0
 
     def phase_from_phi(self, phi: float) -> PhaseState:
         """Classify a Φ value into a PhaseState."""

@@ -44,12 +44,14 @@ class PrismShadowPipeline:
         max_restarts:  int   = 10,
         soul:          "PrismSoul | None" = None,
         phase_engine:  Any | None = None,
+        bridge:        Any | None = None,
     ) -> None:
         self._graph        = graph
         self._interval     = interval_s
         self._max_restarts = max_restarts
         self._soul         = soul
         self._phase_engine = phase_engine
+        self._bridge       = bridge
         self._restarts     = 0
         self._stop         = threading.Event()
         self._thread: threading.Thread | None = None
@@ -114,7 +116,10 @@ class PrismShadowPipeline:
                 # Phase engine feedback loop — after each commit cycle
                 if self._phase_engine is not None:
                     try:
-                        reading = self._phase_engine.compute(soul=self._soul)
+                        reading = self._phase_engine.compute(
+                            soul=self._soul,
+                            bridge=getattr(self, "_bridge", None),
+                        )
                         if self._phase_engine.should_melt():
                             _log.info(
                                 "[shadow] Φ_melt=%.3f → %s — applying VEAX delta",
