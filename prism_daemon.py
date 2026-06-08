@@ -276,7 +276,7 @@ def _run_ceremony(agent):
 
 def _build_asgi_state(agent) -> dict:
     """Build the full dependency dict for prism_asgi._set_state()."""
-    state: dict = {"agent": agent}
+    state: dict = {"agent": agent, "active_session_id": None}
 
     try:
         from prediction_engine import PredictionPlatform

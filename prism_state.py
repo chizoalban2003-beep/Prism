@@ -19,6 +19,11 @@ def _set_state(**kwargs: Any) -> None:
     _state.update(kwargs)
 
 
+def _get_agent():
+    """Return the current PrismAgent from shared state."""
+    return _state.get("agent")
+
+
 def _safe_dict(obj) -> dict:
     """Convert a dataclass (or any object) to a dict safely."""
     try:

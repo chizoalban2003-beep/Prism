@@ -62,7 +62,7 @@ class StatsBombConnector:
     # ------------------------------------------------------------------
 
     def _cache_path(self, url: str) -> Path:
-        key = hashlib.md5(url.encode()).hexdigest()
+        key = hashlib.md5(url.encode()).hexdigest()  # nosec B324 — cache key, not crypto
         return self.cache_dir / f"{key}.json"
 
     def _is_fresh(self, path: Path) -> bool:

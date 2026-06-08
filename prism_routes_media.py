@@ -18,13 +18,11 @@ from typing import Any, Dict
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from prism_state import _state
+from prism_state import _get_agent
 
 router = APIRouter()
 
 
-def _get_agent():
-    return _state.get("agent")
 
 
 # ---------------------------------------------------------------------------

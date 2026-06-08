@@ -17,13 +17,11 @@ import asyncio
 
 from fastapi import APIRouter
 
-from prism_state import _state
+from prism_state import _get_agent
 
 router = APIRouter()
 
 
-def _get_agent():
-    return _state.get("agent")
 
 
 # ---------------------------------------------------------------------------
