@@ -32,8 +32,8 @@ jobs:
         run: |
           python3 -m pip install -e ".[dev]" || python3 -m pip install -e .
           python3 -m pip install pytest-cov
-          # Async server stack
-          python3 -m pip install "fastapi>=0.111" "uvicorn[standard]>=0.29" "httpx>=0.27" "anyio[trio]>=4.0"
+          # Async server stack (python-multipart required for FastAPI File upload route registration)
+          python3 -m pip install "fastapi>=0.111" "uvicorn[standard]>=0.29" "httpx>=0.27" "anyio[trio]>=4.0" "python-multipart>=0.0.18"
           # Safe optional extras (excludes playwright/whisper/pyaudio — heavy system deps)
           python3 -m pip install anthropic aiohttp pdfplumber openpyxl twilio || true
 
