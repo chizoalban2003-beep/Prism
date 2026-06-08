@@ -58,6 +58,7 @@ jobs:
           prism_wal.py prism_watchdog.py prism_shadow_pipeline.py prism_metrics.py
           prism_phase.py prism_perception.py prism_lora_registry.py
           prism_silicon_policy.py
+          prism_tvm_bridge.py prism_context_budget.py prism_speculative.py prism_llm_router.py
           --ignore-missing-imports --no-error-summary || true
 
       - name: Security scan (high severity only)

@@ -6,7 +6,7 @@ import os
 import time
 import urllib.request
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Optional
 
 try:
     import prism_phase as _prism_phase
@@ -24,6 +24,16 @@ try:
     import prism_silicon_policy as _silicon_policy_mod
 except ImportError:
     _silicon_policy_mod = None  # type: ignore[assignment]
+
+try:
+    import prism_context_budget as _ctx_budget_mod
+except ImportError:
+    _ctx_budget_mod = None  # type: ignore[assignment]
+
+try:
+    import prism_tvm_bridge as _tvm_bridge_mod
+except ImportError:
+    _tvm_bridge_mod = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -99,6 +109,7 @@ class LLMRouter:
         self._options:    list[LLMOption] = []
         self._discovered  = False
         self._last_scan   = 0.0
+        self._speculative_pipeline: Any | None = None
 
     @classmethod
     def from_config(cls, config_path: str = "~/.prism/config.toml",
@@ -285,6 +296,31 @@ class LLMRouter:
             except Exception as _se:
                 logger.debug("[silicon] policy error: %s", _se)
 
+        # Context Budget — prune conversation history to match token budget
+        _pruned_history = conversation_history or []
+        if _ctx_budget_mod is not None and _pruned_history:
+            try:
+                _ctx_mgr = _ctx_budget_mod.get_context_manager()
+                from prism_silicon_policy import ExecutionBudget as _EB
+                _ctx_budget = _EB(max_tokens=_eff_max_tokens)
+                _result = _ctx_mgr.prune(_pruned_history, _ctx_budget, query=prompt)
+                if _result.evicted_count > 0:
+                    _pruned_history = _result.messages
+                    logger.debug("[ctx_budget] evicted %d messages (%s strategy)",
+                                 _result.evicted_count, _result.strategy)
+            except Exception as _cbe:
+                logger.debug("[ctx_budget] error: %s", _cbe)
+
+        # TVM Bridge — apply quantization target when transitioning precision
+        if _tvm_bridge_mod is not None and _silicon_policy_mod is not None:
+            try:
+                _tvm = _tvm_bridge_mod.get_tvm_bridge()
+                _q_hint = _budget.quantization_hint if "_budget" in dir() else "fp16"
+                _ct = _tvm.compile_target(_q_hint)
+                _tvm.apply_target(_ct)
+            except Exception:
+                pass
+
         # ── LoRA / task-adapter injection (Vector V) ──────────────────────
         # Select and inject system prompt template based on phase + bio_debt.
         # This is the LAST modification before the actual LLM call — we only
@@ -329,7 +365,7 @@ class LLMRouter:
                         try:
                             text = self._call_option(
                                 preferred, _effective_prompt, _eff_max_tokens, system,
-                                json_mode, conversation_history or [])
+                                json_mode, _pruned_history)
                             if text:
                                 logger.debug("[llm_router] LIQUID phase → %s/%s",
                                              preferred.provider, preferred.model)
@@ -345,7 +381,7 @@ class LLMRouter:
             try:
                 text = self._call_option(
                     opt, _effective_prompt, _eff_max_tokens, system,
-                    json_mode, conversation_history or [])
+                    json_mode, _pruned_history)
                 if text:
                     logger.debug("LLM call via %s/%s", opt.provider, opt.model)
                     return text, f"{opt.provider}/{opt.model}"
@@ -355,6 +391,36 @@ class LLMRouter:
                 continue
 
         return "", "none"
+
+    def speculative_call(
+        self,
+        prompt: str,
+        system: str = "",
+        conversation_history: list[dict] | None = None,
+    ) -> tuple[str, str]:
+        """
+        Call via speculative decoding pipeline when budget indicates.
+        Falls back to normal call() if pipeline unavailable or budget is healthy.
+        """
+        try:
+            import prism_silicon_policy as _sp
+            import prism_speculative as _spec
+            policy = _sp.get_policy()
+            budget = policy.current_budget()
+            if not budget.speculative:
+                return self.call(prompt, system=system,
+                                 conversation_history=conversation_history)
+            pipeline = _spec.get_pipeline(router=self)
+            if pipeline is None:
+                return self.call(prompt, system=system,
+                                 conversation_history=conversation_history)
+            result = pipeline.call(prompt, budget=budget, system=system,
+                                   conversation_history=conversation_history)
+            return result.response, result.draft_model
+        except Exception as e:
+            logger.debug("[speculative] fallback to normal call: %s", e)
+            return self.call(prompt, system=system,
+                             conversation_history=conversation_history)
 
     def status_summary(self) -> dict:
         """For /llm/status endpoint and sidebar display."""
