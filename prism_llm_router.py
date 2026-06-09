@@ -12,35 +12,35 @@ try:
     import httpx as _httpx
     _HTTPX_AVAILABLE = True
 except ImportError:
-    _httpx = None  # type: ignore[assignment]
+    _httpx = None
     _HTTPX_AVAILABLE = False
 
 try:
     import prism_phase as _prism_phase
     from prism_phase import PhaseState as _PhaseState
 except ImportError:
-    _prism_phase = None  # type: ignore[assignment]
-    _PhaseState  = None  # type: ignore[assignment]
+    _prism_phase = None
+    _PhaseState  = None
 
 try:
     import prism_lora_registry as _lora_reg
 except ImportError:
-    _lora_reg = None  # type: ignore[assignment]
+    _lora_reg = None
 
 try:
     import prism_silicon_policy as _silicon_policy_mod
 except ImportError:
-    _silicon_policy_mod = None  # type: ignore[assignment]
+    _silicon_policy_mod = None
 
 try:
     import prism_context_budget as _ctx_budget_mod
 except ImportError:
-    _ctx_budget_mod = None  # type: ignore[assignment]
+    _ctx_budget_mod = None
 
 try:
     import prism_tvm_bridge as _tvm_bridge_mod
 except ImportError:
-    _tvm_bridge_mod = None  # type: ignore[assignment]
+    _tvm_bridge_mod = None
 
 logger = logging.getLogger(__name__)
 
@@ -105,9 +105,9 @@ class LLMRouter:
     def __init__(
         self,
         preferred:    str = "",           # e.g. "ollama/mistral" or "claude"
-        fallback:     list[str] = None,   # ordered fallback list
+        fallback:     list[str] | None = None,   # ordered fallback list
         ollama_host:  str = "http://localhost:11434",
-        config:       dict = None,        # from prism_config.toml [llm] section
+        config:       dict | None = None,        # from prism_config.toml [llm] section
     ):
         self._preferred   = preferred
         self._fallback    = fallback or []
@@ -246,7 +246,7 @@ class LLMRouter:
         max_tokens:           int = 1500,
         system:               str = "",
         json_mode:            bool = False,
-        conversation_history: list[dict] = None,
+        conversation_history: list[dict] | None = None,
         speculative:          bool = False,
         phase_hint:           Optional[str] = None,
         task_hint:            str = "",
@@ -433,18 +433,18 @@ class LLMRouter:
             budget = policy.current_budget()
             if not budget.speculative:
                 return self.call(prompt, system=system,
-                                 conversation_history=conversation_history)
+                                 conversation_history=conversation_history or [])
             pipeline = _spec.get_pipeline(router=self)
             if pipeline is None:
                 return self.call(prompt, system=system,
-                                 conversation_history=conversation_history)
+                                 conversation_history=conversation_history or [])
             result = pipeline.call(prompt, budget=budget, system=system,
                                    conversation_history=conversation_history)
             return result.response, result.draft_model
         except Exception as e:
             logger.debug("[speculative] fallback to normal call: %s", e)
             return self.call(prompt, system=system,
-                             conversation_history=conversation_history)
+                             conversation_history=conversation_history or [])
 
     def status_summary(self) -> dict:
         """For /llm/status endpoint and sidebar display."""
@@ -511,7 +511,7 @@ class LLMRouter:
 
     def _call_option(self, opt: LLMOption, prompt: str,
                      max_tokens: int, system: str,
-                     json_mode: bool, history: list = None,
+                     json_mode: bool, history: list | None = None,
                      images: list[str] | None = None) -> str:
         if opt.provider == "claude":
             return self._call_claude(opt, prompt, max_tokens, system, json_mode, history, images=images)
@@ -523,7 +523,7 @@ class LLMRouter:
 
     def _call_claude(self, opt: LLMOption, prompt: str,
                      max_tokens: int, system: str,
-                     json_mode: bool, history: list = None,
+                     json_mode: bool, history: list | None = None,
                      images: list[str] | None = None) -> str:
         api_key = (self._config.get("claude_api_key")
                    or os.environ.get("ANTHROPIC_API_KEY",""))
@@ -553,7 +553,7 @@ class LLMRouter:
 
     def _call_ollama(self, opt: LLMOption, prompt: str,
                      max_tokens: int, system: str,
-                     json_mode: bool, history: list = None,
+                     json_mode: bool, history: list | None = None,
                      images: list[str] | None = None) -> str:
         # Prepend history as conversation context in the prompt
         if history:
@@ -576,11 +576,11 @@ class LLMRouter:
 
     def _call_openai(self, opt: LLMOption, prompt: str,
                      max_tokens: int, system: str,
-                     json_mode: bool, history: list = None,
+                     json_mode: bool, history: list | None = None,
                      images: list[str] | None = None) -> str:
         api_key = (self._config.get("openai_api_key")
                    or os.environ.get("OPENAI_API_KEY",""))
-        msgs = []
+        msgs: list[dict[str, Any]] = []
         if system:
             msgs.append({"role":"system","content":system})
         msgs.extend(history or [])
@@ -632,7 +632,7 @@ class LLMRouter:
                 max_tokens=max_tokens,
                 system=system,
                 json_mode=json_mode,
-                conversation_history=conversation_history,
+                conversation_history=conversation_history or [],
                 phase_hint=phase_hint,
             )
         opt = self.best(min_capability=min_capability, phase_hint=phase_hint)

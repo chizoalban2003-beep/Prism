@@ -39,6 +39,7 @@ import os
 import sys
 import webbrowser
 from pathlib import Path
+from typing import Optional
 
 # Ensure the package directory is on the path when run as a script
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -232,7 +233,7 @@ def _cache_profile(name: str) -> None:
         pass
 
 
-def _run_setup_wizard(config_path: str = None) -> KDEAgent:
+def _run_setup_wizard(config_path: Optional[str] = None) -> KDEAgent:
     """Interactive first-time setup."""
     original = os.environ.get("KDE_CONFIG")
     if config_path:

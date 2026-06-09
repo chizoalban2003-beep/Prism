@@ -67,7 +67,7 @@ class OutcomeDiagnosis:
 
 
 class SpectrumFulcrum:
-    def __init__(self, factors: list[Factor] = None):
+    def __init__(self, factors: Optional[list[Factor]] = None):
         self._factors: dict[str, Factor] = {}
         for f in (factors or []):
             self._factors[f.name] = f
@@ -102,7 +102,7 @@ class SpectrumFulcrum:
 class AdaptiveFulcrum(SpectrumFulcrum):
     def __init__(
         self,
-        factors: list[Factor] = None,
+        factors: Optional[list[Factor]] = None,
         learning_rate: float = 0.05,
         weight_min: float = 0.01,
         weight_max: float = 10.0,
@@ -136,7 +136,7 @@ class DecisionBeam:
         self,
         name: str,
         bandwidth: float = 0.25,
-        fulcrum: SpectrumFulcrum = None,
+        fulcrum: Optional[SpectrumFulcrum] = None,
     ):
         self.name = name
         self.bandwidth = bandwidth
@@ -220,7 +220,7 @@ class DecisionNetwork:
         source: str,
         target: str,
         strength: float,
-        factor_name: str = None,
+        factor_name: Optional[str] = None,
     ) -> None:
         fname = factor_name or f"_{source}_influence"
         self._deps.append((source, target, strength, fname))

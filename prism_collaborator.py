@@ -101,7 +101,7 @@ Return ONLY the Python class code, no explanation."""
 
     def __init__(
         self,
-        router: LLMRouter = None,
+        router: Optional[LLMRouter] = None,
         claude_api_key: Optional[str] = None,
         ollama_host: str = "http://localhost:11434",
         ollama_model: str = "mistral",

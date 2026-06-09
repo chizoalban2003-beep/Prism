@@ -64,10 +64,13 @@ class PrismWatchdog:
             self._check()
 
     def _check(self) -> None:
+        from typing import Any as _Any
+        _metrics: _Any = None
         try:
-            from prism_metrics import metrics as _metrics
+            import prism_metrics as _pm
+            _metrics = _pm.metrics
         except Exception:
-            _metrics = None
+            pass
 
         status = self._pipeline.status()
         dm     = status["pending"]

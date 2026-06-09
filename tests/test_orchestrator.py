@@ -18,6 +18,7 @@ from prism_orchestrator import (
     OrchestratorNode,
     TaskGraph,
 )
+from typing import Optional
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -188,7 +189,7 @@ def test_orchestrate_no_router_falls_back_to_chain():
 
 # ── orchestrate — with LLM ────────────────────────────────────────────────────
 
-def _mock_router_decompose(needs: bool = True, extra_nodes: list = None):
+def _mock_router_decompose(needs: bool = True, extra_nodes: Optional[list] = None):
     router = MagicMock()
     nodes = [
         {"node_id": "n1", "intent": "weather_check", "goal": "get London weather",

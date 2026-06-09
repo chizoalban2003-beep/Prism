@@ -723,7 +723,7 @@ class PrismDeviceAgent:
     # ------------------------------------------------------------------ #
 
     @staticmethod
-    def _safe_path(raw: str, allowed_roots: list[str] = None) -> str:
+    def _safe_path(raw: str, allowed_roots: Optional[list[str]] = None) -> str:
         """
         Resolve and validate a path.
         Raises ValueError if path traversal is detected or path is outside

@@ -118,7 +118,7 @@ class PrismCalibration:
         self._store(event)
         return event
 
-    def history(self, domain: str = None,
+    def history(self, domain: Optional[str] = None,
                  n: int = 20) -> list[CalibrationEvent]:
         with sqlite3.connect(self._db) as c:
             if domain:

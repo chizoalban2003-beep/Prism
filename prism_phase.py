@@ -191,7 +191,7 @@ class CrystallizationEngine:
 
     # ── Public API ────────────────────────────────────────────────────────
 
-    def compute(self, soul: Any = None, bridge: Any = None) -> PhaseReading:
+    def compute(self, soul: Optional[Any] = None, bridge: Optional[Any] = None) -> PhaseReading:
         """
         Compute a fresh PhaseReading.
         soul.run_entailment_check() is used for ΔK; gracefully handles None.

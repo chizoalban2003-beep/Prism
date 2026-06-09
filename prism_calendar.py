@@ -242,7 +242,7 @@ class PrismCalendar:
         duration_mins:int = 60,
         location:    str = "",
         description: str = "",
-        attendees:   list[str] = None,
+        attendees: Optional[list[str]] = None,
     ) -> Optional[CalendarEvent]:
         """Create a new calendar event."""
         if not self.configured:

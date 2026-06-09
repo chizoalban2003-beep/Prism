@@ -315,8 +315,8 @@ class ChainOrchestrator:
         organ_loader:    Optional["OrganLoader"]      = None,
         outcome_tracker: Optional["OutcomeTracker"]   = None,
         horizon:         Optional["HorizonPlanner"]   = None,
-        router:          Any                          = None,
-        soul:            Any                          = None,
+        router: Optional[Any]                          = None,
+        soul: Optional[Any]                          = None,
         db_path:         str                          = "~/.prism/orchestrator.db",
     ) -> None:
         self._chain   = chain
@@ -688,7 +688,7 @@ class ChainOrchestrator:
         if not raw_nodes:
             return None
 
-        nodes = []
+        nodes: list[OrchestratorNode] = []
         for nd in raw_nodes[:6]:
             nodes.append(OrchestratorNode(
                 node_id       = str(nd.get("node_id", f"n{len(nodes)+1}")),
@@ -824,7 +824,7 @@ class ChainOrchestrator:
             and node.intent in self._loader.list_organs()
         )
 
-        if profile.name == "reactive" and is_organ:
+        if profile.name == "reactive" and is_organ and self._loader is not None:
             # Direct organ call — fast path
             fn = self._loader.get(node.intent)
             if fn is None:
@@ -832,7 +832,7 @@ class ChainOrchestrator:
             card = fn(node.intent, node.goal, ctx)
             return card.body if hasattr(card, "body") else str(card)
 
-        if profile.use_parallel and is_organ:
+        if profile.use_parallel and is_organ and self._loader is not None:
             # Parallel organ call (still single organ, but respects parallelism flag)
             results = self._loader.execute_parallel([node.intent], node.goal, ctx)
             if node.intent in results:
@@ -858,8 +858,8 @@ class ChainOrchestrator:
         if not self._router:
             return True
         dep_outputs = "\n".join(
-            f"{graph.get_node(dep_id).node_id if graph.get_node(dep_id) else dep_id}: "
-            f"{(graph.get_node(dep_id).result or '')[:300]}"
+            (lambda dn: f"{dn.node_id}: {(dn.result or '')[:300]}"
+             if dn is not None else f"{dep_id}: ")(graph.get_node(dep_id))
             for dep_id in node.depends_on
         )
         if not dep_outputs.strip():

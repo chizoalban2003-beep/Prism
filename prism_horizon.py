@@ -405,6 +405,8 @@ class HorizonPlanner:
                 if self._evaluate_trigger(goal):
                     with self._lock:
                         g = self._load_goal(goal.goal_id)
+                        if g is None:
+                            continue
                         g.status       = HorizonGoalStatus.TRIGGERED
                         g.triggered_at = time.time()
                         self._upsert(g)

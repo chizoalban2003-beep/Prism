@@ -23,7 +23,7 @@ import time
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Optional, Any
 
 logger = logging.getLogger(__name__)
 
@@ -291,8 +291,8 @@ class CausalReasoner:
     def __init__(
         self,
         graph: CausalGraph,
-        soul: Any = None,
-        llm_router: Any = None,
+        soul: Optional[Any] = None,
+        llm_router: Optional[Any] = None,
     ) -> None:
         self._graph = graph
         self._soul = soul

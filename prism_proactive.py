@@ -57,7 +57,7 @@ class PrismProactive:
 
     def __init__(
         self,
-        on_event:    Callable[[ProactiveEvent], None] = None,
+        on_event: Optional[Callable[[ProactiveEvent], None]] = None,
         db_path:     str = "~/.prism/proactive.db",
         poll_seconds:int = 60,
     ):
@@ -100,7 +100,7 @@ class PrismProactive:
                       (trigger_id,))
 
     def schedule(self, message: str, fire_at: float,
-                  trigger_id: str = None) -> str:
+                  trigger_id: Optional[str] = None) -> str:
         """
         Schedule a one-shot reminder.
         fire_at: Unix timestamp (use time.time() + seconds for relative).
@@ -286,7 +286,7 @@ def build_advanced_triggers(
     calendar=None,
     persona=None,
     horizon=None,
-    config: dict = None,
+    config: Optional[dict] = None,
 ) -> list[ProactiveTrigger]:
     """
     Build organ-driven and system-aware proactive triggers.

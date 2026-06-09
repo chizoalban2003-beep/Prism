@@ -470,8 +470,8 @@ class TacticalPredictor:
         home_team:     str,
         away_team:     str,
         sport:         str  = "football",
-        home_factors:  dict = None,
-        away_factors:  dict = None,
+        home_factors: Optional[dict] = None,
+        away_factors: Optional[dict] = None,
     ) -> TacticalPrediction:
         hf = home_factors or {}
         af = away_factors or {}
@@ -554,9 +554,9 @@ class PredictionPlatform:
         home_team:     str,
         away_team:     str,
         sport:         str        = "football",
-        squad:         list[dict] = None,
-        home_factors:  dict       = None,
-        away_factors:  dict       = None,
+        squad: Optional[list[dict]] = None,
+        home_factors: Optional[dict]       = None,
+        away_factors: Optional[dict]       = None,
     ) -> dict:
         """
         Generate a full pre-match intelligence brief.

@@ -44,7 +44,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Any
+from typing import Optional, Any
 
 from device_hub import DeviceType
 from kde_agent import KDEAgent, KDEConfig
@@ -93,7 +93,7 @@ _DEVICE_TYPE_MAP: dict[str, DeviceType] = {
 # Public API
 # ---------------------------------------------------------------------------
 
-def load_config(path: str = None) -> KDEConfig:
+def load_config(path: Optional[str] = None) -> KDEConfig:
     """
     Load KDEConfig from a TOML or JSON file.
 
@@ -107,7 +107,7 @@ def load_config(path: str = None) -> KDEConfig:
     return _build_kde_config(raw.get("agent", raw))
 
 
-def build_agent_from_config(path: str = None) -> KDEAgent:
+def build_agent_from_config(path: Optional[str] = None) -> KDEAgent:
     """
     Load a KDEConfig, create a KDEAgent, and auto-register any [[devices]].
 
@@ -145,7 +145,7 @@ def build_agent_from_config(path: str = None) -> KDEAgent:
 # Private helpers
 # ---------------------------------------------------------------------------
 
-def _find_and_parse(explicit_path: str = None) -> dict:
+def _find_and_parse(explicit_path: Optional[str] = None) -> dict:
     """Locate and parse the first available config file."""
     candidates: list[Path] = []
 

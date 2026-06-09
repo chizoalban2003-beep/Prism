@@ -113,7 +113,7 @@ class ArtifactStore:
             ).fetchone()
         return self._row_to_artifact(row) if row else None
 
-    def recent(self, domain: str = None, n: int = 10) -> list[Artifact]:
+    def recent(self, domain: Optional[str] = None, n: int = 10) -> list[Artifact]:
         limit = max(1, int(n))
         with self._connect() as conn:
             if domain:

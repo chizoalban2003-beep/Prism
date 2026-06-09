@@ -89,7 +89,7 @@ class PrismEmail:
     # ── Reading ────────────────────────────────────────────────────────────
 
     def fetch_unread(self, folder: str = "INBOX",
-                     n: int = None) -> list[EmailMessage]:
+                     n: Optional[int] = None) -> list[EmailMessage]:
         """Fetch unread emails from the specified folder."""
         if not self.configured:
             return []
@@ -110,7 +110,7 @@ class PrismEmail:
             logger.warning("Email fetch failed: %s", e)
             return []
 
-    def fetch_recent(self, n: int = None) -> list[EmailMessage]:
+    def fetch_recent(self, n: Optional[int] = None) -> list[EmailMessage]:
         """Fetch most recent N emails regardless of read status."""
         if not self.configured:
             return []

@@ -61,7 +61,7 @@ class TaskQueue:
         self,
         title: str,
         steps: list[dict],      # [{"title":str, "fn":callable, "params":dict}]
-        on_complete: Callable = None,
+        on_complete: Optional[Callable] = None,
     ) -> str:
         """Submit a multi-step task. Returns task_id immediately."""
         task_id = str(uuid.uuid4())[:8]
@@ -120,7 +120,7 @@ class TaskQueue:
         return task_id
 
     def submit_single(self, title: str, fn: Callable,
-                       params: dict = None) -> str:
+                       params: Optional[dict] = None) -> str:
         """Convenience: submit a single-step task."""
         return self.submit(title, [{"title":title,"fn":fn,"params":params or {}}])
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from prism_device_agent import DeviceTaskResult
@@ -46,7 +46,7 @@ def text_card(body: str, title: str = "") -> PrismCard:
     return PrismCard(CardType.TEXT, title, body, {})
 
 
-def approval_card(task: str, reason: str, params: dict = None) -> PrismCard:
+def approval_card(task: str, reason: str, params: Optional[dict] = None) -> PrismCard:
     """
     Card shown when a device task requires user confirmation before executing.
     The chat UI renders two buttons: Approve and Deny.

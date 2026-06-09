@@ -14,7 +14,7 @@ Routes:
 """
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Optional, Any, Dict
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -35,7 +35,7 @@ def _get_horizon(agent):
 # ---------------------------------------------------------------------------
 
 @router.get("/horizon/goals")
-async def horizon_goals(status: str = None):
+async def horizon_goals(status: Optional[str] = None):
     agent = _get_agent()
     h     = _get_horizon(agent)
     if h is None:

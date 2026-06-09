@@ -53,3 +53,4 @@ files.zip
 .vscode/
 .idea/
 *.iml
+.claude/

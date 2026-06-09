@@ -7,7 +7,7 @@ import re
 import time
 import urllib.request
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from domain_configs import ALL_DOMAINS, DomainDecisionModel
 from prism_autonomous import PrismAutonomous
@@ -266,7 +266,7 @@ class PrismAgent:
         ksa_agent=None,
         ollama_host: str = "http://localhost:11434",
         text_model: str = "mistral",
-        claude_api_key: str = None,
+        claude_api_key: Optional[str] = None,
     ):
         self._kde = kde_agent
         self._ksa = ksa_agent
@@ -338,6 +338,7 @@ class PrismAgent:
             collaborator  = self._collaborator,
             user          = self._user,
         )
+        self._memory: Optional[PrismMemory] = None
         try:
             self._memory = PrismMemory(ollama_host=ollama_host)
         except Exception as e:
@@ -360,6 +361,7 @@ class PrismAgent:
                 getattr(self, '_device', None), '_registry', None),
         )
         self._chat_history: list[dict] = []
+        self._perception: Optional[PrismPerception] = None
         try:
             cfg = self._config.get("agent", {}) if hasattr(self, '_config') and self._config else {}
             self._perception = PrismPerception.setup(
@@ -423,6 +425,8 @@ class PrismAgent:
         self._chain._organ_loader = self._organ_loader
 
         # L1 Constitution guard + Bud execution manager
+        self._constitution: Optional[Any] = None
+        self._bud_mgr: Optional[Any] = None
         try:
             from prism_bud_manager import BudManager
             from prism_constitution import ConstitutionGuard
@@ -450,6 +454,7 @@ class PrismAgent:
             self._calendar  = PrismCalendar.from_config(self._config)
 
         # HorizonPlanner — cross-session long-horizon goal persistence
+        self._horizon: Optional[Any] = None
         try:
             from prism_horizon import HorizonPlanner
             self._horizon = HorizonPlanner(
@@ -524,6 +529,7 @@ class PrismAgent:
             self._narrative = None
 
         # OutcomeTracker — closes the learning loop
+        self._outcome_tracker: Optional[Any] = None
         try:
             from prism_outcome_tracker import OutcomeTracker
             self._outcome_tracker = OutcomeTracker(
@@ -542,8 +548,9 @@ class PrismAgent:
             self._crystalliser._outcome_tracker = getattr(self, '_outcome_tracker', None)
         if getattr(self, '_chain', None) is not None:
             self._chain._persona = getattr(self, '_persona', None)
-        if getattr(self, '_outcome_tracker', None) is not None:
-            self._outcome_tracker._crystalliser = getattr(self, '_crystalliser', None)
+        _ot = getattr(self, '_outcome_tracker', None)
+        if _ot is not None:
+            _ot._crystalliser = getattr(self, '_crystalliser', None)
 
         # ContextManager — work/personal/focus context switching
         try:
@@ -588,6 +595,7 @@ class PrismAgent:
             self._reflection = None
 
         # ChainOrchestrator — prefrontal cortex for multi-step coordination
+        self._orchestrator: Optional[Any] = None
         try:
             from prism_orchestrator import ChainOrchestrator
             self._orchestrator = ChainOrchestrator(
@@ -627,19 +635,22 @@ class PrismAgent:
 
     def stop(self) -> None:
         """Gracefully shut down all background subsystems."""
-        if getattr(self, '_horizon', None) is not None:
+        _hz = getattr(self, '_horizon', None)
+        if _hz is not None:
             try:
-                self._horizon.on_session_end()
+                _hz.on_session_end()
             except Exception:
                 pass
-        if getattr(self, '_proactive', None) is not None:
+        _pr = getattr(self, '_proactive', None)
+        if _pr is not None:
             try:
-                self._proactive.stop()
+                _pr.stop()
             except Exception:
                 pass
-        if getattr(self, '_perception', None) is not None:
+        _perc = getattr(self, '_perception', None)
+        if _perc is not None:
             try:
-                self._perception.stop()
+                _perc.stop()
             except Exception:
                 pass
 
@@ -689,14 +700,15 @@ class PrismAgent:
             )
 
         # Horizon planner watches for recovery/long-horizon signals
-        if getattr(self, '_horizon', None):
+        _hz2 = getattr(self, '_horizon', None)
+        if _hz2 is not None:
             def _horizon_handler(payload: dict):
                 try:
                     intent = payload.get("intent", "")
                     trigger = payload.get("trigger_condition", "")
                     completion = payload.get("completion_condition", "")
-                    if intent:
-                        self._horizon.add(
+                    if intent and _hz2 is not None:
+                        _hz2.add(
                             intent=intent,
                             trigger_condition=trigger or "condition met",
                             completion_condition=completion,
@@ -716,10 +728,9 @@ class PrismAgent:
 
     def _handle_proactive_event(self, event) -> None:
         """Store proactive notification for chat UI polling."""
-        if hasattr(self, '_proactive_buffer'):
-            self._proactive_buffer.append(event)
-        else:
-            self._proactive_buffer = [event]
+        if not hasattr(self, '_proactive_buffer'):
+            self._proactive_buffer: list = []
+        self._proactive_buffer.append(event)
 
     @classmethod
     def setup(
@@ -922,7 +933,7 @@ class PrismAgent:
         Store the pending approval and return False; the chat loop will
         receive the approval response and retry execution.
         """
-        self._pending_approval = {"task": task, "reason": reason}
+        self._pending_approval: dict | None = {"task": task, "reason": reason}
         return False
 
     def _route(self, message: str) -> str:
@@ -1096,7 +1107,7 @@ class PrismAgent:
                 pass
 
         if intent == "identity":
-            identity_data = {}
+            identity_data: dict = {}
             if self._kde and hasattr(self._kde, 'identity'):
                 try:
                     identity_data = self._kde.identity() or {}
@@ -1339,16 +1350,16 @@ class PrismAgent:
             if not contacts:
                 return text_card(f"No contact found for '{query}'.", "Contacts")
             c = contacts[0]
-            lines = [f"{c.name}"]
+            clines: list[str] = [f"{c.name}"]
             if c.organisation:
-                lines.append(f"  {c.role} at {c.organisation}")
+                clines.append(f"  {c.role} at {c.organisation}")
             if c.emails:
-                lines.append(f"  Email: {', '.join(c.emails)}")
+                clines.append(f"  Email: {', '.join(c.emails)}")
             if c.phones:
-                lines.append(f"  Phone: {', '.join(c.phones)}")
+                clines.append(f"  Phone: {', '.join(c.phones)}")
             if c.notes:
-                lines.append(f"  Notes: {c.notes[:200]}")
-            return text_card("\n".join(lines),
+                clines.append(f"  Notes: {c.notes[:200]}")
+            return text_card("\n".join(clines),
                               f"Contact · {c.source}")
 
         if intent == "add_task":
@@ -1475,7 +1486,7 @@ class PrismAgent:
 
             # Build rich before/after body
             sep = "─" * 50
-            lines = [
+            lines2: list[str] = [
                 f"Calibration {direction_text}.",
                 "",
                 f"{sep}",
@@ -1485,10 +1496,10 @@ class PrismAgent:
                 axis_str = ", ".join(
                     f"{ax} {d:+.2f}" for ax, d in deltas.items()
                 )
-                lines.append(f"VEAX: {axis_str}")
+                lines2.append(f"VEAX: {axis_str}")
 
             if gates_before is not None and gates_after is not None:
-                lines += [
+                lines2 += [
                     "",
                     "── Before ──",
                     render_gates(gates_before),
@@ -1497,10 +1508,10 @@ class PrismAgent:
                     render_gates(gates_after),
                 ]
             elif gates_before is not None:
-                lines += ["", "── Current VEAX ──", render_gates(gates_before)]
+                lines2 += ["", "── Current VEAX ──", render_gates(gates_before)]
 
-            lines += ["", f"{sep}", self._calibration.summary()]
-            return text_card("\n".join(lines), "Model updated")
+            lines2 += ["", f"{sep}", self._calibration.summary()]
+            return text_card("\n".join(lines2), "Model updated")
 
         if intent == "calibration_summary":
             summary = self._calibration.summary()
@@ -1657,10 +1668,10 @@ class PrismAgent:
                 HorizonGoalStatus.COMPLETED:  "✅",
                 HorizonGoalStatus.ABANDONED:  "🚫",
             }
-            lines = []
+            lines3: list[str] = []
             for g in goals[:10]:
                 icon = status_icon.get(g.status, "•")
-                lines.append(
+                lines3.append(
                     f"{icon} **{g.intent[:60]}**\n"
                     f"  Condition: {g.trigger_condition[:50]}\n"
                     f"  Status: {g.status.value} | "
@@ -1668,7 +1679,7 @@ class PrismAgent:
                     f"Steps done: {len(g.completed_steps)} | "
                     f"ID: `{g.goal_id}`"
                 )
-            return text_card("\n\n".join(lines), f"Horizon goals ({len(goals)})")
+            return text_card("\n\n".join(lines3), f"Horizon goals ({len(goals)})")
 
         if intent == "horizon_abandon":
             if self._horizon is None:
@@ -1723,11 +1734,11 @@ class PrismAgent:
             if cm is None:
                 return text_card("Context manager not available.", "Error")
             profile = cm.active()
-            lines = [f"Active context: **{profile.context_id}**",
+            lines4: list[str] = [f"Active context: **{profile.context_id}**",
                      f"{profile.description}",
                      f"Policy overrides: {profile.policy_overrides or 'none'}",
                      f"Organ priorities: {profile.organ_priorities or 'none'}"]
-            return text_card("\n".join(lines), "Context status")
+            return text_card("\n".join(lines4), "Context status")
 
         # ── Outcome / learning stats ───────────────────────────────────────
         if intent == "outcome_stats":
@@ -1735,7 +1746,7 @@ class PrismAgent:
             if tracker is None:
                 return text_card("OutcomeTracker not available.", "Error")
             stats = tracker.stats(days=30)
-            lines = [
+            lines5: list[str] = [
                 "Chain outcomes (last 30 days):",
                 f"  Total chains:     {stats['total']}",
                 f"  Completed:        {stats['done']}",
@@ -1745,7 +1756,7 @@ class PrismAgent:
                 f"  Avg steps/chain:  {stats['avg_steps']}",
                 f"  Avg policy flags: {stats['avg_policy_flags']}",
             ]
-            return text_card("\n".join(lines), "Learning stats")
+            return text_card("\n".join(lines5), "Learning stats")
 
         # ── Weekly reflection ─────────────────────────────────────────────
         if intent == "reflection":

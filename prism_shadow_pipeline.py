@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from typing import TYPE_CHECKING, Any
+from typing import Optional, TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from prism_memory_graph import PrismMemoryGraph
@@ -42,7 +42,7 @@ class PrismShadowPipeline:
         graph:         "PrismMemoryGraph",
         interval_s:    float = 5.0,
         max_restarts:  int   = 10,
-        soul:          "PrismSoul | None" = None,
+        soul: Optional["PrismSoul | None"] = None,
         phase_engine:  Any | None = None,
         bridge:        Any | None = None,
     ) -> None:
@@ -80,6 +80,7 @@ class PrismShadowPipeline:
     # ── Internal loop ─────────────────────────────────────────────────────────
 
     def _run(self) -> None:
+        _metrics: Any
         try:
             from prism_metrics import metrics as _metrics
         except Exception:

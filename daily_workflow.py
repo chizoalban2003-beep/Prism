@@ -193,8 +193,8 @@ class DailyWorkflow:
         session_type: str,
         rpe:          int,
         notes:        str   = "",
-        video_folder: str   = None,
-        gps_file:     str   = None,
+        video_folder: Optional[str]   = None,
+        gps_file: Optional[str]   = None,
         run_vision:   bool  = True,
     ) -> SessionLog:
         """

@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import asdict as _asdict
-from typing import Any, Dict
+from typing import Optional, Any, Dict
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -142,7 +142,7 @@ async def history(days: int = 14):
 # ---------------------------------------------------------------------------
 
 @router.get("/artifacts")
-async def artifacts(domain: str = None, n: int = 10):
+async def artifacts(domain: Optional[str] = None, n: int = 10):
     agent = _get_agent()
     if agent is None:
         return JSONResponse({"error": "agent not ready", "status": 503}, status_code=503)

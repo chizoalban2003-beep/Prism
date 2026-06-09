@@ -186,7 +186,7 @@ class CrystallisationEngine:
         domain: str,
         fulcrum_used: float,
         outcome_rating: float,
-        context: dict = None,
+        context: Optional[dict] = None,
     ) -> None:
         """
         Update the domain profile with one new observation.

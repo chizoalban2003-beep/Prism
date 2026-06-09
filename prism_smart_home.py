@@ -132,7 +132,7 @@ class PrismSmartHome:
                                   {"entity_id": entity_id})
 
     def set_state(self, entity_id: str, state: str,
-                  attributes: dict = None) -> SmartHomeResult:
+                  attributes: Optional[dict] = None) -> SmartHomeResult:
         """Directly set an entity state (works for input_boolean, etc.)."""
         body: dict = {"state": state}
         if attributes:

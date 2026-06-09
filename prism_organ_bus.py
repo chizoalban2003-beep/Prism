@@ -53,7 +53,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Tuple
+from typing import Optional, Any, Callable, Dict, List, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -219,7 +219,7 @@ class OrganBus:
 
     def __init__(
         self,
-        llm_router: Any = None,
+        llm_router: Optional[Any] = None,
         db_path: str    = "~/.prism/organ_bus.db",
     ) -> None:
         self._router          = llm_router

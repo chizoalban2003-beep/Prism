@@ -227,7 +227,7 @@ class OutcomeTracker:
         active goal whose intent overlaps with recently completed chains.
         """
         self._horizon = horizon
-        active_goals = horizon.list_goals(status="active")
+        active_goals = horizon.list_goals()
         for goal in active_goals:
             keywords = _extract_keywords(goal.intent)
             if not keywords:

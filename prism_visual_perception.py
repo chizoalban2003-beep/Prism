@@ -22,7 +22,7 @@ import urllib.error
 import urllib.request
 import uuid
 from dataclasses import dataclass
-from typing import Any
+from typing import Optional, Any
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ class VisualPerception:
         self,
         ollama_host: str = "http://localhost:11434",
         model: str = "llava",
-        organ_bus: Any = None,
+        organ_bus: Optional[Any] = None,
     ) -> None:
         self._host      = ollama_host.rstrip("/")
         self._model     = model
@@ -429,7 +429,7 @@ class AudioAnalyzer:
     def emit_audio_signals(
         self,
         features: AudioFeatures,
-        organ_bus: Any = None,
+        organ_bus: Optional[Any] = None,
     ) -> int:
         """
         Emit an ``audio_stress_detected`` OrganBus signal when

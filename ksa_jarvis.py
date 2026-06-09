@@ -274,7 +274,7 @@ class JarvisAgent:
     def act(
         self,
         prompt:           str,
-        artifact_content: Any = None,
+        artifact_content: Optional[Any] = None,
     ) -> ActResult:
         """
         Execute the full JarvisAgent pipeline.

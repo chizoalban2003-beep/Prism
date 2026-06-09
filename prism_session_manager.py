@@ -86,7 +86,7 @@ class SessionManager:
         self,
         name: str,
         description: str = "",
-        tags: list = None,
+        tags: list | None = None,
     ) -> Session:
         tags_list = tags or []
         session_id = uuid.uuid4().hex[:16]
@@ -152,9 +152,9 @@ class SessionManager:
     def update_session(
         self,
         session_id: str,
-        name: str = None,
-        description: str = None,
-        tags: list = None,
+        name: str | None = None,
+        description: str | None = None,
+        tags: list | None = None,
     ) -> Optional[Session]:
         existing = self.get_session(session_id)
         if existing is None:

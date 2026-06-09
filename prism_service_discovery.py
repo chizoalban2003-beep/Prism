@@ -101,7 +101,7 @@ class PrismServiceDiscovery:
         self,
         service_name:  str,
         user_intent:   str,
-        constraints:   dict = None,
+        constraints: Optional[dict] = None,
     ) -> tuple[DiscoveredService, list[str]]:
         """
         Research and characterise a new service.

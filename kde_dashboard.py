@@ -12,6 +12,7 @@ from __future__ import annotations
 import os
 from datetime import date, timedelta
 from pathlib import Path
+from typing import Optional
 
 # ---------------------------------------------------------------------------
 # HTMLReportGenerator
@@ -98,9 +99,9 @@ class HTMLReportGenerator:
         self,
         home_team:    str,
         away_team:    str,
-        squad:        list[dict] = None,
-        home_factors: dict       = None,
-        away_factors: dict       = None,
+        squad: Optional[list[dict]] = None,
+        home_factors: Optional[dict]       = None,
+        away_factors: Optional[dict]       = None,
         sport:        str        = "football",
     ) -> str:
         squad        = squad        or []
@@ -169,7 +170,7 @@ class HTMLReportGenerator:
         self,
         profile_name: str,
         week_offset:  int  = 0,
-        sessions:     list = None,
+        sessions: Optional[list] = None,
     ) -> str:
         sessions = sessions or []
         today    = date.today()
@@ -213,7 +214,7 @@ class HTMLReportGenerator:
     def season_dashboard(
         self,
         profile_name: str,
-        history:      list = None,
+        history: Optional[list] = None,
     ) -> str:
         history = history or []
         body = f"""

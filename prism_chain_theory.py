@@ -35,7 +35,7 @@ class SubChainLogic:
     def __init__(
         self,
         sub_logics: Optional[list[str]] = None,
-        llm_router: Any = None,
+        llm_router: Optional[Any] = None,
     ):
         self._sub_logics = sub_logics or ["web_search", "parse_result", "cross_reference"]
         self._router = llm_router
@@ -106,7 +106,7 @@ class SoftLogic:
         "Raw output: {result}. Reply in 2 sentences."
     )
 
-    def __init__(self, underlying_logic: Any, llm_router: Any = None):
+    def __init__(self, underlying_logic: Any, llm_router: Optional[Any] = None):
         """
         underlying_logic: either a string (logic name) or a callable
                           with signature (goal, agent_execute_fn, ctx) -> str

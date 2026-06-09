@@ -50,7 +50,7 @@ class PrismMemory:
         self._init_db()
 
     def ingest(self, content: str, source: str = "note",
-               title: str = "", tags: list[str] = None) -> str:
+               title: str = "", tags: list[str] | None = None) -> str:
         """Store content in memory. Returns entry_id."""
         entry_id  = hashlib.sha256(
             f"{content[:100]}{time.time()}".encode()).hexdigest()[:12]
@@ -65,7 +65,7 @@ class PrismMemory:
         return entry_id
 
     def search(self, query: str, top_n: int = 5,
-               source_filter: str = None) -> list[MemoryResult]:
+               source_filter: str | None = None) -> list[MemoryResult]:
         """
         Find the most relevant memory entries for a query.
         Uses embedding cosine similarity when available, BM25 otherwise.

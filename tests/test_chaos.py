@@ -25,10 +25,11 @@ from prism_memory_graph import GraphEdge, GraphNode, PrismMemoryGraph
 from prism_metrics import PrismMetrics
 from prism_shadow_pipeline import PrismShadowPipeline
 from prism_watchdog import PrismWatchdog
+from typing import Optional
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _node(nid: str = None, **kw) -> GraphNode:
+def _node(nid: Optional[str] = None, **kw) -> GraphNode:
     return GraphNode(
         node_id   = nid or uuid.uuid4().hex[:8],
         node_type = "entity",

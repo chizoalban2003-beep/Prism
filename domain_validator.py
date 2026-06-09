@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from domain_configs import ALL_DOMAINS, DomainDecisionModel
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -45,7 +46,7 @@ class DomainValidator:
       In-memory: list[LabeledDecision]
     """
 
-    def __init__(self, domain: str = None):
+    def __init__(self, domain: Optional[str] = None):
         self.domain = domain
         config = ALL_DOMAINS.get(domain) if domain else None
         self.model = DomainDecisionModel(config) if config else None
@@ -97,7 +98,7 @@ class DomainValidator:
     def validate(
         self,
         cases: list[LabeledDecision],
-        domain: str = None,
+        domain: Optional[str] = None,
     ) -> DomainValidationResult:
         """
         For each case: call DomainDecisionModel.evaluate() and compare
@@ -172,7 +173,7 @@ class DomainValidator:
     def generate_report(
         self,
         result: DomainValidationResult,
-        output_path: str = None,
+        output_path: Optional[str] = None,
         fmt: str = "markdown",
     ) -> str:
         """

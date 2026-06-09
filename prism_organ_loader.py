@@ -168,7 +168,7 @@ class OrganLoader:
         self,
         bundled_dir: Optional[Path] = None,
         user_dir: Optional[Path]    = None,
-        llm_router: Any             = None,
+        llm_router: Optional[Any]             = None,
     ):
         self._bundled = Path(bundled_dir) if bundled_dir else BUNDLED_DIR
         self._user    = Path(user_dir).expanduser() if user_dir else USER_DIR
@@ -252,7 +252,7 @@ class OrganLoader:
 
     def list_organ_details(self) -> list[dict]:
         """Return organ_details for all known intents, sorted by intent name."""
-        return [self.organ_details(i) for i in sorted(self._organs.keys())]
+        return [d for i in sorted(self._organs.keys()) if (d := self.organ_details(i)) is not None]
 
     def reload(self) -> int:
         """Re-scan bundled and user dirs. Returns number of organs now loaded."""
@@ -311,7 +311,7 @@ class OrganLoader:
 
         results: dict[str, Any] = {}
         with ThreadPoolExecutor(max_workers=min(len(safe), 4)) as pool:
-            futures = {pool.submit(self.get(i), i, message, ctx): i for i in safe}
+            futures = {pool.submit(fn, i, message, ctx): i for i in safe if (fn := self.get(i)) is not None}
             try:
                 for future in as_completed(futures, timeout=timeout):
                     intent = futures[future]
@@ -417,6 +417,8 @@ class OrganLoader:
         try:
             spec   = importlib.util.spec_from_file_location(
                 f"_organ_{path.stem}", path)
+            if spec is None or spec.loader is None:
+                raise ImportError(f"Cannot load spec for {path}")
             module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(module)
         except Exception as exc:
@@ -426,8 +428,8 @@ class OrganLoader:
         if not callable(fn):
             logger.warning("[organ_loader] No execute() in %s", path.name)
             return None
-        fn._organ_meta   = getattr(module, "ORGAN_META", {})    # type: ignore[attr-defined]
-        fn._organ_policy = getattr(module, "ORGAN_POLICY", {})  # type: ignore[attr-defined]
+        fn._organ_meta   = getattr(module, "ORGAN_META", {})
+        fn._organ_policy = getattr(module, "ORGAN_POLICY", {})
         return fn
 
     def _register(self, intent: str, fn: Callable, meta: dict, source: str = "bundled"):

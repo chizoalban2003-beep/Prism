@@ -4,6 +4,7 @@ import logging
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from typing import Optional
 
 logger = logging.getLogger(__name__)
 
@@ -51,8 +52,8 @@ class PrismPush:
         return bool(self._topic)
 
     def send(self, title: str, body: str,
-              priority: str = None,
-              tags: list[str] = None,
+              priority: Optional[str] = None,
+              tags: Optional[list[str]] = None,
               url: str = "") -> bool:
         if not self.configured:
             logger.debug("Push not configured — no topic set")

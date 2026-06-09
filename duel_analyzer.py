@@ -291,8 +291,8 @@ class DuelAnalyzer:
         attacker: str,
         defender: str,
         location_x: float = 60.0,
-        attacker_profile: str = None,
-        defender_profile: str = None,
+        attacker_profile: Optional[str] = None,
+        defender_profile: Optional[str] = None,
     ) -> float:
         """
         Blends historical win rate with physics model prediction.

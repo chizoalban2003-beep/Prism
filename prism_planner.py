@@ -214,7 +214,7 @@ class PrismPlanner:
         self,
         ollama_host:  str = "http://localhost:11434",
         ollama_model: str = "mistral",
-        claude_api_key: str = None,
+        claude_api_key: Optional[str] = None,
         prefer_claude:  bool = True,
     ):
         self.ollama_host    = ollama_host
@@ -232,9 +232,9 @@ class PrismPlanner:
     def plan(
         self,
         task_description: str,
-        user_context:     dict = None,
+        user_context: Optional[dict] = None,
         n_plans:          int = 4,      # how many strategies to generate full plans for
-        identity_profile: dict = None,  # from CrystallisationEngine if available
+        identity_profile: Optional[dict] = None,  # from CrystallisationEngine if available
     ) -> PlanOfAction:
         """
         Given any task description, return a complete ranked plan of action.
