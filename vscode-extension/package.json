@@ -1,0 +1,25 @@
+{
+  "name": "prism-assistant",
+  "displayName": "PRISM Assistant",
+  "description": "Your personal AI assistant — PRISM IDE integration",
+  "version": "0.1.0",
+  "engines": {"vscode": "^1.85.0"},
+  "categories": ["AI", "Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {"command": "prism.explainCode", "title": "PRISM: Explain Selected Code"},
+      {"command": "prism.reviewCode", "title": "PRISM: Review This File"},
+      {"command": "prism.fixError", "title": "PRISM: Fix Error"},
+      {"command": "prism.chat", "title": "PRISM: Open Chat Panel"}
+    ],
+    "configuration": {
+      "title": "PRISM",
+      "properties": {
+        "prism.port": {"type": "number", "default": 8743, "description": "PRISM server port"},
+        "prism.host": {"type": "string", "default": "127.0.0.1", "description": "PRISM server host"}
+      }
+    }
+  }
+}

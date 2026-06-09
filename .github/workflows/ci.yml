@@ -70,7 +70,7 @@ jobs:
           python3 -m mypy
           prism_asgi.py prism_state.py prism_daemon.py
           prism_routes_agent.py prism_routes_analytics.py prism_routes_chain.py
-          prism_routes_core.py prism_routes_horizon.py prism_routes_infra.py
+          prism_routes_core.py prism_routes_horizon.py prism_routes_ide.py prism_routes_infra.py
           prism_routes_integrations.py prism_routes_media.py prism_routes_predict.py
           prism_routes_sensors.py prism_routes_ui.py prism_routes_mobile.py
           prism_routes_users.py prism_routes_federation.py prism_routes_perception.py
