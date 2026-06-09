@@ -178,6 +178,8 @@ py-modules = [
     "prism_routes_perception",
     "prism_causality",
     "prism_routes_causality",
+    "prism_kinetic_engine",
+    "prism_routes_kinetic",
     "prism_routes_sessions",
     "prism_session_manager",
     "prism_tray",
