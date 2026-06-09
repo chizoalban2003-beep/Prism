@@ -31,7 +31,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -1023,6 +1023,9 @@ class ContextFuser:
         self._thread      = threading.Thread(
             target=self._fuse_loop, daemon=True, name="prism-fuser")
         self._veax_bridge = BiometricVEAXBridge()
+        # KineticEngine bridge — wired by prism_agent after init
+        self._kinetic: Optional[Any] = None
+        self._kinetic_baselines: dict[str, tuple[float, float]] = {}  # (mu, sigma)
 
     def start(self) -> None:
         self._thread.start()
@@ -1088,8 +1091,36 @@ class ContextFuser:
                         s for s in self._signals[sig.factor_id]
                         if s.timestamp > cutoff
                     ]
+                if self._kinetic is not None:
+                    self._feed_kinetic(sig)
             except queue.Empty:
                 pass
+
+    def _feed_kinetic(self, sig: Any) -> None:
+        """Bridge: convert a ContextSignal to a PersonalSignal and ingest into KineticEngine."""
+        try:
+            from prism_kinetic_engine import FACTOR_DOMAIN_MAP, PersonalSignal
+            mu, sigma = self._kinetic_baselines.get(sig.factor_id, (0.5, 0.15))
+            # Online EMA baseline update (slow-moving personal reference)
+            alpha = 0.05
+            new_mu = alpha * sig.value + (1.0 - alpha) * mu
+            new_sigma = max(0.05, alpha * abs(sig.value - mu) + (1.0 - alpha) * sigma)
+            self._kinetic_baselines[sig.factor_id] = (new_mu, new_sigma)
+            domain = FACTOR_DOMAIN_MAP.get(sig.factor_id, "cognitive")
+            kinetic = self._kinetic
+            if kinetic is None:
+                return
+            kinetic.ingest(PersonalSignal(
+                domain=domain,
+                signal_type=sig.factor_id,
+                raw_value=sig.value,
+                mu=new_mu,
+                sigma=new_sigma,
+                impact=sig.confidence,
+                confidence=sig.confidence,
+            ))
+        except Exception:  # noqa: BLE001
+            pass
 
     @staticmethod
     def _summarise(factors: dict[str, float]) -> str:

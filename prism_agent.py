@@ -391,6 +391,32 @@ class PrismAgent:
             logger.warning("PrismProactive not available: %s", e)
             self._proactive = None
 
+        # KineticEngine — compound personal signal aggregator
+        # Wires perception → torque accumulation → proactive action windows
+        self._kinetic: Optional[Any] = None
+        try:
+            from prism_kinetic_engine import KineticEngine
+            from prism_routes_kinetic import get_or_set_engine
+            self._kinetic = KineticEngine.for_prism()
+            get_or_set_engine(self._kinetic)
+            if self._proactive is not None:
+                import time as _time
+                def _on_kinetic_action(window: Any) -> None:
+                    fire_at = _time.time() + 2.0  # slight delay so context is ready
+                    self._proactive.schedule(
+                        window.to_proactive_message(), fire_at,
+                        trigger_id=f"kinetic_{window.window_id}")
+                self._kinetic.on_action(_on_kinetic_action)
+            # Wire kinetic into the perception fuser for real-time signal ingestion
+            if self._kinetic is not None and self._perception is not None:
+                fuser = getattr(self._perception, '_fuser', None)
+                if fuser is not None:
+                    fuser._kinetic = self._kinetic
+            logger.info("KineticEngine ready (%d levers)", len(self._kinetic._levers))
+        except Exception as e:
+            logger.warning("KineticEngine not available: %s", e)
+            self._kinetic = None
+
         self._search = PrismSearch.from_config(self._config)
         self._push   = PrismPush.from_config(self._config)
         if self._proactive:
