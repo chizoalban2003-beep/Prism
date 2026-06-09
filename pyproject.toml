@@ -9,14 +9,22 @@ description = "Local personal AI assistant — decides, plans, executes"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-dependencies = ["psutil>=5.9", "Pillow>=10.0", "pyyaml>=6.0"]
+dependencies = [
+  "psutil>=5.9",
+  "Pillow>=10.0,<12.0",
+  "pyyaml>=6.0",
+  "fastapi>=0.111,<1.0",
+  "uvicorn[standard]>=0.29",
+  "httpx>=0.27",
+  "anyio[trio]>=4.0",
+  "python-multipart>=0.0.18",
+]
 urls = { Homepage = "https://github.com/chizoalban2003-beep/Prism", Repository = "https://github.com/chizoalban2003-beep/Prism" }
 
 [project.optional-dependencies]
 full = ["playwright", "openai-whisper", "faster-whisper", "pyaudio", "pydub",
-        "pdfplumber", "openpyxl", "aiohttp", "mss", "twilio>=8.0", "anthropic>=0.25",
-        "tomli>=2.0", "fastapi>=0.111", "uvicorn[standard]>=0.29", "httpx>=0.27",
-        "python-multipart>=0.0.18"]
+        "pdfplumber", "openpyxl", "aiohttp", "mss", "twilio>=8.0,<10.0",
+        "anthropic>=0.25,<2.0", "tomli>=2.0"]
 dev  = ["ruff>=0.4.0", "pytest>=7.0", "mypy>=1.8", "pytest-cov>=4.0", "anyio[trio]>=4.0", "httpx>=0.27",
         "fastapi>=0.111", "python-multipart>=0.0.18"]
 
@@ -167,6 +175,9 @@ py-modules = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "requires_hardware: tests that require physical hardware (Apple Watch, GoPro, etc.) — skipped in CI",
+]
 
 [tool.ruff]
 line-length = 120

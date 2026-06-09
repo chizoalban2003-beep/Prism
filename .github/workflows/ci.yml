@@ -15,27 +15,34 @@ concurrency:
 jobs:
   ci:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Python 3.11
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
           cache: pip
+
+      - name: Cache apt packages
+        uses: actions/cache@v4
+        with:
+          path: /var/cache/apt/archives
+          key: apt-ffmpeg-${{ runner.os }}
 
       - name: Install system dependencies
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       - name: Install Python dependencies
         run: |
-          python3 -m pip install -e ".[dev]" || python3 -m pip install -e .
+          python3 -m pip install -e ".[dev]"
           python3 -m pip install pytest-cov
-          # Async server stack (python-multipart required for FastAPI File upload route registration)
-          python3 -m pip install "fastapi>=0.111" "uvicorn[standard]>=0.29" "httpx>=0.27" "anyio[trio]>=4.0" "python-multipart>=0.0.18"
           # Safe optional extras (excludes playwright/whisper/pyaudio — heavy system deps)
-          python3 -m pip install anthropic aiohttp pdfplumber openpyxl twilio || true
+          python3 -m pip install "fastapi>=0.111,<1.0" "uvicorn[standard]>=0.29" "httpx>=0.27" "anyio[trio]>=4.0" "python-multipart>=0.0.18" "anthropic>=0.25,<2.0" aiohttp pdfplumber openpyxl twilio || true
 
       - name: Lint with ruff
         run: python3 -m ruff check .
@@ -46,7 +53,6 @@ jobs:
             --cov=. --cov-report=xml --cov-report=term-missing:skip-covered \
             --cov-fail-under=70 \
             --ignore=tests/test_device_agent.py
-            # test_device_agent.py requires physical hardware (Apple Watch / GoPro); skipped in CI
 
       - name: Performance gate (TAD §8 SLO)
         run: python3 -m pytest tests/test_performance_gate.py -q --tb=short
@@ -63,7 +69,7 @@ jobs:
           prism_phase.py prism_perception.py prism_lora_registry.py
           prism_silicon_policy.py prism_tvm_bridge.py prism_context_budget.py
           prism_speculative.py prism_session_manager.py
-          --ignore-missing-imports --no-error-summary || true
+          --ignore-missing-imports --no-error-summary
 
       - name: Type-check ASGI stack
         run: >
@@ -88,12 +94,12 @@ jobs:
       - name: Security scan (high severity only)
         run: |
           python3 -m pip install bandit --quiet
-          python3 -m bandit -r . -ll -x tests/,organs/,.claude/ --quiet || true
+          python3 -m bandit -r . -ll -x tests/,organs/,.claude/ --quiet
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: coverage-xml
+          name: coverage-xml-py${{ matrix.python-version }}
           path: coverage.xml
           retention-days: 14

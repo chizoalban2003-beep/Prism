@@ -60,9 +60,6 @@ def _503(msg: str = "visual_perception not configured") -> JSONResponse:
 @router.post("/perception/visual")
 async def perception_visual(request: Request):
     """Analyse a base64-encoded image. Body: {image_b64, source?}"""
-    vp = _get_vp()
-    if vp is None:
-        return _503()
     try:
         body: dict[str, Any] = await request.json()
     except Exception:
@@ -71,6 +68,9 @@ async def perception_visual(request: Request):
     source: str    = body.get("source", "camera")
     if not image_b64:
         return JSONResponse({"error": "'image_b64' is required"}, status_code=400)
+    vp = _get_vp()
+    if vp is None:
+        return _503()
     scene = vp.analyse_frame_base64(image_b64, source=source)
     return asdict(scene)
 

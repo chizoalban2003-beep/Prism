@@ -873,6 +873,7 @@ Rules:
         def run_branch(b: dict, bid: str):
             logic   = b.get("logic", "autonomous")
             if logic not in self._registry:
+                logger.warning("[chain] branch logic %r not in registry, falling back to autonomous", logic)
                 logic = "autonomous"
             message = b.get("message", "")
             t0      = time.time()
@@ -968,6 +969,7 @@ Rules:
         # ── Single logic path (existing behaviour) ────────────────────────────
         logic = data.get("next_logic","")
         if logic not in self._registry:
+            logger.warning("[chain] LLM requested unknown logic %r, falling back to autonomous", logic)
             logic = "autonomous"
 
         return LLMDecision(

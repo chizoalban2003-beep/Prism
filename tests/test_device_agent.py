@@ -2,9 +2,14 @@
 tests/test_device_agent.py
 ==========================
 Tests for prism_device_agent.py
-"""
 
+Marked requires_hardware — skipped in CI via --ignore. Run locally with
+physical Apple Watch / GoPro attached.
+"""
 from __future__ import annotations
+
+import pytest
+pytestmark = pytest.mark.requires_hardware
 
 import sys
 import tempfile

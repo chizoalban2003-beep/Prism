@@ -170,19 +170,21 @@ class TVMBridge:
         )
 
     def _tvm_relax_jit(self, target: CompileTarget, model_path: str) -> bool:
-        """GPU TVM Relax JIT compilation pipeline stub."""
+        """GPU TVM Relax JIT compilation pipeline — requires Apache TVM to be installed."""
         try:
             import importlib
 
-            tvm = importlib.import_module("tvm")  # noqa: F841
-            relax = importlib.import_module("tvm.relax")  # noqa: F841
-            # Full pipeline when GPU + TVM are present:
+            tvm = importlib.import_module("tvm")
+            relax = importlib.import_module("tvm.relax")
+            # Pipeline when GPU + TVM are present:
             # mod  = relax.frontend.nn.export_extern(model, spec)
             # ex   = relax.build(mod, tvm.target.Target(target.tvm_target_str))
             # vm   = relax.VirtualMachine(ex, tvm.cuda())
             # Then register vm as an LLMRouter provider
-            _log.info("[tvm] Relax JIT pipeline ready for %s @ %s", model_path, target.tvm_target_str)
-            return True
+            raise NotImplementedError(
+                "TVM Relax JIT pipeline is not yet implemented. "
+                "tvm and tvm.relax are importable but the compilation graph has not been wired up."
+            )
         except ImportError:
             _log.debug("[tvm] Apache TVM not installed — GPU JIT unavailable")
             return False

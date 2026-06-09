@@ -108,5 +108,39 @@ class PrismWAL:
             self._conn.commit()
         return cur.rowcount
 
+    def replay(self, memory_graph: Any) -> int:
+        """
+        Apply all uncommitted WAL entries to *memory_graph* on daemon startup.
+
+        Called once before the HTTP server accepts requests so that a crash
+        between WAL append and shadow-pipeline commit leaves no data loss.
+        Returns the number of entries replayed.
+        """
+        entries = self.pending()
+        if not entries:
+            return 0
+        replayed = 0
+        for entry in entries:
+            try:
+                op      = entry["op"]
+                payload = entry["payload"]
+                if hasattr(memory_graph, "apply_wal_entry"):
+                    memory_graph.apply_wal_entry(op, payload)
+                elif op == "add" and hasattr(memory_graph, "add"):
+                    memory_graph.add(**payload)
+                elif op == "update" and hasattr(memory_graph, "update"):
+                    memory_graph.update(**payload)
+                elif op == "delete" and hasattr(memory_graph, "delete"):
+                    memory_graph.delete(**payload)
+                self.mark_committed(entry["seq_id"])
+                replayed += 1
+            except Exception as exc:  # noqa: BLE001
+                import logging
+                logging.getLogger(__name__).error(
+                    "WAL replay failed for seq_id=%s op=%s: %s",
+                    entry["seq_id"], entry["op"], exc,
+                )
+        return replayed
+
     def close(self) -> None:
         self._conn.close()

@@ -38,13 +38,15 @@ _BLOCKED_CALLS = {
 }
 _BLOCKED_IMPORTS = {
     "os", "subprocess", "shutil", "socket", "ctypes",
-    "multiprocessing", "importlib", "builtins", "pty",
+    "multiprocessing", "importlib", "builtins", "pty", "pathlib",
 }
 _BLOCKED_ATTRS = {
     # os.system, os.remove, os.chmod, shutil.rmtree, etc.
     "system", "popen", "remove", "unlink", "rmtree",
     "chmod", "chown", "rename", "replace", "symlink",
     "fork", "spawn", "execv", "execve", "kill",
+    # pathlib write methods
+    "write_text", "write_bytes",
 }
 
 class _SafetyVisitor(ast.NodeVisitor):

@@ -104,7 +104,7 @@ class PrismAgent:
          r"find file|search (?:in|for)|read file|list files|"
          r"run (?:command|script)|execute|open (?:app|file)|"
          r"install (?:package|app)|git (?:commit|push|pull|status)|"
-         r"what(?:'s| is) (?:on|in) my|show me (?:my )?files", "device_task"),
+         r"what(?:'s| is) (?:on|in) my(?! screen)|show me (?:my )?files", "device_task"),
         (r"show (?:my )?polic|what(?:'s| are) my (?:budget|polic|limit)|"
          r"current (?:polic|budget|limit)", "show_policies"),
         (r"set (?:my )?(\w+) (?:budget|limit)|auto.?approv|never use|"
@@ -201,7 +201,7 @@ class PrismAgent:
          r"organ (?:list|status|registry)",
          "list_organs"),
         (r"turn (?:on|off)|set (?:the )?(?:lights?|thermostat|temp)|"
-         r"lock|unlock|what(?:'s| is) (?:on|off)|smart home|home assistant",
+         r"lock|unlock|what(?:'s| is) (?:on|off)(?! (?:my|the) screen)|smart home|home assistant",
          "smart_home"),
         # NOTE: broad email catch-all — maps to email_read to avoid duplication
         # with the more specific email_read/email_send intents above.
@@ -227,6 +227,11 @@ class PrismAgent:
          r"(?:km|miles|kg|lbs|celsius|fahrenheit|meters?|feet|inches?|liters?|gallons?) (?:to|in|into)",
          "unit_convert"),
         (r"(?:take|capture|grab) (?:a )?screenshot|screenshot", "screenshot_capture"),
+        (r"what(?:'s| is) on (?:my |the )?screen|analyse (?:my |the )?screen|"
+         r"analyze (?:my |the )?screen|describe (?:my |the )?screen|"
+         r"look at (?:my |the )?screen|what do you see|vision query|"
+         r"read (?:my |the )?screen|what(?:'s| is) (?:happening|visible) on screen",
+         "vision_query"),
         (r"(?:read|what(?:'s| is) on|show|paste|get) (?:my )?clipboard", "clipboard_read"),
         (r"(?:set|start|create) (?:a )?timer|timer (?:for|of)|countdown", "timer_set"),
         (r"(?:read|open|show|cat|display) (?:my |the )?file|file (?:contents?|read)", "file_read"),
@@ -253,12 +258,6 @@ class PrismAgent:
         (r"(?:overdue|due today|pending|upcoming) (?:tasks?|reminders?|todos?)|task reminder",
          "task_reminder"),
         (r"policy (?:audit|log|history)|audit (?:log|trail)", "policy_audit"),
-        # Vision / screen analysis — must come after screenshot_capture
-        (r"what(?:'s| is) on (?:my |the )?screen|analyse (?:my |the )?screen|"
-         r"analyze (?:my |the )?screen|describe (?:my |the )?screen|"
-         r"look at (?:my |the )?screen|what do you see|vision query|"
-         r"read (?:my |the )?screen|what(?:'s| is) (?:happening|visible) on screen",
-         "vision_query"),
     ]
 
     def __init__(

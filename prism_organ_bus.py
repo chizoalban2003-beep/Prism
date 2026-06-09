@@ -226,7 +226,10 @@ class OrganBus:
         self._db              = Path(db_path).expanduser()
         self._db.parent.mkdir(parents=True, exist_ok=True)
         self._subscribers:    List[OrganSubscription] = []
+        # LRU cache with bounded size to prevent unbounded memory growth
+        from functools import lru_cache as _lru  # noqa: F401 — used below via _cache_maxsize
         self._cache:          Dict[Tuple[str, str, str], dict] = {}
+        self._cache_maxsize   = 512
         self._batch:          List[OrganSignal] = []
         self._lock            = threading.Lock()
         self.anomaly_detector = SignalAnomalyDetector()
@@ -458,6 +461,11 @@ class OrganBus:
 
         if signal.priority != HIGH:
             with self._lock:
+                if len(self._cache) >= self._cache_maxsize:
+                    # Evict oldest quarter of entries
+                    evict_keys = list(self._cache.keys())[:self._cache_maxsize // 4]
+                    for k in evict_keys:
+                        del self._cache[k]
                 self._cache[cache_key] = dict(translated)
 
         return translated, True

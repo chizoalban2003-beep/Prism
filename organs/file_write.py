@@ -15,7 +15,7 @@ ORGAN_POLICY = {
 
 _FORBIDDEN_PATHS = (
     "/etc/", "/usr/", "/bin/", "/sbin/", "/boot/", "/sys/", "/proc/",
-    "/dev/", "/lib/", "/lib64/",
+    "/dev/", "/lib/", "/lib64/", "/root/", "/home/",
 )
 
 
@@ -62,11 +62,11 @@ def execute(intent: str, message: str, ctx: dict):
             "File Write",
         )
 
-    # Expand ~ and resolve
+    # Expand ~ and always resolve symlinks before checking
     target = Path(path_str).expanduser()
+    abs_str = str(target.resolve())
 
-    # Safety: block writes to system paths
-    abs_str = str(target.resolve()) if target.exists() else str(target)
+    # Safety: block writes to system and home paths
     for forbidden in _FORBIDDEN_PATHS:
         if abs_str.startswith(forbidden):
             return text_card(

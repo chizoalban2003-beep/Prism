@@ -3,6 +3,13 @@
   "displayName": "PRISM Assistant",
   "description": "Your personal AI assistant — PRISM IDE integration",
   "version": "0.1.0",
+  "publisher": "chizoalban2003-beep",
+  "author": "chizoalban2003-beep",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chizoalban2003-beep/Prism"
+  },
   "engines": {"vscode": "^1.85.0"},
   "categories": ["AI", "Other"],
   "activationEvents": ["onStartupFinished"],
@@ -17,7 +24,7 @@
     "configuration": {
       "title": "PRISM",
       "properties": {
-        "prism.port": {"type": "number", "default": 8743, "description": "PRISM server port"},
+        "prism.port": {"type": "number", "default": 8742, "description": "PRISM server port"},
         "prism.host": {"type": "string", "default": "127.0.0.1", "description": "PRISM server host"}
       }
     }

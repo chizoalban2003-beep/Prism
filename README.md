@@ -732,7 +732,7 @@ PRISM reads/writes your primary calendar. Token refresh is **automatic** — whe
   "refresh_token": "1//…",
   "client_id":     "….apps.googleusercontent.com",
   "client_secret": "…",
-  "expiry":        "2025-01-01T00:00:00Z"
+  "expiry":        "YYYY-MM-DDTHH:MM:SSZ"
 }
 ```
 

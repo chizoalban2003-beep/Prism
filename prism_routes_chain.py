@@ -7,7 +7,7 @@ Routes:
   GET /chain/recent
   GET /chain/expert/recent
   GET /chain/status
-  GET /organs
+  GET /organs/intents
   GET /organ_bus/history
   GET /organ_bus/subscribers
 """
@@ -89,8 +89,8 @@ async def chain_status():
 # /organs
 # ---------------------------------------------------------------------------
 
-@router.get("/organs")
-async def organs():
+@router.get("/organs/intents")
+async def organs_intents():
     agent = _get_agent()
     ol    = getattr(agent, "_organ_loader", None) if agent else None
     if ol is None:

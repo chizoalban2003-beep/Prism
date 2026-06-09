@@ -18,7 +18,6 @@ Routes:
   GET  /context
   GET  /outcomes/stats
   GET  /reflection
-  GET  /devices
 """
 from __future__ import annotations
 
@@ -289,24 +288,3 @@ async def reflection():
         }
     except Exception as exc:
         return {"available": True, "error": str(exc)}
-
-
-# ---------------------------------------------------------------------------
-# /devices  (also available in prism_routes_core.py — agent's hub devices)
-# ---------------------------------------------------------------------------
-
-@router.get("/devices")
-async def devices():
-    agent = _get_agent()
-    if agent is None:
-        return JSONResponse({"error": "agent not ready", "status": 503}, status_code=503)
-    devices_list = [
-        {
-            "name":        d.name,
-            "device_type": d.device_type.value,
-            "enabled":     d.enabled,
-            "last_sync":   d.last_sync,
-        }
-        for d in agent._hub.list_devices()
-    ]
-    return {"devices": devices_list}

@@ -34,9 +34,14 @@ htmlcov/
 *.db
 .ksa_index.txt
 
-# Config files with local paths
+# Config files with local paths / credentials
 ksa_config.toml
 ksa_config.json
+prism_config.toml
+google_creds.json
+*.pem
+*.key
+*.crt
 
 # Binary / archive artefacts
 files.zip
