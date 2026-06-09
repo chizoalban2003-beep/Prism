@@ -15,32 +15,40 @@ except ImportError:
     _httpx = None
     _HTTPX_AVAILABLE = False
 
+import types as _types
+
+_prism_phase:       Optional[_types.ModuleType] = None
+_PhaseState:        Optional[Any]               = None
+_lora_reg:          Optional[_types.ModuleType] = None
+_silicon_policy_mod: Optional[_types.ModuleType] = None
+_ctx_budget_mod:    Optional[_types.ModuleType] = None
+_tvm_bridge_mod:    Optional[_types.ModuleType] = None
+
 try:
     import prism_phase as _prism_phase
     from prism_phase import PhaseState as _PhaseState
 except ImportError:
-    _prism_phase = None
-    _PhaseState  = None
+    pass
 
 try:
     import prism_lora_registry as _lora_reg
 except ImportError:
-    _lora_reg = None
+    pass
 
 try:
     import prism_silicon_policy as _silicon_policy_mod
 except ImportError:
-    _silicon_policy_mod = None
+    pass
 
 try:
     import prism_context_budget as _ctx_budget_mod
 except ImportError:
-    _ctx_budget_mod = None
+    pass
 
 try:
     import prism_tvm_bridge as _tvm_bridge_mod
 except ImportError:
-    _tvm_bridge_mod = None
+    pass
 
 logger = logging.getLogger(__name__)
 
@@ -367,7 +375,7 @@ class LLMRouter:
         if _prism_phase is not None:
             try:
                 _eng = _prism_phase.get_engine()
-                if _eng.history and _eng.current_phase is _PhaseState.LIQUID:
+                if _eng.history and _PhaseState is not None and _eng.current_phase is _PhaseState.LIQUID:
                     preferred = self.best(min_capability=_eff_capability, phase_hint="emergency")
                     if preferred is not None:
                         try:
