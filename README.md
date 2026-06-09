@@ -230,7 +230,7 @@ PRISM's REST API runs on **FastAPI + uvicorn** (ASGI) — not the Python stdlib 
 - **True concurrent requests** — uvicorn's event loop handles all connections simultaneously; no thread-per-connection serialisation
 - **Real token streaming** — `/stream/chat` SSE yields tokens as they arrive; `/ws/chat` WebSocket provides bidirectional multi-turn chat over a persistent connection
 - **Non-blocking LLM I/O** — `prism_llm_router.py` exposes `async_call()` and `async_call_stream()` using httpx, with automatic fallback to `asyncio.to_thread(call())` when httpx is absent
-- **171 routes + 1 WebSocket across 18 FastAPI router modules** — `prism_routes_predict`, `prism_routes_analytics`, `prism_routes_agent`, `prism_routes_chain`, `prism_routes_core`, `prism_routes_horizon`, `prism_routes_infra`, `prism_routes_integrations`, `prism_routes_media`, `prism_routes_sensors`, `prism_routes_ui`, `prism_routes_mobile`, `prism_routes_users`, `prism_routes_federation`, `prism_routes_identity`, `prism_routes_perception`, `prism_routes_causality`, `prism_routes_sessions`
+- **185+ routes + 1 WebSocket across 19 FastAPI router modules** — `prism_routes_predict`, `prism_routes_analytics`, `prism_routes_agent`, `prism_routes_chain`, `prism_routes_core`, `prism_routes_horizon`, `prism_routes_infra`, `prism_routes_integrations`, `prism_routes_media`, `prism_routes_sensors`, `prism_routes_ui`, `prism_routes_mobile`, `prism_routes_users`, `prism_routes_federation`, `prism_routes_identity`, `prism_routes_perception`, `prism_routes_causality`, `prism_routes_sessions`
 - **CORS** — all origins allowed at the ASGI middleware layer (appropriate for 127.0.0.1-only binding)
 
 ```
@@ -1628,7 +1628,7 @@ agent.register("my_tool", ["my", "tool", "keywords"],
 
 ## Current state
 
-All major capabilities are implemented and tested. The table below is the authoritative feature status as of the last full audit (2,030 tests, 0 failing).
+All major capabilities are implemented and tested. The table below is the authoritative feature status as of the last full audit (2,538 tests, 0 failing).
 
 | Capability | Status | Notes |
 |---|---|---|
@@ -1673,6 +1673,10 @@ All major capabilities are implemented and tested. The table below is the author
 | TVM/LLVM Compiler Bridge | `prism_tvm_bridge.py` | **Working** — quantization_hint → CompileTarget; llama.cpp flags on CPU; TVM Relax GPU stub; precision-transition tracking; 12 tests |
 | Context Budget Manager | `prism_context_budget.py` | **Working** — StreamingLLM + H2O KV-cache eviction at message level; attention sinks + recent window preserved; wired into LLM router; 16 tests |
 | Speculative Decoding Pipeline | `prism_speculative.py` | **Working** — draft-then-verify two-stage pipeline; bypass on capability_ceil ≤ 1 or short drafts; correction tracking; wired into LLM router; 12 tests |
+| Bidirectional Messaging Gateway | `prism_messaging_gateway.py` | **Working** — Telegram (live) + WhatsApp/Twilio stub; `pip install ".[messaging]"`; routes at `/integrations/messaging/*` |
+| LoRA Fine-Tuning Pipeline | `prism_lora_trainer.py` | **Working** — DPO pairs from `OutcomeRecord.correction` → Unsloth QLoRA → GGUF → Ollama registration; `pip install ".[lora]"`; `POST /lora/train`, `GET /lora/status` |
+| System Tray (native desktop) | `prism_tray.py` | **Working** — pystray icon + pywebview window; `pip install ".[tray]"`; `prism-tray` CLI entry point |
+| Kinetic Decision Engine | `prism_kinetic_engine.py` | **Working** — cross-domain torque/lever arbitrage engine; Z-score normalisation, EMA damping, hysteresis, Black Swan bypass; `POST /kinetic/signal`, `GET /kinetic/windows` |
 
 ---
 

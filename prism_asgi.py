@@ -84,10 +84,10 @@ if _FASTAPI_AVAILABLE:
     from prism_routes_federation import router as federation_router
     from prism_routes_horizon import router as horizon_router
     from prism_routes_ide import router as ide_router
-    from prism_routes_kinetic import router as kinetic_router
     from prism_routes_identity import router as identity_router
     from prism_routes_infra import router as infra_router
     from prism_routes_integrations import router as integrations_router
+    from prism_routes_kinetic import router as kinetic_router
     from prism_routes_media import router as media_router
     from prism_routes_mobile import router as mobile_router
     from prism_routes_perception import router as perception_router

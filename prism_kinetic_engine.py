@@ -10,10 +10,10 @@ monitoring the latency between physical-world events and financial reactions.
 
 from __future__ import annotations
 
+import logging
 import threading
 import time
 import uuid
-import logging
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
