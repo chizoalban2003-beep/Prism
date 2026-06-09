@@ -1,11 +1,12 @@
 """
 prism_routes_identity.py
 ========================
-FastAPI APIRouter — Identity Dashboard, Weekly Report, and LIQUID Onboarding.
+FastAPI APIRouter — Identity Dashboard, Weekly Report, LIQUID Onboarding,
+and Calibration Loop.
 
 Routes
 ------
-GET  /identity                      — HTML visual identity dashboard
+GET  /identity/ui                   — HTML visual identity dashboard
 GET  /identity/dashboard            — JSON identity snapshot
 GET  /identity/onboard              — HTML onboarding ceremony page
 GET  /reports/weekly                — JSON latest reflection report
@@ -13,6 +14,9 @@ POST /reports/weekly/generate       — trigger immediate reflection run
 GET  /onboarding/status             — ceremony completion status + current phase
 POST /onboarding/start              — start (or restart) the identity ceremony
 POST /onboarding/answer             — submit next ceremony answer
+GET  /calibration/history           — calibration event history (with ?domain= ?n=)
+GET  /calibration/summary           — aggregate stats + current VEAX state
+POST /calibration/feedback          — programmatic calibration feedback
 """
 from __future__ import annotations
 
@@ -427,6 +431,213 @@ async def onboarding_answer(request: Request):
         "question": next_question,
         "total_questions": len(questions),
         "progress": f"{next_index + 1}/{len(questions)}",
+    }
+
+
+# ---------------------------------------------------------------------------
+# Onboarding state persistence
+# ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# Calibration helpers
+# ---------------------------------------------------------------------------
+
+
+def _calibration():
+    agent = _get_agent()
+    return getattr(agent, "_calibration", None) if agent else None
+
+
+# ---------------------------------------------------------------------------
+# GET /calibration/history
+# ---------------------------------------------------------------------------
+
+
+@router.get("/calibration/history")
+async def calibration_history(domain: str = "", n: int = 20):
+    """Return recent calibration events, optionally filtered by domain."""
+    cal = _calibration()
+    if cal is None:
+        return JSONResponse(
+            {"error": "Calibration engine not available", "status": 503},
+            status_code=503,
+        )
+    events = cal.history(domain=domain or None, n=n)
+    return {
+        "events": [
+            {
+                "event_id": e.event_id,
+                "domain": e.domain,
+                "direction": e.direction,
+                "factor_id": e.factor_id,
+                "adjustment": e.adjustment,
+                "message": e.message,
+                "timestamp": e.timestamp,
+            }
+            for e in events
+        ],
+        "count": len(events),
+    }
+
+
+# ---------------------------------------------------------------------------
+# GET /calibration/summary
+# ---------------------------------------------------------------------------
+
+
+@router.get("/calibration/summary")
+async def calibration_summary_route():
+    """Return aggregate calibration stats + current VEAX state."""
+    cal = _calibration()
+    if cal is None:
+        return JSONResponse(
+            {"error": "Calibration engine not available", "status": 503},
+            status_code=503,
+        )
+
+    summary_text = cal.summary()
+    events = cal.history(n=50)
+
+    from collections import Counter
+    direction_counts = dict(Counter(e.direction for e in events))
+    domain_counts = dict(Counter(e.domain for e in events))
+
+    avg_adj = sum(abs(e.adjustment) for e in events) / max(len(events), 1)
+
+    veax_state = None
+    veax_render = None
+    try:
+        from prism_spectrum_middleware import get_current_gates, render_gates
+        gates = get_current_gates()
+        if gates is not None:
+            veax_state = {"V": gates.V, "E": gates.E, "A": gates.A, "X": gates.X}
+            veax_render = render_gates(gates)
+    except Exception:
+        pass
+
+    return {
+        "summary": summary_text,
+        "total_events": len(events),
+        "direction_counts": direction_counts,
+        "domain_counts": domain_counts,
+        "avg_adjustment_magnitude": round(avg_adj, 4),
+        "veax": veax_state,
+        "veax_render": veax_render,
+    }
+
+
+# ---------------------------------------------------------------------------
+# POST /calibration/feedback — programmatic feedback
+# ---------------------------------------------------------------------------
+
+
+@router.post("/calibration/feedback")
+async def calibration_feedback(request: Request):
+    """
+    Submit calibration feedback programmatically.
+
+    Body::
+
+        {
+            "message":          "that was too aggressive",
+            "domain":           "sport",         # optional
+            "fulcrum_position": 0.72             # optional, 0-1
+        }
+
+    Returns the calibration event + before/after VEAX render.
+    """
+    body: Dict[str, Any] = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+
+    message: str = (body.get("message") or "").strip()
+    if not message:
+        return JSONResponse({"error": "'message' is required"}, status_code=400)
+
+    cal = _calibration()
+    if cal is None:
+        return JSONResponse(
+            {"error": "Calibration engine not available", "status": 503},
+            status_code=503,
+        )
+
+    direction = cal.detect(message)
+    if not direction:
+        return JSONResponse(
+            {"error": "Message not recognised as feedback", "recognised_patterns": list(cal.FEEDBACK_PATTERNS.keys())},
+            status_code=422,
+        )
+
+    last_decision = {
+        "domain": body.get("domain", "general"),
+        "fulcrum_position": float(body.get("fulcrum_position", 0.5)),
+        "factors": {},
+    }
+
+    veax_before = None
+    veax_after = None
+    try:
+        from prism_spectrum_middleware import (
+            SpectrumGates,
+            get_current_gates,
+            render_gates,
+            save_spectrum_state,
+        )
+        _VEAX_DELTAS: Dict[str, Dict[str, float]] = {
+            "too_aggressive":   {"A": -0.05, "V": +0.03},
+            "too_conservative": {"A": +0.05, "V": -0.03},
+            "wrong":            {"V": +0.05},
+            "correct":          {"X": +0.02},
+        }
+        gates = get_current_gates()
+        if gates is not None:
+            veax_before = {"V": gates.V, "E": gates.E, "A": gates.A, "X": gates.X}
+            deltas = _VEAX_DELTAS.get(direction, {})
+            if deltas:
+                new_gates = SpectrumGates(
+                    V=max(0.0, min(1.0, gates.V + deltas.get("V", 0.0))),
+                    E=max(0.0, min(1.0, gates.E + deltas.get("E", 0.0))),
+                    A=max(0.0, min(1.0, gates.A + deltas.get("A", 0.0))),
+                    X=max(0.0, min(1.0, gates.X + deltas.get("X", 0.0))),
+                )
+                save_spectrum_state(new_gates)
+                veax_after = {"V": new_gates.V, "E": new_gates.E, "A": new_gates.A, "X": new_gates.X}
+                render_before = render_gates(gates)
+                render_after = render_gates(new_gates)
+            else:
+                render_before = render_gates(gates)
+                render_after = None
+        else:
+            render_before = None
+            render_after = None
+    except Exception:
+        render_before = None
+        render_after = None
+
+    event = cal.process(
+        message=message,
+        direction=direction,
+        last_decision=last_decision,
+        beam=None,
+        llm_router=_router_llm(),
+    )
+
+    return {
+        "event": {
+            "event_id": event.event_id,
+            "domain": event.domain,
+            "direction": event.direction,
+            "factor_id": event.factor_id,
+            "adjustment": event.adjustment,
+        },
+        "veax_before": veax_before,
+        "veax_after": veax_after,
+        "render_before": render_before,
+        "render_after": render_after,
+        "summary": cal.summary(),
     }
 
 

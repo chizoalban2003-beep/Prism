@@ -43,6 +43,12 @@ from prism_responses import (
 from prism_search import PrismSearch
 from prism_service_discovery import PrismServiceDiscovery
 from prism_smart_home import PrismSmartHome
+from prism_spectrum_middleware import (
+    SpectrumGates,
+    get_current_gates,
+    render_gates,
+    save_spectrum_state,
+)
 from prism_task_queue import TaskQueue
 from prism_tasks import PrismTasks
 from prism_tts import PrismTTS
@@ -1422,25 +1428,74 @@ class PrismAgent:
                     "Try: 'that was too aggressive' or 'good call' "
                     "or 'next time weight cost more heavily'.",
                     "Calibration")
+
+            # Snapshot VEAX before calibration
+            gates_before = get_current_gates()
+
             event = self._calibration.process(
                 message       = message,
                 direction     = direction,
                 last_decision = self._last_decision,
-                beam          = self._last_beam if hasattr(self,'_last_beam') else None,
+                beam          = self._last_beam if hasattr(self, '_last_beam') else None,
                 llm_router    = getattr(self, '_router', None),
             )
+
+            # Apply VEAX delta — make the spectrum rewire visibly
+            _VEAX_DELTAS: dict[str, dict[str, float]] = {
+                "too_aggressive":   {"A": -0.05, "V": +0.03},
+                "too_conservative": {"A": +0.05, "V": -0.03},
+                "wrong":            {"V": +0.05},
+                "correct":          {"X": +0.02},
+            }
+            deltas = _VEAX_DELTAS.get(direction, {})
+            gates_after = None
+            if gates_before is not None and deltas:
+                gates_after = SpectrumGates(
+                    V=max(0.0, min(1.0, gates_before.V + deltas.get("V", 0.0))),
+                    E=max(0.0, min(1.0, gates_before.E + deltas.get("E", 0.0))),
+                    A=max(0.0, min(1.0, gates_before.A + deltas.get("A", 0.0))),
+                    X=max(0.0, min(1.0, gates_before.X + deltas.get("X", 0.0))),
+                )
+                try:
+                    save_spectrum_state(gates_after)
+                except Exception:
+                    pass
+
             direction_text = {
                 "too_aggressive":  "noted — I'll be more conservative next time",
-                "too_conservative":"noted — I'll be bolder next time",
+                "too_conservative": "noted — I'll be bolder next time",
                 "wrong":           "understood — adjusting the model",
                 "correct":         "glad that worked — reinforcing this approach",
             }.get(event.direction, "feedback recorded")
-            return text_card(
-                f"Calibration {direction_text}.\n"
-                f"Factor adjusted: {event.factor_id}  "
-                f"by {event.adjustment:+.3f}\n"
-                f"{self._calibration.summary()}",
-                "Model updated")
+
+            # Build rich before/after body
+            sep = "─" * 50
+            lines = [
+                f"Calibration {direction_text}.",
+                "",
+                f"{sep}",
+                f"Domain: {event.domain}  ·  Factor: {event.factor_id}  ·  Δ {event.adjustment:+.3f}",
+            ]
+            if deltas:
+                axis_str = ", ".join(
+                    f"{ax} {d:+.2f}" for ax, d in deltas.items()
+                )
+                lines.append(f"VEAX: {axis_str}")
+
+            if gates_before is not None and gates_after is not None:
+                lines += [
+                    "",
+                    "── Before ──",
+                    render_gates(gates_before),
+                    "",
+                    "── After  ──",
+                    render_gates(gates_after),
+                ]
+            elif gates_before is not None:
+                lines += ["", "── Current VEAX ──", render_gates(gates_before)]
+
+            lines += ["", f"{sep}", self._calibration.summary()]
+            return text_card("\n".join(lines), "Model updated")
 
         if intent == "calibration_summary":
             summary = self._calibration.summary()
