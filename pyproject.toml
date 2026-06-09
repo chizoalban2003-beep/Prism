@@ -143,6 +143,7 @@ py-modules = [
     "prism_routes_chain",
     "prism_routes_core",
     "prism_routes_horizon",
+    "prism_routes_ide",
     "prism_routes_infra",
     "prism_routes_integrations",
     "prism_routes_media",
@@ -180,6 +181,7 @@ select = ["E", "F", "W", "I"]
 "prism_pwa.py" = ["E501"]
 # HTML/SVG/JS embedded strings cannot be wrapped
 "prism_routes_identity.py" = ["E501"]
+"prism_routes_users.py" = ["E501"]
 # LLM prompt templates contain long lines that must not be reformatted
 "prism_chain.py" = ["E501"]
 "prism_chain_expert.py" = ["E501"]
