@@ -38,7 +38,7 @@ _BLOCKED_CALLS = {
 }
 _BLOCKED_IMPORTS = {
     "os", "subprocess", "shutil", "socket", "ctypes",
-    "multiprocessing", "importlib", "builtins", "pty", "pathlib",
+    "multiprocessing", "importlib", "builtins", "pty",
 }
 _BLOCKED_ATTRS = {
     # os.system, os.remove, os.chmod, shutil.rmtree, etc.

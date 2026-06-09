@@ -206,6 +206,8 @@ def test_compute_no_soul(monkeypatch):
     monkeypatch.setattr(psutil, "virtual_memory", lambda: vm)
     monkeypatch.setattr(psutil, "sensors_temperatures", lambda: {})
     monkeypatch.setattr(psutil, "sensors_battery", lambda: None)
+    # Prevent pytest/python process from being detected as a heavy process
+    monkeypatch.setattr(psutil, "process_iter", lambda attrs=None: iter([]))
 
     e = CrystallizationEngine()
     r = e.compute(soul=None)

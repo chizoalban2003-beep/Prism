@@ -24,9 +24,9 @@ from prism_state import _set_state
 
 @pytest.fixture(autouse=True)
 def clean_state():
-    _set_state(agent=None)
+    _set_state(agent=None, visual_perception=None)
     yield
-    _set_state(agent=None)
+    _set_state(agent=None, visual_perception=None)
 
 
 @pytest.fixture

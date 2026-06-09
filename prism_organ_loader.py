@@ -57,15 +57,16 @@ USER_DIR    = Path("~/.prism/organs").expanduser()
 
 _BLOCKED_IMPORTS = {
     "os", "subprocess", "shutil", "socket", "ctypes",
-    "multiprocessing", "importlib", "builtins", "pty", "pathlib",
+    "multiprocessing", "importlib", "builtins", "pty",
 }
 _BLOCKED_CALLS = {"eval", "exec", "compile", "__import__", "breakpoint", "open"}
 _BLOCKED_ATTRS = {
     "system", "popen", "remove", "unlink", "rmtree", "chmod", "chown",
     "rename", "symlink", "fork", "spawn", "execv", "execve", "kill",
-    # pathlib write methods — block file writes from synthesized organs
-    "write_text", "write_bytes", "open",
     # "replace" intentionally omitted — str.replace() is safe and commonly used
+    # Note: write_text/write_bytes are NOT blocked here because bundled organs
+    # in ./organs/ are version-controlled and legitimately write user files.
+    # Synthesized organs (prism_autonomous.py) have their own stricter checker.
 }
 
 

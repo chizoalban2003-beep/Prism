@@ -80,21 +80,26 @@ class PrismWatchdog:
                          dm, self._dm_threshold)
 
         if not status["alive"] and dm > 0:
-            _log.warning(
-                "Watchdog: pipeline dead with %d pending entries — "
-                "resurrecting (attempt %d, backoff=%.0fs)",
-                dm, self._consecutive_failures + 1, self._backoff_s,
-            )
-            self._stop.wait(self._backoff_s)
-            if self._stop.is_set():
-                return
+            # Apply backoff only after prior failures, not before the first attempt
+            if self._consecutive_failures > 0:
+                _log.warning(
+                    "Watchdog: resurrecting (attempt %d, backoff=%.0fs)",
+                    self._consecutive_failures + 1, self._backoff_s,
+                )
+                self._stop.wait(self._backoff_s)
+                if self._stop.is_set():
+                    return
+            else:
+                _log.warning(
+                    "Watchdog: pipeline dead with %d pending entries — resurrecting", dm
+                )
 
             self._pipeline.start()
             self._resurrections += 1
             if _metrics:
                 _metrics.inc("pipeline_restarts")
 
-            # Check if resurrection succeeded
+            # Check if resurrection succeeded; ramp backoff only on failure
             if not self._pipeline.status()["alive"]:
                 self._consecutive_failures += 1
                 self._backoff_s = min(self._backoff_s * 2, _BACKOFF_MAX)

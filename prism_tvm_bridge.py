@@ -174,8 +174,8 @@ class TVMBridge:
         try:
             import importlib
 
-            tvm = importlib.import_module("tvm")
-            relax = importlib.import_module("tvm.relax")
+            importlib.import_module("tvm")
+            importlib.import_module("tvm.relax")
             # Pipeline when GPU + TVM are present:
             # mod  = relax.frontend.nn.export_extern(model, spec)
             # ex   = relax.build(mod, tvm.target.Target(target.tvm_target_str))

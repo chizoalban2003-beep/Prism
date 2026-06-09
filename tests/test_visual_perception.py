@@ -195,7 +195,7 @@ def test_perception_visual_endpoint_no_state_503():
     from prism_state import _set_state
     _set_state(visual_perception=None)
     c = TestClient(app, raise_server_exceptions=False)
-    r = c.post("/perception/visual", json={"image_b64": "", "source": "test"})
+    r = c.post("/perception/visual", json={"image_b64": "aGVsbG8=", "source": "test"})
     assert r.status_code == 503
 
 

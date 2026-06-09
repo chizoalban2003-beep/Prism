@@ -8,12 +8,11 @@ physical Apple Watch / GoPro attached.
 """
 from __future__ import annotations
 
-import pytest
-pytestmark = pytest.mark.requires_hardware
-
 import sys
 import tempfile
 from pathlib import Path
+
+import pytest
 
 from prism_device_agent import (
     CapabilityMap,
@@ -24,6 +23,8 @@ from prism_device_agent import (
 )
 from prism_device_resolver import ToolResolver as StandaloneToolResolver
 from prism_responses import PrismCard, device_result_card
+
+pytestmark = pytest.mark.requires_hardware
 
 # ---------------------------------------------------------------------------
 # Helpers
