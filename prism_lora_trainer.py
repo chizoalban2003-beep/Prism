@@ -130,9 +130,9 @@ class PrismLoraTrainer:
         output_dir = self._work_dir / f"{job.job_id}_output"
         output_dir.mkdir(exist_ok=True)
         try:
-            from unsloth import FastLanguageModel
-            from trl import DPOTrainer, DPOConfig
             import torch
+            from trl import DPOConfig, DPOTrainer
+            from unsloth import FastLanguageModel
 
             model, tokenizer = FastLanguageModel.from_pretrained(
                 model_name=job.base_model, max_seq_length=2048, load_in_4bit=True,
@@ -142,7 +142,7 @@ class PrismLoraTrainer:
                 lora_alpha=16, lora_dropout=0, bias="none",
             )
             from datasets import Dataset
-            data = [json.loads(l) for l in pairs_path.read_text().splitlines() if l.strip()]
+            data = [json.loads(ln) for ln in pairs_path.read_text().splitlines() if ln.strip()]
             trainer = DPOTrainer(
                 model=model,
                 args=DPOConfig(

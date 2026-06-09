@@ -18,6 +18,7 @@ from __future__ import annotations
 import threading
 import time
 import uuid
+from typing import Optional
 
 import pytest
 
@@ -25,7 +26,6 @@ from prism_memory_graph import GraphEdge, GraphNode, PrismMemoryGraph
 from prism_metrics import PrismMetrics
 from prism_shadow_pipeline import PrismShadowPipeline
 from prism_watchdog import PrismWatchdog
-from typing import Optional
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

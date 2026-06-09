@@ -28,7 +28,7 @@ except ImportError:
 # Re-exported here so prism_daemon can do: from prism_asgi import _set_state
 # ---------------------------------------------------------------------------
 
-from prism_state import _state, _set_state  # noqa: E402  re-export
+from prism_state import _state  # noqa: E402  re-export
 
 
 def _get_agent():

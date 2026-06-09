@@ -44,7 +44,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import Optional, Any
+from typing import Any, Optional
 
 from device_hub import DeviceType
 from kde_agent import KDEAgent, KDEConfig

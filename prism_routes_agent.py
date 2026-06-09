@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import asdict as _asdict
-from typing import Optional, Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse

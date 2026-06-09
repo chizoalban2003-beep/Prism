@@ -349,7 +349,8 @@ def _asgi_server_thread(agent, host: str, port: int):
     """Start the FastAPI/ASGI server (primary HTTP server, Phase 4+)."""
     try:
         import prism_asgi
-        prism_asgi._set_state(**_build_asgi_state(agent))
+        from prism_state import _set_state
+        _set_state(**_build_asgi_state(agent))
         logger.info("ASGI server starting on %s:%d", host, port)
         prism_asgi.serve(host=host, port=port, log_level="warning")
     except Exception as exc:

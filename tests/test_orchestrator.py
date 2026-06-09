@@ -9,6 +9,7 @@ from __future__ import annotations
 import json
 import tempfile
 from pathlib import Path
+from typing import Optional
 from unittest.mock import MagicMock
 
 from prism_orchestrator import (
@@ -18,7 +19,6 @@ from prism_orchestrator import (
     OrchestratorNode,
     TaskGraph,
 )
-from typing import Optional
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

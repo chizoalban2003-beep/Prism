@@ -9,6 +9,7 @@ Usage:
     python prism_tray.py --port N  # override port
 """
 from __future__ import annotations
+
 import argparse
 import logging
 import threading
