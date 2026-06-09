@@ -343,7 +343,7 @@ async def moment_analyze(request: Request):
 @router.get("/moment/history")
 async def moment_history(player: str = "", limit: int = 20):
     history_raw = _moment_history.get(player, [])[-limit:]
-    moments_out = []
+    moments_out: list[Any] = []
     for r in history_raw:
         try:
             moments_out.append(dataclasses.asdict(r))

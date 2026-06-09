@@ -23,7 +23,7 @@ Routes:
 from __future__ import annotations
 
 import time
-from typing import Any, Dict
+from typing import Optional, Any, Dict
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -40,7 +40,7 @@ router = APIRouter()
 # ---------------------------------------------------------------------------
 
 @router.get("/memory/search")
-async def memory_search(q: str = "", n: int = 5, source: str = None):
+async def memory_search(q: str = "", n: int = 5, source: Optional[str] = None):
     agent = _get_agent()
     mem   = getattr(agent, "_memory", None) if agent else None
     if mem is None:
@@ -266,6 +266,7 @@ async def proactive_triggers_create(request: Request):
             return JSONResponse({"error": "provide 'fire_at' or 'in_seconds'"}, status_code=400)
         if in_seconds is not None:
             fire_at = time.time() + float(in_seconds)
+        assert fire_at is not None
         tid = p.schedule(msg, float(fire_at), trigger_id=body.get("trigger_id"))
         return {"ok": True, "trigger_id": tid, "fire_at": fire_at, "type": "scheduled"}
 

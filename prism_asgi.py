@@ -21,14 +21,14 @@ try:
     _FASTAPI_AVAILABLE = True
 except ImportError:
     _FASTAPI_AVAILABLE = False
-    FastAPI = None  # type: ignore[assignment,misc]
+    FastAPI = None
 
 # ---------------------------------------------------------------------------
 # Module-level state — wired by prism_daemon via _set_state()
 # Re-exported here so prism_daemon can do: from prism_asgi import _set_state
 # ---------------------------------------------------------------------------
 
-from prism_state import _state  # noqa: E402  re-export
+from prism_state import _state, _set_state  # noqa: E402  re-export
 
 
 def _get_agent():
@@ -193,7 +193,7 @@ if _FASTAPI_AVAILABLE:
 
 else:
     # Stub so imports don't blow up when fastapi isn't installed
-    class _StubApp:  # type: ignore[no-redef]
+    class _StubApp:  # noqa: F811
         def get(self, *a, **kw):
             def _dec(fn):
                 return fn
@@ -215,7 +215,7 @@ else:
                 return fn
             return _dec
 
-    app = _StubApp()  # type: ignore[assignment]
+    app = _StubApp()
     logger.warning("FastAPI not installed — prism_asgi running in stub mode. "
                    "Install with: pip install 'prism-platform[full]'")
 
