@@ -23,7 +23,7 @@ from typing import Any
 from fastapi import APIRouter, File, Request, UploadFile
 from fastapi.responses import JSONResponse
 
-from prism_state import _state
+from prism_state import _get_agent, _state
 
 logger = logging.getLogger(__name__)
 
@@ -120,3 +120,44 @@ async def perception_visual_file(file: UploadFile = File(...), source: str = "im
         return JSONResponse({"error": "uploaded file is empty"}, status_code=400)
     scene = vp.analyse_image(image_bytes=raw, source=source)
     return asdict(scene)
+
+
+@router.post("/perception/visual/reason")
+async def perception_visual_reason(request: Request):
+    """Ask the LLM a question about a base64-encoded image.
+
+    Body: {"image_b64": "...", "question": "..."}
+    Returns: {"answer": "...", "question": "...", "model_used": "..."}
+    """
+    try:
+        body: dict[str, Any] = await request.json()
+    except Exception:
+        body = {}
+
+    image_b64: str = body.get("image_b64", "")
+    question: str = body.get("question", "What is in this image?")
+
+    if not image_b64:
+        return JSONResponse({"error": "'image_b64' is required"}, status_code=400)
+
+    agent = _get_agent()
+    if agent is None:
+        return JSONResponse({"error": "agent not ready"}, status_code=503)
+
+    router = getattr(agent, "_router", None)
+    if router is None:
+        return JSONResponse({"error": "LLM router not available"}, status_code=503)
+
+    try:
+        answer, model_used = router.call(
+            prompt=question,
+            images=[image_b64],
+            min_capability=2,
+            max_tokens=800,
+            system="You are a visual assistant. Answer questions about images clearly and concisely.",
+        )
+    except Exception as exc:
+        logger.warning("perception_visual_reason LLM call failed: %s", exc)
+        return JSONResponse({"error": f"LLM call failed: {exc}"}, status_code=500)
+
+    return {"answer": answer, "question": question, "model_used": model_used}

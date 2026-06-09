@@ -250,6 +250,7 @@ class LLMRouter:
         speculative:          bool = False,
         phase_hint:           Optional[str] = None,
         task_hint:            str = "",
+        images:               list[str] | None = None,
         # list of {"role":"user"|"assistant","content":str}
     ) -> tuple[str, str]:
         """
@@ -266,7 +267,7 @@ class LLMRouter:
                 prompt, min_capability=1, max_tokens=max_tokens,
                 system=system, json_mode=json_mode,
                 conversation_history=conversation_history, speculative=False,
-                phase_hint=phase_hint, task_hint=task_hint,
+                phase_hint=phase_hint, task_hint=task_hint, images=images,
             )
             _uncertain = ("i don't know", "uncertain", "cannot", "i'm not sure",
                           "i am not sure", "unclear", "not enough information")
@@ -372,7 +373,7 @@ class LLMRouter:
                         try:
                             text = self._call_option(
                                 preferred, _effective_prompt, _eff_max_tokens, system,
-                                json_mode, _pruned_history)
+                                json_mode, _pruned_history, images=images)
                             if text:
                                 logger.debug("[llm_router] LIQUID phase → %s/%s",
                                              preferred.provider, preferred.model)
@@ -389,7 +390,7 @@ class LLMRouter:
                 _t0 = time.time()
                 text = self._call_option(
                     opt, _effective_prompt, _eff_max_tokens, system,
-                    json_mode, _pruned_history)
+                    json_mode, _pruned_history, images=images)
                 if text:
                     logger.debug("LLM call via %s/%s", opt.provider, opt.model)
                     _latency = (time.time() - _t0) * 1000
@@ -510,23 +511,34 @@ class LLMRouter:
 
     def _call_option(self, opt: LLMOption, prompt: str,
                      max_tokens: int, system: str,
-                     json_mode: bool, history: list = None) -> str:
+                     json_mode: bool, history: list = None,
+                     images: list[str] | None = None) -> str:
         if opt.provider == "claude":
-            return self._call_claude(opt, prompt, max_tokens, system, json_mode, history)
+            return self._call_claude(opt, prompt, max_tokens, system, json_mode, history, images=images)
         if opt.provider == "ollama":
-            return self._call_ollama(opt, prompt, max_tokens, system, json_mode, history)
+            return self._call_ollama(opt, prompt, max_tokens, system, json_mode, history, images=images)
         if opt.provider == "openai_compat":
-            return self._call_openai(opt, prompt, max_tokens, system, json_mode, history)
+            return self._call_openai(opt, prompt, max_tokens, system, json_mode, history, images=images)
         return ""
 
     def _call_claude(self, opt: LLMOption, prompt: str,
                      max_tokens: int, system: str,
-                     json_mode: bool, history: list = None) -> str:
+                     json_mode: bool, history: list = None,
+                     images: list[str] | None = None) -> str:
         api_key = (self._config.get("claude_api_key")
                    or os.environ.get("ANTHROPIC_API_KEY",""))
         # Build messages: history + current prompt
         msgs = list(history or [])
-        msgs.append({"role": "user", "content": prompt})
+        if images:
+            user_content: list = [
+                {"type": "image", "source": {"type": "base64",
+                  "media_type": "image/jpeg", "data": img}}
+                for img in images
+            ]
+            user_content.append({"type": "text", "text": prompt})
+            msgs.append({"role": "user", "content": user_content})
+        else:
+            msgs.append({"role": "user", "content": prompt})
         body: dict = {"model":opt.model,"max_tokens":max_tokens,"messages":msgs}
         if system:
             body["system"] = system
@@ -541,7 +553,8 @@ class LLMRouter:
 
     def _call_ollama(self, opt: LLMOption, prompt: str,
                      max_tokens: int, system: str,
-                     json_mode: bool, history: list = None) -> str:
+                     json_mode: bool, history: list = None,
+                     images: list[str] | None = None) -> str:
         # Prepend history as conversation context in the prompt
         if history:
             ctx = "\n".join(
@@ -551,6 +564,8 @@ class LLMRouter:
         else:
             full_prompt = prompt
         body: dict = {"model":opt.model,"prompt":full_prompt,"stream":False}
+        if images:
+            body["images"] = images
         if json_mode:
             body["format"] = "json"
         payload = json.dumps(body).encode()
@@ -561,14 +576,24 @@ class LLMRouter:
 
     def _call_openai(self, opt: LLMOption, prompt: str,
                      max_tokens: int, system: str,
-                     json_mode: bool, history: list = None) -> str:
+                     json_mode: bool, history: list = None,
+                     images: list[str] | None = None) -> str:
         api_key = (self._config.get("openai_api_key")
                    or os.environ.get("OPENAI_API_KEY",""))
         msgs = []
         if system:
             msgs.append({"role":"system","content":system})
         msgs.extend(history or [])
-        msgs.append({"role":"user","content":prompt})
+        if images:
+            user_content: list = [
+                {"type": "image_url",
+                 "image_url": {"url": f"data:image/jpeg;base64,{img}"}}
+                for img in images
+            ]
+            user_content.append({"type": "text", "text": prompt})
+            msgs.append({"role": "user", "content": user_content})
+        else:
+            msgs.append({"role":"user","content":prompt})
         body: dict = {"model":"gpt-4o-mini","max_tokens":max_tokens,"messages":msgs}
         if json_mode:
             body["response_format"] = {"type":"json_object"}

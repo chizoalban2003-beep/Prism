@@ -253,6 +253,12 @@ class PrismAgent:
         (r"(?:overdue|due today|pending|upcoming) (?:tasks?|reminders?|todos?)|task reminder",
          "task_reminder"),
         (r"policy (?:audit|log|history)|audit (?:log|trail)", "policy_audit"),
+        # Vision / screen analysis — must come after screenshot_capture
+        (r"what(?:'s| is) on (?:my |the )?screen|analyse (?:my |the )?screen|"
+         r"analyze (?:my |the )?screen|describe (?:my |the )?screen|"
+         r"look at (?:my |the )?screen|what do you see|vision query|"
+         r"read (?:my |the )?screen|what(?:'s| is) (?:happening|visible) on screen",
+         "vision_query"),
     ]
 
     def __init__(
@@ -1765,6 +1771,9 @@ class PrismAgent:
             lines = "\n".join(f"• **{o}**" for o in organs[:20])
             return text_card(lines, f"Loaded organs ({len(organs)})")
 
+        if intent == "vision_query":
+            return self._handle_vision_query(message, ctx)
+
         # Dynamic organ registry — check loaded and synthesized organs
         organ_fn = self._organ_loader.get(intent)
         if organ_fn is not None:
@@ -1913,6 +1922,55 @@ class PrismAgent:
             "Voice input is ready. Send an audio file path or use the /voice/transcribe "
             "API endpoint to upload audio.",
             "Voice Ready")
+
+    def _handle_vision_query(self, message: str, ctx: dict) -> PrismCard:
+        """Capture a screenshot and feed it to the LLM for visual reasoning."""
+        try:
+            import base64
+            try:
+                import mss
+                import mss.tools
+                with mss.mss() as sct:
+                    img = sct.grab(sct.monitors[1])
+                    # Convert to JPEG bytes via mss.tools
+                    img_bytes = mss.tools.to_png(img.rgb, img.size)
+            except ImportError:
+                return text_card(
+                    "Vision analysis requires the mss library.\n"
+                    "Install with: pip install mss\n\n"
+                    "Alternatively, I can analyse an image you provide via "
+                    "POST /perception/visual/reason",
+                    "Vision — mss not installed")
+            # Re-encode PNG bytes as JPEG-compatible base64 (PNG is fine for Claude)
+            b64_img = base64.b64encode(img_bytes).decode("ascii")
+            router = getattr(self, "_router", None)
+            if router is None:
+                return text_card(
+                    "No LLM available to analyse the screenshot.", "Vision")
+            result, model = router.call(
+                prompt=message,
+                images=[b64_img],
+                min_capability=2,
+                max_tokens=800,
+                system="You are a visual assistant. Describe what you see on the screen clearly and concisely.",
+            )
+            if not result:
+                return text_card("LLM returned no response for the screenshot.", "Vision")
+            return text_card(result, "Vision Analysis")
+        except Exception as exc:
+            logger.warning("vision_query failed: %s", exc)
+            # Fallback: text-only analysis without screenshot
+            router = getattr(self, "_router", None)
+            if router:
+                result, _ = router.call(
+                    prompt=message,
+                    min_capability=1,
+                    max_tokens=400,
+                )
+                if result:
+                    return text_card(result, "Vision Analysis (text-only)")
+            return text_card(
+                f"Could not capture or analyse screen: {exc}", "Vision Error")
 
     def _handle_unknown(self, intent: str, message: str, ctx: dict) -> PrismCard:
         """
