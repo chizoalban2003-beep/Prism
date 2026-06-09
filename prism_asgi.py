@@ -55,6 +55,25 @@ if _FASTAPI_AVAILABLE:
         allow_headers=["*"],
     )
 
+    # ── Messaging gateway lifespan ────────────────────────────────────────
+    # To wire messaging gateway startup/shutdown into a FastAPI lifespan:
+    #
+    #   from contextlib import asynccontextmanager
+    #   from prism_messaging_gateway import start_all_gateways, stop_all_gateways
+    #
+    #   @asynccontextmanager
+    #   async def lifespan(app: FastAPI):
+    #       config = _state.get("messaging_config", {})
+    #       await start_all_gateways(config)
+    #       yield
+    #       await stop_all_gateways()
+    #
+    #   app = FastAPI(title="Prism ASGI", version="0.2", lifespan=lifespan)
+    #
+    # The daemon can also call start_all_gateways() directly after agent init:
+    #   from prism_messaging_gateway import start_all_gateways
+    #   await start_all_gateways(messaging_config)
+
     # ── Include all routers ───────────────────────────────────────────────
 
     from prism_routes_agent import router as agent_router

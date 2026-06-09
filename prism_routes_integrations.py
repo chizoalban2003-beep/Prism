@@ -1,7 +1,8 @@
 """
 prism_routes_integrations.py
 ============================
-FastAPI router for email, calendar, browser, instructions, and discovery endpoints.
+FastAPI router for email, calendar, browser, instructions, discovery, and
+messaging gateway endpoints.
 
 Routes:
   GET  /email/status
@@ -15,6 +16,9 @@ Routes:
   POST /instructions
   GET  /discovery/services
   POST /discovery/build
+  GET  /integrations/messaging/status
+  POST /integrations/messaging/send
+  POST /integrations/messaging/webhook/whatsapp
 """
 from __future__ import annotations
 
@@ -262,3 +266,190 @@ async def discovery_build(request: Request):
     return JSONResponse(
         {"error": "Discovery not initialised", "status": 503}, status_code=503
     )
+
+
+# ---------------------------------------------------------------------------
+# /integrations/messaging
+# ---------------------------------------------------------------------------
+
+@router.get("/integrations/messaging/status")
+async def messaging_status():
+    """Return status of all registered messaging gateways."""
+    try:
+        from prism_messaging_gateway import gateway_registry
+    except ImportError as exc:
+        return JSONResponse({"error": str(exc), "status": 503}, status_code=503)
+
+    return {
+        "gateways": [
+            {"name": gw.name, "running": gw.running, "platform": gw.name}
+            for gw in gateway_registry.values()
+        ]
+    }
+
+
+@router.post("/integrations/messaging/send")
+async def messaging_send(request: Request):
+    """Send a message through a registered gateway.
+
+    Body: {"platform": str, "chat_id": str, "text": str}
+    """
+    body: Dict[str, Any] = {}
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "Invalid JSON body", "status": 400}, status_code=400)
+
+    try:
+        from prism_messaging_gateway import gateway_registry
+    except ImportError as exc:
+        return JSONResponse({"error": str(exc), "status": 503}, status_code=503)
+
+    platform = body.get("platform", "")
+    chat_id  = body.get("chat_id", "")
+    text     = body.get("text", "")
+
+    if not platform or not chat_id or not text:
+        return JSONResponse(
+            {"error": "'platform', 'chat_id' and 'text' are required", "status": 400},
+            status_code=400,
+        )
+
+    gw = gateway_registry.get(platform)
+    if gw is None:
+        return JSONResponse(
+            {"error": f"Gateway '{platform}' not registered or not running", "status": 404},
+            status_code=404,
+        )
+
+    try:
+        if platform == "telegram":
+            tg_app = getattr(gw, "_app", None)
+            if tg_app is None:
+                return JSONResponse({"error": "Telegram app not initialised"}, status_code=503)
+            await tg_app.bot.send_message(chat_id=int(chat_id), text=text)
+        elif platform == "whatsapp":
+            await gw._send_whatsapp(chat_id, text)
+        else:
+            return JSONResponse(
+                {"error": f"Direct send not implemented for '{platform}'"}, status_code=501
+            )
+        return {"ok": True}
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+
+
+@router.post("/integrations/messaging/webhook/whatsapp")
+async def messaging_webhook_whatsapp(request: Request):
+    """Handle an inbound Twilio WhatsApp webhook."""
+    try:
+        from prism_messaging_gateway import _dispatch, gateway_registry
+    except ImportError as exc:
+        return JSONResponse({"error": str(exc), "status": 503}, status_code=503)
+
+    try:
+        form = await request.form()
+        body = dict(form)
+    except Exception:
+        body = {}
+
+    gw = gateway_registry.get("whatsapp")
+    if gw is None:
+        # Gateway not running — still try to dispatch so the webhook never 5xx.
+        try:
+            from prism_messaging_gateway import WhatsAppGateway
+            gw = WhatsAppGateway("", "", "")
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)}, status_code=503)
+
+    try:
+        envelope = gw.receive(body)
+        response = await _dispatch(envelope)
+        await envelope.reply_fn(response)
+        return {"ok": True}
+    except Exception as exc:
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=500)
+
+
+# ---------------------------------------------------------------------------
+# /lora  — QLoRA fine-tuning pipeline
+# ---------------------------------------------------------------------------
+
+from typing import Optional as _Optional  # noqa: E402
+
+_lora_trainer: _Optional[Any] = None
+
+
+def _get_lora_trainer():
+    global _lora_trainer
+    if _lora_trainer is None:
+        try:
+            from prism_lora_trainer import PrismLoraTrainer
+            _lora_trainer = PrismLoraTrainer()
+        except Exception as exc:
+            return None, str(exc)
+    return _lora_trainer, None
+
+
+def _job_to_dict(job) -> Dict[str, Any]:
+    return {
+        "job_id":       job.job_id,
+        "base_model":   job.base_model,
+        "status":       job.status,
+        "pairs_used":   job.pairs_used,
+        "started_at":   job.started_at,
+        "finished_at":  job.finished_at,
+        "ollama_model": job.ollama_model,
+        "error":        job.error,
+    }
+
+
+@router.post("/lora/train")
+async def lora_train(request: Request):
+    """
+    POST /lora/train
+    Body (optional JSON): {"base_model": "llama3.2:3b", "min_pairs": 10}
+    Returns {"job_id": ..., "status": "pending"} or {"error": "not_enough_data"}.
+    """
+    body: Dict[str, Any] = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+
+    trainer, err = _get_lora_trainer()
+    if trainer is None:
+        return JSONResponse({"error": f"lora trainer unavailable: {err}"}, status_code=503)
+
+    base_model = body.get("base_model", "llama3.2:3b")
+    min_pairs  = int(body.get("min_pairs", 10))
+
+    job_id = trainer.start_training(base_model=base_model, min_pairs=min_pairs)
+    if job_id is None:
+        return JSONResponse({"error": "not_enough_data"}, status_code=422)
+
+    job = trainer.get_job(job_id)
+    return {"job_id": job_id, "status": job.status if job else "pending"}
+
+
+@router.get("/lora/status")
+async def lora_status_all():
+    """GET /lora/status — list all training jobs."""
+    trainer, err = _get_lora_trainer()
+    if trainer is None:
+        return JSONResponse({"error": f"lora trainer unavailable: {err}"}, status_code=503)
+
+    return {"jobs": [_job_to_dict(j) for j in trainer.list_jobs()]}
+
+
+@router.get("/lora/status/{job_id}")
+async def lora_status_one(job_id: str):
+    """GET /lora/status/{job_id} — single job status."""
+    trainer, err = _get_lora_trainer()
+    if trainer is None:
+        return JSONResponse({"error": f"lora trainer unavailable: {err}"}, status_code=503)
+
+    job = trainer.get_job(job_id)
+    if job is None:
+        return JSONResponse({"error": "job not found"}, status_code=404)
+    return _job_to_dict(job)
