@@ -166,6 +166,25 @@ class LoRARegistry:
             _log.debug("[lora] vLLM not available, using prompt template")
             return False
 
+    def register(self, job_id: str, gguf_path: str, ollama_model: str) -> LoRAAdapter:
+        """
+        Register a freshly trained LoRA adapter produced by PrismLoraTrainer.
+        Adds it to the in-memory registry and returns the new LoRAAdapter.
+        """
+        adapter_id = f"trained-{job_id}"
+        adapter = LoRAAdapter(
+            adapter_id=adapter_id,
+            task_type="trained",
+            system_prompt=(
+                "You are PRISM, a local-first AI assistant personalised to this user."
+            ),
+            weights_path=gguf_path,
+            base_model=ollama_model,
+        )
+        self._adapters[adapter_id] = adapter
+        _log.info("[lora] Registered trained adapter %s (gguf=%s)", adapter_id, gguf_path)
+        return adapter
+
 
 # Module-level singleton
 _registry: LoRARegistry | None = None
