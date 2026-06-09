@@ -64,6 +64,7 @@ if _FASTAPI_AVAILABLE:
     from prism_routes_core import router as core_router
     from prism_routes_federation import router as federation_router
     from prism_routes_horizon import router as horizon_router
+    from prism_routes_identity import router as identity_router
     from prism_routes_infra import router as infra_router
     from prism_routes_integrations import router as integrations_router
     from prism_routes_media import router as media_router
@@ -91,6 +92,7 @@ if _FASTAPI_AVAILABLE:
     app.include_router(sessions_router)
     app.include_router(users_router)
     app.include_router(federation_router)
+    app.include_router(identity_router)
     app.include_router(perception_router)
     app.include_router(causality_router)
 

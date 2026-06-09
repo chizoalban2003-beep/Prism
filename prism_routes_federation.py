@@ -203,3 +203,155 @@ async def federation_status():
         return _503
 
     return fm.status()
+
+
+# ---------------------------------------------------------------------------
+# GET /federation/identity — export identity payload for cross-device sync
+# ---------------------------------------------------------------------------
+
+
+@router.get("/federation/identity")
+async def federation_identity_get():
+    """
+    Return a portable identity payload (soul + persona) for syncing to a peer.
+
+    Peers call this endpoint then POST the result to their own
+    ``/federation/identity/merge``.
+    """
+    import time as _time
+
+    from prism_state import _get_agent as _ga
+    agent = _ga()
+    soul = getattr(agent, "_soul", None) if agent else None
+    persona = getattr(agent, "_persona", None) if agent else None
+    fm = _fed()
+
+    payload: Dict[str, Any] = {
+        "node_id": fm.node_id if fm else None,
+        "timestamp": _time.time(),
+    }
+
+    if soul is not None:
+        try:
+            payload["soul"] = soul.export_json()
+        except Exception:
+            payload["soul"] = None
+    else:
+        payload["soul"] = None
+
+    if persona is not None:
+        try:
+            traits = persona.list_traits()
+            payload["persona"] = {
+                "traits": [
+                    {
+                        "name": t.name,
+                        "value": t.value,
+                        "confidence": t.confidence,
+                        "source": t.source,
+                        "observation_count": t.observation_count,
+                    }
+                    for t in traits
+                ],
+            }
+        except Exception:
+            payload["persona"] = None
+    else:
+        payload["persona"] = None
+
+    return payload
+
+
+# ---------------------------------------------------------------------------
+# POST /federation/identity/merge — merge peer identity payload
+# ---------------------------------------------------------------------------
+
+
+@router.post("/federation/identity/merge")
+async def federation_identity_merge(request: Request):
+    """
+    Merge an identity payload received from a peer.
+
+    Body: the dict returned by the peer's ``GET /federation/identity``.
+
+    Soul beliefs are merged belief-by-belief (higher confidence wins).
+    Persona traits are upserted (higher confidence wins, source set to
+    ``"federated"``).
+    """
+    body: Dict[str, Any] = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+
+    if not body:
+        return JSONResponse({"error": "empty payload"}, status_code=400)
+
+    from prism_state import _get_agent as _ga
+    agent = _ga()
+    soul = getattr(agent, "_soul", None) if agent else None
+    persona = getattr(agent, "_persona", None) if agent else None
+
+    merged_beliefs = 0
+    merged_traits = 0
+
+    # Soul merge — belief-by-belief, higher confidence wins
+    soul_payload = body.get("soul") or {}
+    if soul is not None and soul_payload:
+        remote_beliefs = soul_payload.get("beliefs", [])
+        try:
+            existing = {b.text.lower(): b for b in soul.list_beliefs()}
+        except Exception:
+            existing = {}
+
+        for rb in remote_beliefs:
+            text = rb.get("text", "").strip()
+            if not text:
+                continue
+            try:
+                match = existing.get(text.lower())
+                if match:
+                    if rb.get("confidence", 0) > match.confidence:
+                        soul.update_belief(
+                            match.node_id,
+                            rb["confidence"],
+                            notes="federated from peer",
+                        )
+                        merged_beliefs += 1
+                else:
+                    soul.add_belief(
+                        text,
+                        belief_type=rb.get("belief_type", "value"),
+                        source="federated",
+                        confidence=rb.get("confidence", 0.5),
+                    )
+                    merged_beliefs += 1
+            except Exception:
+                pass
+
+    # Persona merge — trait upsert, higher confidence wins
+    persona_payload = body.get("persona") or {}
+    if persona is not None and persona_payload:
+        for rt in persona_payload.get("traits", []):
+            name = rt.get("name", "").strip()
+            if not name:
+                continue
+            try:
+                existing_trait = persona.get_trait(name)
+                if existing_trait is None or rt.get("confidence", 0) > existing_trait.confidence:
+                    persona.update_trait(
+                        name=name,
+                        value=rt.get("value", ""),
+                        confidence=rt.get("confidence", 0.5),
+                        source="federated",
+                    )
+                    merged_traits += 1
+            except Exception:
+                pass
+
+    return {
+        "ok": True,
+        "peer_node_id": body.get("node_id"),
+        "merged_beliefs": merged_beliefs,
+        "merged_traits": merged_traits,
+    }

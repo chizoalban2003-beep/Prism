@@ -3,12 +3,16 @@
 </p>
 
 <h1 align="center">PRISM — Decision Intelligence</h1>
-<p align="center"><strong>The AI that lives on your device, learns who you are, and acts before you ask.</strong></p>
+<p align="center"><strong>The first AI that becomes a different system for every person who uses it.</strong></p>
 
 <p align="center">
   Not a chatbot. Not a rules engine. Not an LLM wrapper.<br>
-  A local-first personal AI that crystallises around you — your habits, goals and values —<br>
-  and acts on your behalf without sending anything to the cloud.
+  A local-first personal AI that crystallises around you — your decisions, habits, and values —<br>
+  until your Prism is not the same software as anyone else's Prism.
+</p>
+
+<p align="center">
+  <em>"Your Prism is not my Prism. After six months, it won't even be the same software."</em>
 </p>
 
 <p align="center">
@@ -18,6 +22,25 @@
   <img src="https://img.shields.io/badge/cloud-none-orange" alt="no cloud"/>
   <img src="https://img.shields.io/badge/runs-locally-orange" alt="local"/>
 </p>
+
+---
+
+## The Personification Moat
+
+Every other AI stores memory. Prism builds a **model of you** — from your actual decisions, not self-reported preferences.
+
+The crystallisation engine watches how you work: when you accept suggestions and when you push back, what vocabulary you use, what hours you're most active, which domains you defer on after 7pm. Over time, the system **changes its own behaviour** to match yours. Routing changes. Risk thresholds shift. The Gaussian spectrum weights adjust. Your Prism becomes fundamentally different from someone else's Prism — not because you configured it differently, but because it watched you.
+
+This is the Jarvis distinction. Jarvis wasn't a chatbot with Tony's calendar. Jarvis had an operating model of Tony: his risk tolerance, his creative process, when to interrupt and when not to. After six months, your Prism is a system that cannot be replicated elsewhere — because it contains your decision history, your crystallised values, and the behavioural patterns it inferred from watching you specifically.
+
+**The arc:**
+- **LIQUID** — *"I'm learning who you are."* Exploratory, tries variations, builds initial identity.
+- **Crystallising** — *"I'm starting to recognise you."* Recommendations sharpen. Proactive triggers fire on inferred patterns.
+- **CRYSTAL** — *"This is your Prism."* Routes differently. Prioritises differently. Knows your operating model.
+
+**The moat statement:**
+
+> Your decision history, identity model, and organ configuration stay on this device. They cannot be read, trained on, or transferred without your consent. This is your Prism.
 
 ---
 
@@ -207,7 +230,7 @@ PRISM's REST API runs on **FastAPI + uvicorn** (ASGI) — not the Python stdlib 
 - **True concurrent requests** — uvicorn's event loop handles all connections simultaneously; no thread-per-connection serialisation
 - **Real token streaming** — `/stream/chat` SSE yields tokens as they arrive; `/ws/chat` WebSocket provides bidirectional multi-turn chat over a persistent connection
 - **Non-blocking LLM I/O** — `prism_llm_router.py` exposes `async_call()` and `async_call_stream()` using httpx, with automatic fallback to `asyncio.to_thread(call())` when httpx is absent
-- **161 routes + 1 WebSocket across 17 FastAPI router modules** — `prism_routes_predict`, `prism_routes_analytics`, `prism_routes_agent`, `prism_routes_chain`, `prism_routes_core`, `prism_routes_horizon`, `prism_routes_infra`, `prism_routes_integrations`, `prism_routes_media`, `prism_routes_sensors`, `prism_routes_ui`, `prism_routes_mobile`, `prism_routes_users`, `prism_routes_federation`, `prism_routes_perception`, `prism_routes_causality`, `prism_routes_sessions`
+- **171 routes + 1 WebSocket across 18 FastAPI router modules** — `prism_routes_predict`, `prism_routes_analytics`, `prism_routes_agent`, `prism_routes_chain`, `prism_routes_core`, `prism_routes_horizon`, `prism_routes_infra`, `prism_routes_integrations`, `prism_routes_media`, `prism_routes_sensors`, `prism_routes_ui`, `prism_routes_mobile`, `prism_routes_users`, `prism_routes_federation`, `prism_routes_identity`, `prism_routes_perception`, `prism_routes_causality`, `prism_routes_sessions`
 - **CORS** — all origins allowed at the ASGI middleware layer (appropriate for 127.0.0.1-only binding)
 
 ```
@@ -403,6 +426,46 @@ Chat commands:
 Weekly narratives are stored to `PrismMemory` as `source="narrative"` — they become semantically searchable, so future sessions can recall "three weeks ago PRISM noted you prefer X."
 
 The three systems feed each other: outcomes update beliefs (soul) → beliefs shape decisions → decisions create patterns (persona) → patterns inform every future response.
+
+### Identity Dashboard
+
+Open **http://localhost:8742/identity/ui** to see your crystallised identity in real time:
+
+- **Phase badge** — CRYSTAL / STABLE / VISCOUS / LIQUID with Φ_melt pressure gauge
+- **Trait bars** — every crystallised trait with confidence percentage and source
+- **Soul beliefs** — stated vs observed with contradiction detection
+- **7-day growth** — new traits, new patterns, confidence delta, peak hours
+- **Active tensions** — where stated values diverge from observed behaviour
+
+JSON snapshot at `GET /identity/dashboard` for programmatic access.
+
+### Identity Ceremony (LIQUID onboarding)
+
+First boot: 7 conversational questions that seed your soul model in 3 minutes.
+
+```bash
+# Run from CLI
+python3 prism_daemon.py --ceremony
+
+# Or open the web ceremony page
+http://localhost:8742/identity/onboard
+```
+
+Prism displays your current phase throughout: *"You are in LIQUID phase. 47 observations so far."* As patterns crystallise, the phase transitions automatically — no configuration needed.
+
+### Cross-Device Identity Continuity
+
+Your Prism follows you across devices via the federation layer:
+
+```bash
+# Export your identity from device A
+GET /federation/identity
+
+# Import it on device B
+POST /federation/identity/merge   {"soul": {...}, "persona": {...}, "node_id": "device-a"}
+```
+
+Belief merging uses higher-confidence-wins: your phone and laptop's models converge to the most confident reading of who you are. Lamport clocks ensure causal ordering; no central server required.
 
 ---
 
@@ -1071,6 +1134,21 @@ Open **http://localhost:8742** for the chat UI. The async server handles concurr
 | GET | `/organ_bus/history` | Recent organ bus call history |
 | GET | `/organ_bus/subscribers` | Active organ bus subscribers |
 
+### Identity & Onboarding
+
+| Method | Route | Description |
+|---|---|---|
+| GET | `/identity/ui` | Visual identity dashboard (HTML) |
+| GET | `/identity/dashboard` | Full identity snapshot JSON |
+| GET | `/identity/onboard` | Interactive ceremony page (HTML) |
+| GET | `/onboarding/status` | Ceremony completion status + current phase |
+| POST | `/onboarding/start` | Start (or restart) the identity ceremony |
+| POST | `/onboarding/answer` | Submit next ceremony answer `{"answer":"..."}` |
+| GET | `/reports/weekly` | Latest weekly reflection report |
+| POST | `/reports/weekly/generate` | Trigger immediate reflection run |
+| GET | `/federation/identity` | Export soul + persona for cross-device sync |
+| POST | `/federation/identity/merge` | Merge identity payload from a peer |
+
 ### Memory & Perception
 
 | Method | Route | Description |
@@ -1279,7 +1357,7 @@ PRISM/
 │   ├── kde_agent.py            KDEAgent — unified sports + domain agent
 │   ├── prism_asgi.py           FastAPI/ASGI server — 132 async routes on :8742
 │   ├── prism_state.py          Shared dependency-injection state for ASGI routes
-│   ├── prism_routes_*.py       16 FastAPI router modules (predict/agent/chain/users/federation/perception/causality/…)
+│   ├── prism_routes_*.py       18 FastAPI router modules (predict/agent/chain/users/federation/identity/perception/causality/…)
 │   ├── prism_multi_user.py     Multi-user registry + household bus
 │   ├── prism_mobile_sync.py    Mobile client sync + HMAC token auth + health data ingestion
 │   ├── prism_federation.py     Federated mesh — peer discovery, Lamport clock, state merge
@@ -1572,7 +1650,10 @@ All major capabilities are implemented and tested. The table below is the author
 | Horizon goals | `prism_horizon.py` | **Working** — cross-session goal watching; say "watch for X when Y" in chat |
 | Organ library | `organs/` + `~/.prism/organs/` | **Working** — 35 bundled organs; user-creatable; LLM-synthesisable on demand |
 | Identity layer | `prism_soul.py` | Working — belief graph, user-defined lenses, stated vs observed delta, LLM context injection |
-| Identity ceremony | `prism_identity_ceremony.py` | Working — 7-question LLM-facilitated onboarding, heuristic fallback |
+| Identity ceremony | `prism_identity_ceremony.py` | Working — 7-question LLM-facilitated onboarding, heuristic fallback; web ceremony at `/identity/onboard` |
+| Identity dashboard | `prism_routes_identity.py` | Working — visual phase, traits, beliefs, growth, tensions at `/identity` |
+| Weekly "Your Prism" report | `prism_routes_identity.py` | Working — reflection run on demand; `POST /reports/weekly/generate` |
+| Cross-device identity continuity | `prism_routes_identity.py` + `prism_routes_federation.py` | Working — soul/persona export+merge; higher-confidence-wins belief merging |
 | Continuous daemon | `prism_daemon.py` | Working — systemd-compatible, OrganBus flush, horizon evaluation, --ceremony flag |
 | Layered memory graph | `prism_memory_graph.py` | **Working** — hot buffer + WAL + cold layer; `replay_wal()` crash recovery; `consistency_psi()` |
 | Write-ahead log | `prism_wal.py` | **Working** — append-only, idempotent seq_ids, thread-safe; drains on commit |
