@@ -417,6 +417,20 @@ class PrismAgent:
             logger.warning("KineticEngine not available: %s", e)
             self._kinetic = None
 
+        # Surgical ML Assembler — task-profiling algorithm compiler
+        self._ml_assembler: Optional[Any] = None
+        try:
+            from prism_ml_assembler import MLAssembler
+            from prism_routes_ml import get_or_set_assembler as _set_asm
+            self._ml_assembler = MLAssembler(
+                llm_router=self._router,
+                outcome_tracker=getattr(self, "_outcome_tracker", None),
+            )
+            _set_asm(self._ml_assembler)
+            logger.info("MLAssembler ready")
+        except Exception as e:
+            logger.warning("MLAssembler not available: %s", e)
+
         self._search = PrismSearch.from_config(self._config)
         self._push   = PrismPush.from_config(self._config)
         if self._proactive:

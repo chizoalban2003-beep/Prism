@@ -89,6 +89,7 @@ if _FASTAPI_AVAILABLE:
     from prism_routes_integrations import router as integrations_router
     from prism_routes_kinetic import router as kinetic_router
     from prism_routes_media import router as media_router
+    from prism_routes_ml import router as ml_router
     from prism_routes_mobile import router as mobile_router
     from prism_routes_perception import router as perception_router
     from prism_routes_predict import router as predict_router
@@ -118,6 +119,7 @@ if _FASTAPI_AVAILABLE:
     app.include_router(perception_router)
     app.include_router(causality_router)
     app.include_router(kinetic_router)
+    app.include_router(ml_router)
 
     # ── Built-in routes (kept from Phase 1) ──────────────────────────────
 
