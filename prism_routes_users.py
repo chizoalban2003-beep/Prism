@@ -230,7 +230,7 @@ async def user_identity(user_id: str):
         agent = _get_agent()
         phase_engine = getattr(agent, "_phase", None) if agent else None
         if phase_engine is not None:
-            reading = phase_engine.compute(None, None)
+            reading = phase_engine.compute(None, None, kinetic=getattr(agent, "_kinetic", None))
             phase_val = reading.phase.value if hasattr(reading.phase, "value") else str(reading.phase)
             snapshot["phase"] = phase_val
     except Exception:

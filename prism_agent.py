@@ -591,6 +591,7 @@ class PrismAgent:
         _ot = getattr(self, '_outcome_tracker', None)
         if _ot is not None:
             _ot._crystalliser = getattr(self, '_crystalliser', None)
+            _ot._kinetic      = getattr(self, '_kinetic', None)
 
         # ContextManager — work/personal/focus context switching
         try:

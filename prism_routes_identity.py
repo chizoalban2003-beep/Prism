@@ -55,6 +55,11 @@ def _phase_engine():
     return getattr(agent, "_phase", None) if agent else None
 
 
+def _kinetic_engine():
+    agent = _get_agent()
+    return getattr(agent, "_kinetic", None) if agent else None
+
+
 def _reflection():
     agent = _get_agent()
     return getattr(agent, "_reflection", None) if agent else None
@@ -82,7 +87,7 @@ async def identity_dashboard():
     phase_engine = _phase_engine()
     if phase_engine is not None:
         try:
-            reading = phase_engine.compute(soul, None)
+            reading = phase_engine.compute(soul, None, kinetic=_kinetic_engine())
             phase_val = reading.phase.value if hasattr(reading.phase, "value") else str(reading.phase)
             snapshot["phase"] = {
                 "current": phase_val,

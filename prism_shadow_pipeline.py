@@ -120,6 +120,7 @@ class PrismShadowPipeline:
                         reading = self._phase_engine.compute(
                             soul=self._soul,
                             bridge=getattr(self, "_bridge", None),
+                            kinetic=getattr(self, "_kinetic", None),
                         )
                         if self._phase_engine.should_melt():
                             _log.info(

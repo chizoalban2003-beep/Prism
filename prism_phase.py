@@ -191,20 +191,33 @@ class CrystallizationEngine:
 
     # ── Public API ────────────────────────────────────────────────────────
 
-    def compute(self, soul: Optional[Any] = None, bridge: Optional[Any] = None) -> PhaseReading:
+    def compute(
+        self,
+        soul: Optional[Any] = None,
+        bridge: Optional[Any] = None,
+        kinetic: Optional[Any] = None,
+    ) -> PhaseReading:
         """
         Compute a fresh PhaseReading.
         soul.run_entailment_check() is used for ΔK; gracefully handles None.
         The entailment call is cached for _entailment_ttl seconds to avoid spam.
-        bridge: optional BiometricVEAXBridge for biological pressure (ΔB, Vector IV).
+        bridge:  optional BiometricVEAXBridge for biological pressure (ΔB, Vector IV).
+        kinetic: optional KineticEngine — compound personal signal pressure (ΔC, Vector V).
         """
         delta_h = self._compute_delta_H()
         delta_k = self._compute_delta_K(soul)
         delta_b = self._compute_delta_B(bridge)
+        delta_c = self._compute_delta_C(kinetic)
 
-        # Extended Φ_melt: reweight when biological signal available (Vector IV)
-        if delta_b > 0.0:
+        # Φ_melt formula — weights rebalanced when extra vectors are active.
+        # ΔC weight is kept modest (0.10) so single-domain spikes don't dominate;
+        # the compound engine already requires multi-signal convergence.
+        if delta_b > 0.0 and delta_c > 0.0:
+            phi = 0.40 * delta_h + 0.25 * delta_k + 0.15 * delta_b + 0.10 * delta_c
+        elif delta_b > 0.0:
             phi = 0.5 * delta_h + 0.3 * delta_k + 0.2 * delta_b
+        elif delta_c > 0.0:
+            phi = 0.50 * delta_h + 0.35 * delta_k + 0.15 * delta_c
         else:
             phi = self.alpha * delta_h + self.beta * delta_k
 
@@ -220,8 +233,8 @@ class CrystallizationEngine:
         reading = PhaseReading(phi=phi, delta_H=delta_h, delta_K=delta_k, phase=phase)
         self.history.append(reading)
         logger.debug(
-            "[phase] ΔH=%.3f ΔK=%.3f ΔB=%.3f Φ=%.3f phase=%s",
-            delta_h, delta_k, delta_b, phi, phase.value,
+            "[phase] ΔH=%.3f ΔK=%.3f ΔB=%.3f ΔC=%.3f Φ=%.3f phase=%s",
+            delta_h, delta_k, delta_b, delta_c, phi, phase.value,
         )
         return reading
 
@@ -327,6 +340,20 @@ class CrystallizationEngine:
             v_debt = dyn.get_axis_debt("V")
             e_debt = dyn.get_axis_debt("E")
             return min(1.0, (v_debt * 0.6 + e_debt * 0.4) / 1.5)
+        except Exception:
+            return 0.0
+
+    def _compute_delta_C(self, kinetic: Any) -> float:
+        """
+        Compound personal-signal pressure from KineticEngine (Vector V).
+        ΔC = compound_phi_delta() / 5.0 (normalised to [0, 1] using action_threshold).
+        Returns 0.0 if kinetic is None or unavailable.
+        """
+        if kinetic is None:
+            return 0.0
+        try:
+            raw = kinetic.compound_phi_delta()
+            return max(0.0, min(1.0, raw / 5.0))
         except Exception:
             return 0.0
 

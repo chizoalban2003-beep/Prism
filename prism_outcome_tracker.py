@@ -88,6 +88,7 @@ class OutcomeTracker:
         self._soul         = soul
         self._horizon      = horizon
         self._crystalliser = None
+        self._kinetic      = None   # KineticEngine — wired by prism_agent at startup
         self._init_db()
 
     # ------------------------------------------------------------------
@@ -144,6 +145,7 @@ class OutcomeTracker:
             except Exception:
                 pass
 
+        self._kinetic_feedback(rec)
         return rec
 
     def recent(self, n: int = 20, context_id: Optional[str] = None) -> list[OutcomeRecord]:
@@ -242,9 +244,79 @@ class OutcomeTracker:
                     )
                     break
 
+    def record_ml_result(
+        self,
+        result_id: str,
+        task: str,
+        algorithm: str,
+        confidence: float,
+        duration_ms: float,
+        error: Optional[str] = None,
+    ) -> None:
+        """Persist one MLAssembler result for nightly Grid Search review."""
+        with sqlite3.connect(self._db) as con:
+            con.execute(
+                "INSERT OR IGNORE INTO ml_results VALUES (?,?,?,?,?,?,?)",
+                (result_id, task[:400], algorithm, confidence,
+                 duration_ms, error or "", time.time()),
+            )
+
+    def get_ml_results(self, min_error: float = 0.15, days: int = 7) -> list[dict]:
+        """Return ML results whose confidence is below (1 - min_error), for nightly sweep."""
+        since = time.time() - days * 86400
+        threshold = 1.0 - min_error
+        with sqlite3.connect(self._db) as con:
+            rows = con.execute(
+                "SELECT result_id, task, algorithm, confidence, duration_ms, error, timestamp "
+                "FROM ml_results WHERE confidence < ? AND timestamp >= ? ORDER BY timestamp DESC",
+                (threshold, since),
+            ).fetchall()
+        return [
+            {"result_id": r[0], "task": r[1], "algorithm": r[2],
+             "confidence": r[3], "duration_ms": r[4], "error": r[5], "timestamp": r[6]}
+            for r in rows
+        ]
+
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
+
+    def _kinetic_feedback(self, rec: OutcomeRecord) -> None:
+        """
+        After each chain outcome, update KineticEngine cross-domain link confidence.
+
+        Done outcomes → slight boost (+0.05, capped 1.0) on active lever links.
+        User-corrected → slight decay (−0.07, floored 0.0) — the compound signal
+        fired but the answer was wrong, so the cross-domain diagnosis was off.
+        Abandoned outcomes are treated as noise and ignored.
+        """
+        kinetic = self._kinetic
+        if kinetic is None:
+            return
+        if rec.outcome == OUTCOME_ABANDONED:
+            return
+        try:
+            windows = kinetic.active_windows(max_age_seconds=120.0)
+            if not windows:
+                return
+
+            delta = +0.05 if rec.outcome == OUTCOME_DONE else -0.07
+            # Only update links that contributed to recently active levers
+            active_lever_ids = {w.lever_id for w in windows}
+            for link in kinetic._links:
+                # Check if this link's source domain contributed to an active lever
+                contributing = any(
+                    w.source_signal.domain in (link.source_domain, link.target_domain)
+                    for w in windows
+                    if w.lever_id in active_lever_ids
+                )
+                if contributing:
+                    new_conf = max(0.0, min(1.0, link.confidence + delta))
+                    kinetic.update_link_confidence(
+                        link.source_domain, link.target_domain, new_conf
+                    )
+        except Exception as exc:
+            logger.debug("[outcome_tracker] kinetic feedback failed: %s", exc)
 
     def _incremental_soul_update(self, rec: OutcomeRecord) -> None:
         if self._soul is None:
@@ -329,6 +401,20 @@ class OutcomeTracker:
             if "context_id" not in cols:
                 con.execute("ALTER TABLE outcomes ADD COLUMN context_id TEXT NOT NULL DEFAULT 'default'")
             con.execute("PRAGMA user_version = 1")
+        if ver < 2:
+            con.execute("""
+                CREATE TABLE IF NOT EXISTS ml_results (
+                    result_id   TEXT PRIMARY KEY,
+                    task        TEXT NOT NULL DEFAULT '',
+                    algorithm   TEXT NOT NULL DEFAULT '',
+                    confidence  REAL NOT NULL DEFAULT 0.0,
+                    duration_ms REAL NOT NULL DEFAULT 0.0,
+                    error       TEXT NOT NULL DEFAULT '',
+                    timestamp   REAL NOT NULL
+                )
+            """)
+            con.execute("CREATE INDEX IF NOT EXISTS idx_ml_ts ON ml_results(timestamp)")
+            con.execute("PRAGMA user_version = 2")
 
     def _init_db(self) -> None:
         with sqlite3.connect(self._db) as con:
