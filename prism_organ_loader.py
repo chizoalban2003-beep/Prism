@@ -42,9 +42,12 @@ visitor runs before any code executes, and the file is saved to
 from __future__ import annotations
 
 import ast
+import hashlib
 import importlib.util
 import json
 import logging
+import py_compile
+import time
 from pathlib import Path
 from typing import Any, Callable, Optional  # noqa: F401
 
@@ -52,6 +55,9 @@ logger = logging.getLogger(__name__)
 
 BUNDLED_DIR = Path(__file__).parent / "organs"
 USER_DIR    = Path("~/.prism/organs").expanduser()
+
+_INDEX_FILE    = "index.json"
+_INDEX_VERSION = 1
 
 # ── AST safety ───────────────────────────────────────────────────────────────
 
@@ -177,6 +183,8 @@ class OrganLoader:
         self._organs:  dict[str, tuple[Callable, dict]] = {}
         self._disabled: set[str] = set()
         self._organ_sources: dict[str, str] = {}  # intent → "bundled" | "user"
+        # {intent: {path, hash, version, description, compiled, safe, created_at}}
+        self._index: dict[str, dict] = {}
         self._user.mkdir(parents=True, exist_ok=True)
         self._load_all()
 
@@ -254,10 +262,26 @@ class OrganLoader:
         """Return organ_details for all known intents, sorted by intent name."""
         return [d for i in sorted(self._organs.keys()) if (d := self.organ_details(i)) is not None]
 
+    def index_status(self) -> dict:
+        """
+        Return the current in-memory index for user organs.
+
+        Keys: ``version``, ``entry_count``, ``compiled_count``, ``entries``
+        (a copy of the index dict so callers cannot mutate internal state).
+        """
+        compiled = sum(1 for e in self._index.values() if e.get("compiled"))
+        return {
+            "version":        _INDEX_VERSION,
+            "entry_count":    len(self._index),
+            "compiled_count": compiled,
+            "entries":        {k: dict(v) for k, v in self._index.items()},
+        }
+
     def reload(self) -> int:
         """Re-scan bundled and user dirs. Returns number of organs now loaded."""
         self._organs.clear()
         self._organ_sources.clear()
+        self._index.clear()
         # Keep disabled set intact so user's choices persist across reload
         self._load_all()
         return len(self._organs)
@@ -271,10 +295,20 @@ class OrganLoader:
         if self._organ_sources.get(intent) != "user":
             return False
         path = self._user / f"{intent}.py"
+        # Remove compiled bytecode if present
+        try:
+            pyc = Path(importlib.util.cache_from_source(str(path)))
+            pyc.unlink(missing_ok=True)
+        except Exception:
+            pass
         path.unlink(missing_ok=True)
         self._organs.pop(intent, None)
         self._organ_sources.pop(intent, None)
         self._disabled.discard(intent)
+        # Remove from index and persist
+        if intent in self._index:
+            del self._index[intent]
+            self._save_index()
         # Also remove from LOGIC_REGISTRY if present
         try:
             from prism_composer import LOGIC_REGISTRY
@@ -378,9 +412,13 @@ class OrganLoader:
         out_path.write_text(code)
         logger.info("[organ_loader] Synthesized organ saved: %s", out_path)
 
-        fn = self._load_file(out_path)
+        compiled = self._compile_organ(out_path)
+
+        fn = self._load_file(out_path, trusted=True)
         if fn is None:
             out_path.unlink(missing_ok=True)
+            self._index.pop(intent, None)
+            self._save_index()
             return False
 
         meta = {
@@ -389,31 +427,71 @@ class OrganLoader:
             "version":     "1.0",
         }
         self._register(intent, fn, meta, source="user")
+        # Index entry already written by _register; update compiled flag
+        if intent in self._index:
+            self._index[intent]["compiled"] = compiled
+            self._save_index()
         return True
 
     # ── Loading ───────────────────────────────────────────────────────────────
 
     def _load_all(self):
+        self._index = self._load_index()
+        index_dirty = False
+
         for directory, source in ((self._bundled, "bundled"), (self._user, "user")):
             if not directory.exists():
                 continue
             for path in sorted(directory.glob("*.py")):
                 if path.name.startswith("_"):
                     continue
-                fn = self._load_file(path)
+
+                # For user organs: skip AST re-scan when hash matches cached entry
+                trusted = False
+                if source == "user":
+                    file_hash = self._file_hash(path)
+                    cached = self._index.get(path.stem, {})
+                    trusted = (
+                        cached.get("hash") == file_hash
+                        and cached.get("safe", False)
+                    )
+
+                fn = self._load_file(path, trusted=trusted)
                 if fn is None:
                     continue
                 meta   = getattr(fn, "_organ_meta", {})
                 intent = meta.get("intent") or path.stem
                 self._register(intent, fn, meta, source=source)
 
-    def _load_file(self, path: Path) -> Optional[Callable]:
-        code = path.read_text()
-        safe, reason = _is_safe(code)
-        if not safe:
-            logger.warning("[organ_loader] Skipping unsafe organ %s: %s",
-                           path.name, reason)
-            return None
+                if source == "user":
+                    fh = file_hash if trusted else self._file_hash(path)
+                    existing = self._index.get(intent, {})
+                    new_entry = {
+                        "path":        path.name,
+                        "version":     meta.get("version", "1.0"),
+                        "description": meta.get("description", intent),
+                        "hash":        fh,
+                        "compiled":    self._pyc_is_current(path),
+                        "safe":        True,
+                        "source":      "user",
+                        "created_at":  existing.get("created_at", time.time()),
+                    }
+                    if existing != new_entry:
+                        self._index[intent] = new_entry
+                        index_dirty = True
+
+        if index_dirty:
+            self._save_index()
+
+    def _load_file(self, path: Path, trusted: bool = False) -> Optional[Callable]:
+        """Load an organ from *path*.  When *trusted* is True, skip AST safety scan."""
+        if not trusted:
+            code = path.read_text()
+            safe, reason = _is_safe(code)
+            if not safe:
+                logger.warning("[organ_loader] Skipping unsafe organ %s: %s",
+                               path.name, reason)
+                return None
         try:
             spec   = importlib.util.spec_from_file_location(
                 f"_organ_{path.stem}", path)
@@ -443,6 +521,54 @@ class OrganLoader:
                 logger.debug("[organ_loader] Added %s to LOGIC_REGISTRY", intent)
         except ImportError:
             pass
+
+    # ── Index ─────────────────────────────────────────────────────────────────
+
+    def _load_index(self) -> dict:
+        path = self._user / _INDEX_FILE
+        try:
+            data = json.loads(path.read_text())
+            if isinstance(data, dict) and data.get("version") == _INDEX_VERSION:
+                return data.get("entries", {})
+        except Exception:
+            pass
+        return {}
+
+    def _save_index(self) -> None:
+        path = self._user / _INDEX_FILE
+        try:
+            path.write_text(json.dumps(
+                {"version": _INDEX_VERSION, "entries": self._index},
+                indent=2,
+            ))
+        except Exception as exc:
+            logger.debug("[organ_loader] index write failed: %s", exc)
+
+    @staticmethod
+    def _file_hash(path: Path) -> str:
+        try:
+            return hashlib.sha256(path.read_bytes()).hexdigest()
+        except Exception:
+            return ""
+
+    @staticmethod
+    def _compile_organ(path: Path) -> bool:
+        """Compile *path* to bytecode. Returns True on success."""
+        try:
+            py_compile.compile(str(path), doraise=True)
+            return True
+        except py_compile.PyCompileError as exc:
+            logger.debug("[organ_loader] compile failed for %s: %s", path.name, exc)
+            return False
+
+    @staticmethod
+    def _pyc_is_current(path: Path) -> bool:
+        """Return True if a current .pyc bytecode file exists for *path*."""
+        try:
+            pyc = Path(importlib.util.cache_from_source(str(path)))
+            return pyc.exists() and pyc.stat().st_mtime >= path.stat().st_mtime
+        except Exception:
+            return False
 
     @staticmethod
     def _parse_json(raw: str) -> Optional[dict]:
