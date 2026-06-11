@@ -64,17 +64,24 @@ class TestMLAssemblerSelect:
         algo, _ = asm._select(p)
         assert algo == "xgboost"
 
-    def test_nonlinear_large_categorical_selects_rf(self):
+    def test_nonlinear_large_categorical_selects_lgbm(self):
         asm = self._asm()
         p = self._profile(is_linear=False, n_samples=200, label_is_continuous=False)
         algo, _ = asm._select(p)
-        assert algo == "random_forest"
+        assert algo == "lightgbm"
 
-    def test_nonlinear_small_selects_ridge_fallback(self):
+    def test_nonlinear_small_selects_svm(self):
         asm = self._asm()
         p = self._profile(is_linear=False, n_samples=10)
         algo, _ = asm._select(p)
-        assert algo == "ridge"
+        assert algo == "svm"
+
+    def test_svm_params_have_kernel(self):
+        asm = self._asm()
+        p = self._profile(is_linear=False, n_samples=10)
+        _, params = asm._select(p)
+        assert "kernel" in params
+        assert "C" in params
 
     def test_unlabelled_small_selects_dbscan(self):
         asm = self._asm()
@@ -160,8 +167,9 @@ class TestMLAssemblerRunFallback:
         y = np.random.randn(20)
         result = asm.run("predict", X=X, y=y, translate=False)
         assert isinstance(result, AssemblyResult)
-        assert result.algorithm in {"ridge", "lasso", "xgboost", "random_forest",
-                                    "dbscan", "kmeans", "fallback_mean"}
+        assert result.algorithm in {"ridge", "lasso", "xgboost", "lightgbm",
+                                    "svm", "random_forest", "dbscan", "kmeans",
+                                    "fallback_mean"}
         assert 0.0 <= result.confidence <= 1.0
         assert result.duration_ms >= 0.0
 
@@ -217,3 +225,115 @@ class TestNightlySweep:
         updated = run_nightly_sweep(asm, FakeTracker(), error_threshold=0.15)
         # Ridge should have received a new param set
         assert "ridge" in updated
+
+
+# ---------------------------------------------------------------------------
+# Hyperband successive halving (_grid_search / _score_candidate)
+# ---------------------------------------------------------------------------
+
+class TestHyperband:
+    def test_grid_search_returns_dict(self):
+        from prism_ml_assembler import _grid_search
+        result = _grid_search("ridge", [{"confidence": 0.2, "algorithm": "ridge"}])
+        assert isinstance(result, dict)
+        assert "alpha" in result
+
+    def test_grid_search_varies_by_confidence(self):
+        from prism_ml_assembler import _grid_search
+        low_conf = [{"confidence": 0.1, "algorithm": "ridge"}]
+        high_conf = [{"confidence": 0.9, "algorithm": "ridge"}]
+        low_params = _grid_search("ridge", low_conf)
+        high_params = _grid_search("ridge", high_conf)
+        # Different confidence levels should yield different alpha values
+        assert low_params["alpha"] != high_params["alpha"]
+
+    def test_grid_search_lgbm_returns_num_leaves(self):
+        from prism_ml_assembler import _grid_search
+        result = _grid_search("lightgbm", [{"confidence": 0.3, "algorithm": "lightgbm"}])
+        assert "num_leaves" in result
+
+    def test_grid_search_svm_returns_kernel(self):
+        from prism_ml_assembler import _grid_search
+        result = _grid_search("svm", [{"confidence": 0.2, "algorithm": "svm"}])
+        assert "kernel" in result
+        assert "C" in result
+
+    def test_grid_search_unknown_algo_returns_empty(self):
+        from prism_ml_assembler import _grid_search
+        result = _grid_search("nonexistent_algo", [{"confidence": 0.5}])
+        assert result == {}
+
+    def test_score_candidate_ridge_low_conf(self):
+        from prism_ml_assembler import _score_candidate
+        low = _score_candidate("ridge", {"alpha": 0.001}, avg_conf=0.1)
+        high = _score_candidate("ridge", {"alpha": 100.0}, avg_conf=0.1)
+        assert low > high  # low conf → prefer low alpha
+
+
+# ---------------------------------------------------------------------------
+# PCA preprocessing path
+# ---------------------------------------------------------------------------
+
+class TestPCAPreprocessing:
+    def test_high_dim_profile_sets_flag(self):
+        pytest.importorskip("numpy")
+        import numpy as np
+        asm = MLAssembler()
+        X = np.random.randn(30, 25)  # n_features=25 > PCA_MIN_FEATURES=20
+        y = np.random.randn(30)
+        p = asm._profile(X, y)
+        assert p.is_high_dim is True
+
+    def test_apply_pca_reduces_dims(self):
+        pytest.importorskip("sklearn")
+        import numpy as np
+
+        from prism_ml_assembler import DataProfile
+        asm = MLAssembler()
+        X = np.random.randn(30, 25)
+        p = DataProfile(n_samples=30, n_features=25, has_labels=True,
+                        is_linear=False, is_high_dim=True,
+                        label_is_continuous=True, sparsity=0.0)
+        X_reduced = asm._apply_pca(X, p)
+        assert X_reduced.shape[1] < 25
+
+    def test_run_high_dim_succeeds(self):
+        pytest.importorskip("numpy")
+        import numpy as np
+        asm = MLAssembler()
+        X = np.random.randn(60, 30)  # high-dim, large enough for heavy classifier
+        y = np.random.randn(60)
+        result = asm.run("high dim predict", X=X, y=y, translate=False)
+        assert isinstance(result, AssemblyResult)
+        assert result.confidence >= 0.0
+
+
+# ---------------------------------------------------------------------------
+# SVM and LightGBM run paths
+# ---------------------------------------------------------------------------
+
+class TestSVMRun:
+    def test_svm_run_small_nonlinear(self):
+        pytest.importorskip("sklearn")
+        import numpy as np
+        asm = MLAssembler()
+        # n=20 < HEAVY_N_THRESHOLD=50 → SVM branch
+        X = np.random.randn(20, 3)
+        y = np.random.randn(20)
+        result = asm.run("small predict", X=X, y=y, translate=False)
+        assert isinstance(result, AssemblyResult)
+        # SVM or fallback (if sklearn not available in env)
+        assert result.algorithm in {"svm", "fallback_mean"}
+
+
+class TestLightGBMRun:
+    def test_lgbm_run_large_categorical(self):
+        pytest.importorskip("lightgbm")
+        import numpy as np
+        asm = MLAssembler()
+        rng = np.random.default_rng(0)
+        X = rng.standard_normal((80, 4))
+        y = rng.integers(0, 3, size=80).astype(float)
+        result = asm.run("classify", X=X, y=y, translate=False)
+        assert isinstance(result, AssemblyResult)
+        assert result.algorithm in {"lightgbm", "fallback_mean"}

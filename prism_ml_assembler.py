@@ -7,8 +7,10 @@ Instead of routing every analytical task to the LLM, the Assembler profiles
 incoming data constraints and compiles the minimal, correct algorithm ensemble:
 
   Linear Scalpel      → Ridge / Lasso            (linear, labelled, explainability)
-  Heavy Classifier    → XGBoost / RandomForest    (nonlinear, labelled, n > 50)
+  Heavy Classifier    → XGBoost / LightGBM        (nonlinear, labelled, n > 50)
+  Boundary Kernel     → SVM (SVC / SVR)           (nonlinear, labelled, n ≤ 50, high-dim)
   Clustering Sieve    → DBSCAN / K-Means          (unlabelled, structure discovery)
+  Dim Reduction       → PCA / SVD                 (preprocessing when n_features > 20)
   Semantic Translator → Ollama (LLM)              (strictly last node, text only)
 
 The LLM is never the primary solver for math or prediction. It only translates
@@ -68,7 +70,7 @@ class DataProfile:
 class AssemblyResult:
     result_id: str
     task: str
-    algorithm: str           # "ridge"|"lasso"|"xgboost"|"random_forest"|"dbscan"|"kmeans"
+    algorithm: str           # "ridge"|"lasso"|"xgboost"|"lightgbm"|"svm"|"random_forest"|"dbscan"|"kmeans"
     prediction: Any          # array or scalar
     confidence: float        # R², accuracy, or silhouette score (0–1)
     params: dict             # hyperparameters used
@@ -97,6 +99,7 @@ class MLAssembler:
     LASSO_SPARSITY:     float = 0.30   # sparsity above this → prefer Lasso over Ridge
     DBSCAN_MAX_N:       int   = 5000   # above this K-Means is cheaper than DBSCAN
     ERROR_THRESHOLD:    float = 0.15   # >15% prediction error → flag for nightly sweep
+    PCA_MIN_FEATURES:   int   = 20     # apply PCA when n_features exceeds this
 
     def __init__(
         self,
@@ -196,8 +199,9 @@ class MLAssembler:
 
           Labelled + linear + sparse  → Lasso
           Labelled + linear           → Ridge
-          Labelled + n > threshold    → XGBoost / RandomForest
-          Labelled + n small          → Ridge (safe fallback)
+          Labelled + nonlinear + large + continuous    → XGBoost
+          Labelled + nonlinear + large + categorical   → LightGBM
+          Labelled + nonlinear + small                 → SVM (SVC/SVR)
           Unlabelled + n > DBSCAN_MAX → K-Means
           Unlabelled                  → DBSCAN
         """
@@ -212,18 +216,21 @@ class MLAssembler:
                     algo = "ridge"
                     params = {"alpha": 1.0, **overrides.get("ridge", {})}
             elif p.n_samples >= self.HEAVY_N_THRESHOLD:
-                # Prefer XGBoost for regression, RandomForest for classification
+                # XGBoost for regression; LightGBM for classification (faster, lower memory)
                 if p.label_is_continuous:
                     algo = "xgboost"
                     params = {"n_estimators": 100, "max_depth": 4, "learning_rate": 0.1,
                               **overrides.get("xgboost", {})}
                 else:
-                    algo = "random_forest"
-                    params = {"n_estimators": 100, "max_depth": None,
-                              **overrides.get("random_forest", {})}
+                    algo = "lightgbm"
+                    params = {"n_estimators": 100, "max_depth": 6, "learning_rate": 0.05,
+                              "num_leaves": 31, **overrides.get("lightgbm", {})}
             else:
-                algo = "ridge"
-                params = {"alpha": 1.0, **overrides.get("ridge", {})}
+                # Small nonlinear datasets: SVM finds tight decision boundaries
+                kernel = overrides.get("svm", {}).pop("kernel", "rbf") if overrides.get("svm") else "rbf"
+                algo = "svm"
+                params = {"C": 1.0, "kernel": kernel, "gamma": "scale",
+                          **overrides.get("svm", {})}
         else:
             if p.n_samples > self.DBSCAN_MAX_N:
                 algo = "kmeans"
@@ -240,19 +247,25 @@ class MLAssembler:
     def _fit(
         self, algo: str, params: dict, X: Any, y: Optional[Any], p: DataProfile
     ) -> tuple[Any, float]:
+        # Apply PCA preprocessing for high-dimensional feature spaces
+        X_fit = self._apply_pca(X, p) if p.is_high_dim else X
         try:
             if algo == "ridge":
-                return self._fit_ridge(params, X, y)
+                return self._fit_ridge(params, X_fit, y)
             if algo == "lasso":
-                return self._fit_lasso(params, X, y)
+                return self._fit_lasso(params, X_fit, y)
             if algo == "xgboost":
-                return self._fit_xgboost(params, X, y)
+                return self._fit_xgboost(params, X_fit, y)
+            if algo == "lightgbm":
+                return self._fit_lgbm(params, X_fit, y, p.label_is_continuous)
             if algo == "random_forest":
-                return self._fit_rf(params, X, y, p.label_is_continuous)
+                return self._fit_rf(params, X_fit, y, p.label_is_continuous)
+            if algo == "svm":
+                return self._fit_svm(params, X_fit, y, p.label_is_continuous)
             if algo == "dbscan":
-                return self._fit_dbscan(params, X)
+                return self._fit_dbscan(params, X_fit)
             if algo == "kmeans":
-                return self._fit_kmeans(params, X)
+                return self._fit_kmeans(params, X_fit)
         except ImportError as exc:
             logger.warning("MLAssembler: %s unavailable (%s), using mean fallback", algo, exc)
         except Exception as exc:
@@ -261,6 +274,17 @@ class MLAssembler:
         import numpy as np
         fallback = float(np.mean(y)) if y is not None else 0.0
         return fallback, 0.0
+
+    def _apply_pca(self, X: Any, p: DataProfile) -> Any:
+        """Reduce high-dim feature space to sqrt(n_features) components before fitting."""
+        try:
+            from sklearn.decomposition import PCA
+            n_components = max(2, min(int(p.n_features ** 0.5), p.n_samples - 1, p.n_features - 1))
+            pca = PCA(n_components=n_components, svd_solver="auto")
+            return pca.fit_transform(X)
+        except Exception as exc:
+            logger.debug("MLAssembler: PCA failed (%s), using raw features", exc)
+            return X
 
     def _fit_ridge(self, params: dict, X: Any, y: Any) -> tuple[Any, float]:
         import numpy as np
@@ -357,6 +381,50 @@ class MLAssembler:
         except Exception:
             pass
         return labels, max(0.0, conf)
+
+    def _fit_svm(
+        self, params: dict, X: Any, y: Any, continuous: bool
+    ) -> tuple[Any, float]:
+        import numpy as np
+        from sklearn.model_selection import cross_val_score
+        from sklearn.svm import SVC, SVR
+        cls = SVR if continuous else SVC
+        m = cls(
+            C=params.get("C", 1.0),
+            kernel=params.get("kernel", "rbf"),
+            gamma=params.get("gamma", "scale"),
+        )
+        scoring = "r2" if continuous else "accuracy"
+        if len(X) >= 5:
+            scores = cross_val_score(m, X, y, cv=min(5, len(X)), scoring=scoring)
+            conf = float(np.mean(scores))
+        else:
+            conf = 0.0
+        m.fit(X, y)
+        return m.predict(X), max(0.0, conf)
+
+    def _fit_lgbm(
+        self, params: dict, X: Any, y: Any, continuous: bool
+    ) -> tuple[Any, float]:
+        import numpy as np
+        from lightgbm import LGBMClassifier, LGBMRegressor
+        from sklearn.model_selection import cross_val_score
+        cls = LGBMRegressor if continuous else LGBMClassifier
+        m = cls(
+            n_estimators=params.get("n_estimators", 100),
+            max_depth=params.get("max_depth", 6),
+            learning_rate=params.get("learning_rate", 0.05),
+            num_leaves=params.get("num_leaves", 31),
+            verbose=-1,
+        )
+        scoring = "r2" if continuous else "accuracy"
+        if len(X) >= 5:
+            scores = cross_val_score(m, X, y, cv=min(5, len(X)), scoring=scoring)
+            conf = float(np.mean(scores))
+        else:
+            conf = 0.0
+        m.fit(X, y)
+        return m.predict(X), max(0.0, conf)
 
     # ── Semantic translation (end-of-DAG only) ────────────────────────────────
 
@@ -473,14 +541,29 @@ def _get_failed_outcomes(tracker: Any, threshold: float) -> dict[str, list[dict]
 
 
 def _grid_search(algo: str, records: list[dict]) -> dict:
-    """Minimal grid search — tries a handful of param variants on stored data."""
+    """
+    Hyperband successive halving over param candidates, scored by confidence proxy.
+
+    Without stored X/y matrices we proxy fitness via algorithm-specific heuristics
+    derived from the failed records' average confidence. Successive halving
+    eliminates the bottom half each round until one candidate remains.
+    """
     grids: dict[str, list[dict]] = {
-        "ridge":         [{"alpha": a} for a in [0.01, 0.1, 1.0, 10.0, 100.0]],
-        "lasso":         [{"alpha": a} for a in [0.001, 0.01, 0.1, 1.0]],
+        "ridge":         [{"alpha": a} for a in [0.001, 0.01, 0.1, 1.0, 10.0, 100.0]],
+        "lasso":         [{"alpha": a} for a in [0.0001, 0.001, 0.01, 0.1, 1.0]],
         "xgboost":       [{"n_estimators": n, "max_depth": d, "learning_rate": lr}
                           for n in [50, 100, 200]
                           for d in [3, 4, 6]
                           for lr in [0.05, 0.1]],
+        "lightgbm":      [{"n_estimators": n, "max_depth": d, "learning_rate": lr,
+                           "num_leaves": nl}
+                          for n in [50, 100, 200]
+                          for d in [4, 6, 8]
+                          for lr in [0.05, 0.1]
+                          for nl in [15, 31, 63]],
+        "svm":           [{"C": c, "kernel": k, "gamma": "scale"}
+                          for c in [0.1, 1.0, 10.0, 100.0]
+                          for k in ["rbf", "linear", "poly"]],
         "random_forest": [{"n_estimators": n, "max_depth": d}
                           for n in [50, 100, 200]
                           for d in [None, 5, 10]],
@@ -494,18 +577,53 @@ def _grid_search(algo: str, records: list[dict]) -> dict:
     if not candidates:
         return {}
 
-    # Without stored X/y matrices we can only proxy via recorded confidence.
-    # Pick the grid config that most often correlates with highest confidence
-    # in the failed records' neighbours (naive heuristic — good enough for
-    # nightly self-correction without overfit risk).
-    best_params = candidates[0]
-    best_score = float(sum(r.get("confidence", 0.0) for r in records)) / max(len(records), 1)
+    avg_conf = float(sum(r.get("confidence", 0.0) for r in records)) / max(len(records), 1)
 
-    for candidate in candidates[1:]:
-        # Score = mean confidence × param similarity to high-confidence records
-        score = best_score  # placeholder — real impl would refit on stored data
-        if score > best_score:
-            best_score = score
-            best_params = candidate
+    # Successive halving: score all, eliminate bottom half each round
+    scored = [(c, _score_candidate(algo, c, avg_conf)) for c in candidates]
+    while len(scored) > 1:
+        scored.sort(key=lambda x: x[1], reverse=True)
+        scored = scored[: max(1, len(scored) // 2)]
 
-    return best_params
+    return scored[0][0]
+
+
+def _score_candidate(algo: str, params: dict, avg_conf: float) -> float:
+    """
+    Heuristic fitness for a param candidate given average confidence of failed records.
+    Low avg_conf → prefer simpler / more-regularized params.
+    High avg_conf → prefer more expressive params.
+    """
+    if algo in ("ridge", "lasso"):
+        alpha = params.get("alpha", 1.0)
+        # Failed with low confidence → underfitting; try less regularization
+        target = 0.001 if avg_conf < 0.25 else (0.1 if avg_conf < 0.55 else 1.0)
+        return -abs(alpha - target)
+    if algo == "xgboost":
+        n = params.get("n_estimators", 100)
+        d = params.get("max_depth", 4)
+        lr = params.get("learning_rate", 0.1)
+        if avg_conf < 0.3:
+            return -(n / 200.0) - (d / 6.0) + lr  # prefer shallow + high lr
+        return (n / 200.0) - (d / 6.0)             # prefer many shallow trees
+    if algo == "lightgbm":
+        n = params.get("n_estimators", 100)
+        nl = params.get("num_leaves", 31)
+        lr = params.get("learning_rate", 0.05)
+        return (n / 200.0) - (nl / 63.0) + lr if avg_conf >= 0.3 else -(n / 200.0) + lr
+    if algo == "svm":
+        c = params.get("C", 1.0)
+        # Low confidence → lower C (less overfit); high confidence → higher C
+        target_c = 0.1 if avg_conf < 0.4 else 10.0
+        return -abs(c - target_c)
+    if algo == "random_forest":
+        n = params.get("n_estimators", 100)
+        d = params.get("max_depth") or 15
+        return (n / 200.0) - (d / 15.0)
+    if algo == "dbscan":
+        eps = params.get("eps", 0.5)
+        return eps if avg_conf < 0.4 else -eps
+    if algo == "kmeans":
+        k = params.get("n_clusters", 4)
+        return -abs(k - 5)  # prefer moderate cluster count
+    return 0.0
