@@ -184,6 +184,7 @@ py-modules = [
     "prism_routes_kinetic",
     "prism_ml_assembler",
     "prism_routes_ml",
+    "prism_vision_ml_bridge",
     "prism_routes_sessions",
     "prism_session_manager",
     "prism_tray",

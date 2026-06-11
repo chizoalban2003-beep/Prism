@@ -38,6 +38,22 @@ def _get_vp():
     return _state.get("visual_perception")
 
 
+def _get_vision_bridge():
+    """Return the VisionMLBridge singleton, auto-constructing if possible."""
+    from prism_vision_ml_bridge import VisionMLBridge, get_or_set_bridge
+    bridge = get_or_set_bridge()
+    if bridge is None:
+        # Auto-construct from agent's ML assembler when available
+        agent = _get_agent()
+        asm   = _state.get("ml_assembler") or (
+            getattr(agent, "_ml_assembler", None) if agent else None
+        )
+        if asm is not None:
+            bridge = VisionMLBridge(assembler=asm)
+            get_or_set_bridge(bridge)
+    return bridge
+
+
 def _get_aa():
     aa = _state.get("audio_analyzer")
     if aa is None:
@@ -161,3 +177,63 @@ async def perception_visual_reason(request: Request):
         return JSONResponse({"error": f"LLM call failed: {exc}"}, status_code=500)
 
     return {"answer": answer, "question": question, "model_used": model_used}
+
+
+@router.post("/perception/visual/matrix")
+async def perception_visual_matrix(request: Request):
+    """Extract a pixel-intensity feature matrix from a base64-encoded image.
+
+    Body: {"image_b64": "...", "source"?: "camera"}
+    Returns: FrameMatrix fields as JSON — intensity_grid, delta_grid, spatial_stats.
+    """
+    try:
+        body: dict[str, Any] = await request.json()
+    except Exception:
+        body = {}
+    image_b64: str = body.get("image_b64", "")
+    source:    str = body.get("source", "camera")
+    if not image_b64:
+        return JSONResponse({"error": "'image_b64' is required"}, status_code=400)
+    try:
+        raw = base64.b64decode(image_b64)
+    except Exception as exc:
+        return JSONResponse({"error": f"base64 decode failed: {exc}"}, status_code=400)
+
+    bridge = _get_vision_bridge()
+    if bridge is None:
+        # Bridge is always available — extract without assembler
+        from prism_vision_ml_bridge import VisionMatrixExtractor
+        fm = VisionMatrixExtractor().extract(raw, source=source)
+    else:
+        fm = bridge.extract_matrix(raw, source=source)
+
+    from dataclasses import asdict
+    return asdict(fm)
+
+
+@router.post("/perception/visual/predict")
+async def perception_visual_predict(request: Request):
+    """Buffer a frame and run the ML Assembler when enough frames accumulate.
+
+    Body: {"image_b64": "...", "task"?: "visual_pattern_detection", "translate"?: false}
+    Returns: {frame_id, frames_buffered, min_frames, has_delta, [ml_result | status]}
+    """
+    try:
+        body: dict[str, Any] = await request.json()
+    except Exception:
+        body = {}
+    image_b64: str  = body.get("image_b64", "")
+    task:      str  = body.get("task", "visual_pattern_detection")
+    translate: bool = bool(body.get("translate", False))
+    if not image_b64:
+        return JSONResponse({"error": "'image_b64' is required"}, status_code=400)
+    try:
+        raw = base64.b64decode(image_b64)
+    except Exception as exc:
+        return JSONResponse({"error": f"base64 decode failed: {exc}"}, status_code=400)
+
+    bridge = _get_vision_bridge()
+    if bridge is None:
+        return _503("vision_ml_bridge not configured — ML assembler not ready")
+
+    return bridge.ingest(raw, task=task, translate=translate)
