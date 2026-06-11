@@ -64,13 +64,14 @@ class DataProfile:
     is_high_dim: bool        # n_features > 20
     label_is_continuous: bool  # regression vs classification
     sparsity: float          # 0.0–1.0 fraction of zeros
+    is_sequential: bool = False
 
 
 @dataclass
 class AssemblyResult:
     result_id: str
     task: str
-    algorithm: str           # "ridge"|"lasso"|"xgboost"|"lightgbm"|"svm"|"random_forest"|"dbscan"|"kmeans"
+    algorithm: str           # ridge|lasso|xgboost|lightgbm|svm|random_forest|dbscan|kmeans|mlp|lstm|gru
     prediction: Any          # array or scalar
     confidence: float        # R², accuracy, or silhouette score (0–1)
     params: dict             # hyperparameters used
@@ -100,6 +101,7 @@ class MLAssembler:
     DBSCAN_MAX_N:       int   = 5000   # above this K-Means is cheaper than DBSCAN
     ERROR_THRESHOLD:    float = 0.15   # >15% prediction error → flag for nightly sweep
     PCA_MIN_FEATURES:   int   = 20     # apply PCA when n_features exceeds this
+    TORCH_N_THRESHOLD:  int   = 100
 
     def __init__(
         self,
@@ -119,6 +121,7 @@ class MLAssembler:
         y: Optional[Any] = None,
         feature_names: Optional[list[str]] = None,
         translate: bool = True,
+        sequential: bool = False,
     ) -> AssemblyResult:
         """Profile data → select algorithm → fit → optionally translate."""
         t0 = time.time()
@@ -132,6 +135,7 @@ class MLAssembler:
             return self._fallback(task, result_id, t0, f"numpy unavailable: {exc}")
 
         profile = self._profile(X_arr, y_arr)
+        profile.is_sequential = sequential
         algo, params = self._select(profile)
         prediction, confidence = self._fit(algo, params, X_arr, y_arr, profile)
 
@@ -208,7 +212,16 @@ class MLAssembler:
         overrides = self._nightly_params  # Grid Search mutations
 
         if p.has_labels:
-            if p.is_linear:
+            if p.is_sequential:
+                if p.label_is_continuous:
+                    algo = "lstm"
+                    params = {"hidden_size": 64, "num_layers": 2, "bidirectional": False,
+                              "dropout": 0.1, **overrides.get("lstm", {})}
+                else:
+                    algo = "gru"
+                    params = {"hidden_size": 64, "num_layers": 2, "bidirectional": False,
+                              "dropout": 0.1, **overrides.get("gru", {})}
+            elif p.is_linear:
                 if p.sparsity > self.LASSO_SPARSITY:
                     algo = "lasso"
                     params = {"alpha": 0.1, **overrides.get("lasso", {})}
@@ -217,7 +230,11 @@ class MLAssembler:
                     params = {"alpha": 1.0, **overrides.get("ridge", {})}
             elif p.n_samples >= self.HEAVY_N_THRESHOLD:
                 # XGBoost for regression; LightGBM for classification (faster, lower memory)
-                if p.label_is_continuous:
+                if p.is_high_dim and p.n_samples >= self.TORCH_N_THRESHOLD and p.label_is_continuous:
+                    algo = "mlp"
+                    params = {"hidden_units": 128, "num_layers": 3, "activation": "relu",
+                              "dropout": 0.2, **overrides.get("mlp", {})}
+                elif p.label_is_continuous:
                     algo = "xgboost"
                     params = {"n_estimators": 100, "max_depth": 4, "learning_rate": 0.1,
                               **overrides.get("xgboost", {})}
@@ -250,6 +267,12 @@ class MLAssembler:
         # Apply PCA preprocessing for high-dimensional feature spaces
         X_fit = self._apply_pca(X, p) if p.is_high_dim else X
         try:
+            if algo == "mlp":
+                return self._fit_mlp(params, X_fit, y, p.label_is_continuous)
+            if algo == "lstm":
+                return self._fit_lstm(params, X, y, p.label_is_continuous)
+            if algo == "gru":
+                return self._fit_gru(params, X, y, p.label_is_continuous)
             if algo == "ridge":
                 return self._fit_ridge(params, X_fit, y)
             if algo == "lasso":
@@ -426,6 +449,95 @@ class MLAssembler:
         m.fit(X, y)
         return m.predict(X), max(0.0, conf)
 
+    def _fit_mlp(
+        self, params: dict, X: Any, y: Any, continuous: bool
+    ) -> tuple[Any, float]:
+        import torch
+
+        from prism_torch_models import PrismMLP, TorchTrainer
+        in_features = X.shape[1] if X.ndim == 2 else 1
+        out_features = 1 if continuous else max(2, len(set(y.tolist())))
+        model = PrismMLP(
+            in_features=in_features,
+            out_features=out_features,
+            hidden_units=params.get("hidden_units", 128),
+            num_layers=params.get("num_layers", 3),
+            activation=params.get("activation", "relu"),
+            dropout=params.get("dropout", 0.2),
+        )
+        X_t = torch.tensor(X, dtype=torch.float32)
+        y_t = torch.tensor(y, dtype=torch.float32)
+        task_type = "regression" if continuous else "classification"
+        conf = TorchTrainer().fit(
+            model, X_t, y_t, task_type=task_type,
+            epochs=params.get("epochs", 50),
+            batch_size=params.get("batch_size", 32),
+        )
+        model.eval()
+        with torch.no_grad():
+            pred = model(X_t).squeeze(-1).numpy()
+        return pred, conf
+
+    def _fit_lstm(
+        self, params: dict, X: Any, y: Any, continuous: bool
+    ) -> tuple[Any, float]:
+        import torch
+
+        from prism_torch_models import PrismLSTM, TorchTrainer
+        X_3d = X.reshape(len(X), 1, -1) if X.ndim == 2 else X.reshape(len(X), 1, 1)
+        in_features = X_3d.shape[2]
+        out_features = 1 if continuous else max(2, len(set(y.tolist())))
+        model = PrismLSTM(
+            input_size=in_features,
+            out_features=out_features,
+            hidden_size=params.get("hidden_size", 64),
+            num_layers=params.get("num_layers", 2),
+            bidirectional=params.get("bidirectional", False),
+            dropout=params.get("dropout", 0.1),
+        )
+        X_t = torch.tensor(X_3d, dtype=torch.float32)
+        y_t = torch.tensor(y, dtype=torch.float32)
+        task_type = "regression" if continuous else "classification"
+        conf = TorchTrainer().fit(
+            model, X_t, y_t, task_type=task_type,
+            epochs=params.get("epochs", 50),
+            batch_size=params.get("batch_size", 32),
+        )
+        model.eval()
+        with torch.no_grad():
+            pred = model(X_t).squeeze(-1).numpy()
+        return pred, conf
+
+    def _fit_gru(
+        self, params: dict, X: Any, y: Any, continuous: bool
+    ) -> tuple[Any, float]:
+        import torch
+
+        from prism_torch_models import PrismGRU, TorchTrainer
+        X_3d = X.reshape(len(X), 1, -1) if X.ndim == 2 else X.reshape(len(X), 1, 1)
+        in_features = X_3d.shape[2]
+        out_features = 1 if continuous else max(2, len(set(y.tolist())))
+        model = PrismGRU(
+            input_size=in_features,
+            out_features=out_features,
+            hidden_size=params.get("hidden_size", 64),
+            num_layers=params.get("num_layers", 2),
+            bidirectional=params.get("bidirectional", False),
+            dropout=params.get("dropout", 0.1),
+        )
+        X_t = torch.tensor(X_3d, dtype=torch.float32)
+        y_t = torch.tensor(y, dtype=torch.float32)
+        task_type = "regression" if continuous else "classification"
+        conf = TorchTrainer().fit(
+            model, X_t, y_t, task_type=task_type,
+            epochs=params.get("epochs", 50),
+            batch_size=params.get("batch_size", 32),
+        )
+        model.eval()
+        with torch.no_grad():
+            pred = model(X_t).squeeze(-1).numpy()
+        return pred, conf
+
     # ── Semantic translation (end-of-DAG only) ────────────────────────────────
 
     def _translate(
@@ -571,6 +683,19 @@ def _grid_search(algo: str, records: list[dict]) -> dict:
                           for e in [0.3, 0.5, 1.0]
                           for m in [3, 5, 10]],
         "kmeans":        [{"n_clusters": k} for k in range(2, 10)],
+        "mlp":  [{"hidden_units": h, "num_layers": nl, "activation": a, "dropout": d}
+                 for h in [64, 128, 256]
+                 for nl in [2, 3, 4]
+                 for a in ["relu", "gelu"]
+                 for d in [0.1, 0.2, 0.3]],
+        "lstm": [{"hidden_size": h, "num_layers": nl, "dropout": d}
+                 for h in [32, 64, 128]
+                 for nl in [1, 2, 3]
+                 for d in [0.1, 0.2]],
+        "gru":  [{"hidden_size": h, "num_layers": nl, "dropout": d}
+                 for h in [32, 64, 128]
+                 for nl in [1, 2, 3]
+                 for d in [0.1, 0.2]],
     }
 
     candidates = grids.get(algo, [])
@@ -626,4 +751,17 @@ def _score_candidate(algo: str, params: dict, avg_conf: float) -> float:
     if algo == "kmeans":
         k = params.get("n_clusters", 4)
         return -abs(k - 5)  # prefer moderate cluster count
+    if algo == "mlp":
+        h = params.get("hidden_units", 128)
+        nl = params.get("num_layers", 3)
+        d = params.get("dropout", 0.2)
+        if avg_conf < 0.3:
+            return (h / 256.0) + (nl / 4.0) - d
+        return -(h / 256.0) - (nl / 4.0) + d
+    if algo in ("lstm", "gru"):
+        h = params.get("hidden_size", 64)
+        nl = params.get("num_layers", 2)
+        if avg_conf < 0.3:
+            return (h / 128.0) + (nl / 3.0)
+        return -(h / 128.0) - (nl / 3.0)
     return 0.0
