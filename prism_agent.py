@@ -592,6 +592,10 @@ class PrismAgent:
         if _ot is not None:
             _ot._crystalliser = getattr(self, '_crystalliser', None)
             _ot._kinetic      = getattr(self, '_kinetic', None)
+        # Retroactively wire outcome_tracker into ML assembler (created before tracker)
+        _asm = getattr(self, '_ml_assembler', None)
+        if _asm is not None and _ot is not None:
+            _asm._tracker = _ot
 
         # ContextManager — work/personal/focus context switching
         try:

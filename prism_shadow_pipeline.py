@@ -45,6 +45,7 @@ class PrismShadowPipeline:
         soul: Optional["PrismSoul | None"] = None,
         phase_engine:  Any | None = None,
         bridge:        Any | None = None,
+        kinetic:       Any | None = None,
     ) -> None:
         self._graph        = graph
         self._interval     = interval_s
@@ -52,6 +53,7 @@ class PrismShadowPipeline:
         self._soul         = soul
         self._phase_engine = phase_engine
         self._bridge       = bridge
+        self._kinetic      = kinetic
         self._restarts     = 0
         self._stop         = threading.Event()
         self._thread: threading.Thread | None = None

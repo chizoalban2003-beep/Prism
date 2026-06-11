@@ -230,7 +230,7 @@ PRISM's REST API runs on **FastAPI + uvicorn** (ASGI) — not the Python stdlib 
 - **True concurrent requests** — uvicorn's event loop handles all connections simultaneously; no thread-per-connection serialisation
 - **Real token streaming** — `/stream/chat` SSE yields tokens as they arrive; `/ws/chat` WebSocket provides bidirectional multi-turn chat over a persistent connection
 - **Non-blocking LLM I/O** — `prism_llm_router.py` exposes `async_call()` and `async_call_stream()` using httpx, with automatic fallback to `asyncio.to_thread(call())` when httpx is absent
-- **185+ routes + 1 WebSocket across 19 FastAPI router modules** — `prism_routes_predict`, `prism_routes_analytics`, `prism_routes_agent`, `prism_routes_chain`, `prism_routes_core`, `prism_routes_horizon`, `prism_routes_infra`, `prism_routes_integrations`, `prism_routes_media`, `prism_routes_sensors`, `prism_routes_ui`, `prism_routes_mobile`, `prism_routes_users`, `prism_routes_federation`, `prism_routes_identity`, `prism_routes_perception`, `prism_routes_causality`, `prism_routes_sessions`
+- **193+ routes + 1 WebSocket across 21 FastAPI router modules** — `prism_routes_predict`, `prism_routes_analytics`, `prism_routes_agent`, `prism_routes_chain`, `prism_routes_core`, `prism_routes_horizon`, `prism_routes_infra`, `prism_routes_integrations`, `prism_routes_media`, `prism_routes_sensors`, `prism_routes_ui`, `prism_routes_mobile`, `prism_routes_users`, `prism_routes_federation`, `prism_routes_identity`, `prism_routes_perception`, `prism_routes_causality`, `prism_routes_sessions`, `prism_routes_kinetic`, `prism_routes_ml`
 - **CORS** — all origins allowed at the ASGI middleware layer (appropriate for 127.0.0.1-only binding)
 
 ```
@@ -1628,7 +1628,7 @@ agent.register("my_tool", ["my", "tool", "keywords"],
 
 ## Current state
 
-All major capabilities are implemented and tested. The table below is the authoritative feature status as of the last full audit (2,538 tests, 0 failing).
+All major capabilities are implemented and tested. The table below is the authoritative feature status as of the last full audit (2,650+ tests, 0 failing).
 
 | Capability | Status | Notes |
 |---|---|---|
@@ -1707,7 +1707,7 @@ Ollama + llava    vision analysis (ollama pull llava)
 playwright        browser automation (pip install playwright && playwright install chromium)
 ```
 
-No numpy · no torch · no langchain · no openai required. All decision mathematics is pure Python arithmetic.
+No torch · no langchain · no openai required. Core decision mathematics is pure Python arithmetic. The optional `ml` extra (`pip install ".[ml]"`) adds scikit-learn + XGBoost + numpy for the Surgical ML Assembler; all other subsystems remain numpy-free.
 
 ---
 
