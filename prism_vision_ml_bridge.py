@@ -115,11 +115,11 @@ class VisionMatrixExtractor:
         import io
 
         import numpy as np
-        from PIL import Image  # type: ignore[import]
+        from PIL import Image
         n  = self._grid_size
         bp = 8  # each grid cell is bp × bp pixels
         img = Image.open(io.BytesIO(data)).convert("L")
-        img = img.resize((n * bp, n * bp), Image.LANCZOS)  # type: ignore[attr-defined]
+        img = img.resize((n * bp, n * bp), Image.LANCZOS)
         arr = np.array(img, dtype=float) / 255.0
         intensity: list = []
         stats:     list = []
