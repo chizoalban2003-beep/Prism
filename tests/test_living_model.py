@@ -277,6 +277,49 @@ def test_crystallise_returns_summary_dict():
     assert "peak_hours" in summary
 
 
+def test_crystalliser_accepts_ml_assembler():
+    p = _persona()
+    mock_asm = MagicMock()
+    c = PrismCrystalliser(persona=p, ml_assembler=mock_asm)
+    assert c._ml_assembler is mock_asm
+
+
+def test_ml_sweep_called_during_deep_analyse():
+    """_run_ml_sweep fires when both ml_assembler and outcome_tracker are set."""
+    p = _persona()
+    mock_router = MagicMock()
+    mock_router.call.return_value = (json.dumps({"patterns": []}), "mock/model")
+    mock_memory = MagicMock()
+    mock_memory.search.return_value = []
+    mock_tracker = MagicMock()
+    mock_tracker.stats.return_value = {}
+    mock_tracker.get_ml_results.return_value = []
+    mock_asm = MagicMock()
+    c = PrismCrystalliser(
+        persona=p, memory=mock_memory, llm_router=mock_router,
+        outcome_tracker=mock_tracker, ml_assembler=mock_asm,
+    )
+    c.deep_analyse()
+    mock_tracker.get_ml_results.assert_called_once()
+
+
+def test_ml_sweep_skipped_without_assembler():
+    """_run_ml_sweep is a no-op when ml_assembler is None."""
+    p = _persona()
+    mock_router = MagicMock()
+    mock_router.call.return_value = (json.dumps({"patterns": []}), "mock/model")
+    mock_memory = MagicMock()
+    mock_memory.search.return_value = []
+    mock_tracker = MagicMock()
+    mock_tracker.stats.return_value = {}
+    c = PrismCrystalliser(
+        persona=p, memory=mock_memory, llm_router=mock_router,
+        outcome_tracker=mock_tracker, ml_assembler=None,
+    )
+    c.deep_analyse()
+    mock_tracker.get_ml_results.assert_not_called()
+
+
 # ── PrismNarrative ────────────────────────────────────────────────────────────
 
 def test_snapshot_no_llm():

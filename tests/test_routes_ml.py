@@ -35,6 +35,7 @@ class TestMLStatus:
         t = data["thresholds"]
         assert "linear_r" in t
         assert "heavy_n" in t
+        assert "torch_n" in t
 
 
 class TestMLRun:
@@ -91,6 +92,19 @@ class TestMLRun:
         data = r.json()
         pred = data["prediction"]
         assert isinstance(pred, (list, float, int))
+
+    def test_sequential_flag_forwarded(self, client):
+        """sequential=True in the body should be forwarded to the assembler."""
+        pytest.importorskip("numpy")
+        import numpy as np
+        rng = np.random.default_rng(3)
+        X = rng.random((40, 4)).tolist()
+        y = (rng.random(40) * 2).tolist()
+        r = client.post("/ml/run", json={"task": "t", "X": X, "y": y,
+                                         "translate": False, "sequential": True})
+        assert r.status_code == 200
+        data = r.json()
+        assert data["algorithm"] in {"lstm", "gru", "fallback_mean"}
 
     def test_run_no_numpy_fallback(self, client, monkeypatch):
         """Without numpy, assembler returns a fallback result — route still 200."""

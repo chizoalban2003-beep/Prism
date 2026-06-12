@@ -211,6 +211,22 @@ async def perception_visual_matrix(request: Request):
     return asdict(fm)
 
 
+@router.get("/perception/visual/status")
+async def perception_visual_status():
+    """Return VisionMLBridge readiness and buffer state."""
+    bridge = _get_vision_bridge()
+    if bridge is None:
+        return JSONResponse({"ready": False, "buffered_frames": 0, "min_frames": 0}, status_code=503)
+    return JSONResponse({
+        "ready":          True,
+        "buffered_frames": len(bridge._buffer),
+        "min_frames":     bridge._min_frames,
+        "max_buffer":     bridge._buffer.maxlen,
+        "grid_size":      bridge._extractor._grid_size,
+        "n_features":     bridge._extractor._grid_size ** 2 * 3,
+    })
+
+
 @router.post("/perception/visual/predict")
 async def perception_visual_predict(request: Request):
     """Buffer a frame and run the ML Assembler when enough frames accumulate.

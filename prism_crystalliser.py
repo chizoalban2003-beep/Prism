@@ -51,12 +51,14 @@ class PrismCrystalliser:
         outcome_tracker: Optional["OutcomeTracker"] = None,
         calibration: Optional["PrismCalibration"] = None,
         llm_router=None,
+        ml_assembler=None,
     ):
         self._persona = persona
         self._memory = memory
         self._outcome_tracker = outcome_tracker
         self._calibration = calibration
         self._router = llm_router
+        self._ml_assembler = ml_assembler
 
     # ── Real-time heuristics ──────────────────────────────────────────────────
 
@@ -185,7 +187,21 @@ class PrismCrystalliser:
         if not isinstance(parsed, dict):
             return 0
 
-        return self._apply_extraction(parsed)
+        n_updates = self._apply_extraction(parsed)
+        self._run_ml_sweep()
+        return n_updates
+
+    def _run_ml_sweep(self) -> None:
+        """Run nightly ML hyperparameter sweep on failed outcomes (conf < 1-ERROR_THRESHOLD)."""
+        if self._ml_assembler is None or self._outcome_tracker is None:
+            return
+        try:
+            from prism_ml_assembler import run_nightly_sweep
+            updated = run_nightly_sweep(self._ml_assembler, self._outcome_tracker)
+            if updated:
+                logger.info("[crystalliser] ML nightly sweep updated params: %s", list(updated))
+        except Exception as exc:
+            logger.debug("[crystalliser] ML nightly sweep failed: %s", exc)
 
     def crystallise(self, force: bool = False) -> dict:
         """Full recrystallisation — called weekly by daemon."""

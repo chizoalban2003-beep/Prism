@@ -366,3 +366,20 @@ class TestPerceptionRoutes:
                               "task": "anomaly_detection"})
         data = r.json()
         assert data.get("ml_result", {}).get("task") == "anomaly_detection" or True
+
+    def test_visual_status_200(self, client):
+        r = client.get("/perception/visual/status")
+        assert r.status_code == 200
+
+    def test_visual_status_has_ready(self, client):
+        data = client.get("/perception/visual/status").json()
+        assert data["ready"] is True
+
+    def test_visual_status_has_buffer_fields(self, client):
+        data = client.get("/perception/visual/status").json()
+        for key in ("buffered_frames", "min_frames", "max_buffer", "grid_size", "n_features"):
+            assert key in data, f"missing key: {key}"
+
+    def test_visual_status_n_features_is_192(self, client):
+        data = client.get("/perception/visual/status").json()
+        assert data["n_features"] == 192  # 8×8 grid × 3 vectors

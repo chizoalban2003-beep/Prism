@@ -40,6 +40,7 @@ async def ml_status() -> JSONResponse:
         "thresholds": {
             "linear_r":        asm.LINEAR_R_THRESHOLD,
             "heavy_n":         asm.HEAVY_N_THRESHOLD,
+            "torch_n":         asm.TORCH_N_THRESHOLD,
             "lasso_sparsity":  asm.LASSO_SPARSITY,
             "error_threshold": asm.ERROR_THRESHOLD,
         },
@@ -64,11 +65,15 @@ async def ml_run(body: dict) -> JSONResponse:
         y = body.get("y")
         feature_names = body.get("feature_names")
         translate = bool(body.get("translate", True))
+        sequential = bool(body.get("sequential", False))
     except (KeyError, TypeError) as exc:
         return JSONResponse({"error": str(exc)}, status_code=422)
 
     asm = get_or_set_assembler()
-    result = asm.run(task=task, X=X, y=y, feature_names=feature_names, translate=translate)
+    result = asm.run(
+        task=task, X=X, y=y, feature_names=feature_names,
+        translate=translate, sequential=sequential,
+    )
 
     pred = result.prediction
     if hasattr(pred, "tolist"):
