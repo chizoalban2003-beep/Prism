@@ -552,6 +552,7 @@ class PrismAgent:
                 outcome_tracker=getattr(self, '_outcome_tracker', None),
                 calibration=getattr(self, '_calibration', None),
                 llm_router=self._router,
+                ml_assembler=getattr(self, '_ml_assembler', None),
             )
             self._narrative = PrismNarrative(
                 persona=self._persona,

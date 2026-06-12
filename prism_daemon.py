@@ -337,6 +337,20 @@ def _build_asgi_state(agent) -> dict:
     except Exception:
         pass
 
+    state["ml_assembler"] = getattr(agent, "_ml_assembler", None)
+
+    try:
+        from prism_vision_ml_bridge import VisionMLBridge, get_or_set_bridge
+        asm = state.get("ml_assembler")
+        if asm is not None:
+            bridge = get_or_set_bridge()
+            if bridge is None:
+                bridge = VisionMLBridge(assembler=asm)
+                get_or_set_bridge(bridge)
+            state["vision_ml_bridge"] = bridge
+    except Exception:
+        pass
+
     return state
 
 
