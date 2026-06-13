@@ -356,7 +356,7 @@ class OrganLoader:
                     except Exception as exc:
                         results[intent] = {"error": str(exc), "output": ""}
             except _FTimeout:
-                for future, intent in futures.items():
+                for _future, intent in futures.items():
                     if intent not in results:
                         results[intent] = {"error": "overall timeout", "output": ""}
         return results

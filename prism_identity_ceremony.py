@@ -32,7 +32,7 @@ import json
 import logging
 import re
 import time
-from typing import TYPE_CHECKING, Dict, List
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from prism_soul import SoulSeed
@@ -44,7 +44,7 @@ logger = logging.getLogger(__name__)
 # Questions
 # ---------------------------------------------------------------------------
 
-CEREMONY_QUESTIONS: Dict[str, str] = {
+CEREMONY_QUESTIONS: dict[str, str] = {
     "identity": (
         "Let's start simply. Who are you — not your job title, "
         "but what actually defines you and what you're building?"
@@ -109,9 +109,9 @@ class IdentityCeremony:
     def __init__(self, soul, llm_router=None):
         self._soul = soul
         self._llm_router = llm_router
-        self._answers: Dict[str, str] = {}  # key -> answer
+        self._answers: dict[str, str] = {}  # key -> answer
 
-    def questions(self) -> List[str]:
+    def questions(self) -> list[str]:
         """Return the question texts in order."""
         return [CEREMONY_QUESTIONS[k] for k in _QUESTION_ORDER]
 
@@ -208,7 +208,7 @@ class IdentityCeremony:
             "suggested_lenses": suggested_lenses[:4],
         }
 
-    def complete(self) -> "SoulSeed":
+    def complete(self) -> SoulSeed:
         """Extract structured data, build SoulSeed, save to soul."""
         from prism_soul import SoulSeed
 
@@ -249,7 +249,7 @@ class IdentityCeremony:
 
         return seed
 
-    def run_from_answers(self, answers: Dict[str, str]) -> "SoulSeed":
+    def run_from_answers(self, answers: dict[str, str]) -> SoulSeed:
         """
         Accept a dict mapping question keys to answer strings,
         call complete(), return seed. Used in tests and batch mode.

@@ -223,7 +223,7 @@ class PrismPlanner:
         self.prefer_claude  = prefer_claude and bool(claude_api_key)
 
     @classmethod
-    def setup(cls, **kwargs) -> "PrismPlanner":
+    def setup(cls, **kwargs) -> PrismPlanner:
         """One-line setup."""
         return cls(**kwargs)
 
@@ -278,7 +278,7 @@ class PrismPlanner:
             strategy_plans.append(plan)
 
         # Add remaining strategies without full plans
-        for i, (activation, plank_data) in enumerate(ranked[n_plans:]):
+        for _i, (activation, plank_data) in enumerate(ranked[n_plans:]):
             strategy_plans.append(StrategyPlan(
                 name             = plank_data["name"],
                 position         = plank_data["position"],

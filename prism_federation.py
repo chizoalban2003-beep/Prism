@@ -58,7 +58,7 @@ class FederationPeer:
         return (self.peer_id, self.name, self.url, self.last_seen, self.sync_version)
 
     @classmethod
-    def from_row(cls, row: tuple) -> "FederationPeer":
+    def from_row(cls, row: tuple) -> FederationPeer:
         peer_id, name, url, last_seen, sync_version = row
         return cls(
             peer_id=peer_id,

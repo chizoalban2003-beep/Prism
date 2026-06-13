@@ -65,7 +65,7 @@ class PrismBrowserAgent:
         self._page       = None
 
     @classmethod
-    def setup(cls, **kwargs) -> "PrismBrowserAgent":
+    def setup(cls, **kwargs) -> PrismBrowserAgent:
         return cls(**kwargs)
 
     @property

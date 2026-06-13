@@ -24,10 +24,10 @@ class SportCatalog(dict[str, "SportConfig"]):
                 return existing
         raise KeyError(key)
 
-    def __getitem__(self, key: str) -> "SportConfig":
+    def __getitem__(self, key: str) -> SportConfig:
         return super().__getitem__(self._resolve(key))
 
-    def get(self, key: str, default=None) -> Optional["SportConfig"]:
+    def get(self, key: str, default=None) -> Optional[SportConfig]:
         if key is None:
             return default
         try:
@@ -194,9 +194,10 @@ class DuelModel:
         a_pos = self.sport_model.make_beam(attacker_profile, a_ctx).fulcrum.position()
         d_pos = self.sport_model.make_beam(defender_profile, d_ctx).fulcrum.position()
         cs = self.coupling_strength
-        iteration = 0
+        n_iters = 0
 
-        for iteration in range(self.max_iterations):
+        for _ in range(self.max_iterations):
+            n_iters += 1
             a_beam = self.sport_model.make_beam(attacker_profile, a_ctx)
             d_beam = self.sport_model.make_beam(defender_profile, d_ctx)
             a_beam.fulcrum.add_factor(
@@ -243,7 +244,7 @@ class DuelModel:
             d_diag.activations[0].activation,
             a_diag.expected_net,
             d_diag.expected_net,
-            iteration + 1,
+            n_iters,
             advantage,
         )
 

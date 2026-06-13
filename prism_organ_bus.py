@@ -53,7 +53,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ class OrganSignal:
     """A signal emitted by one logic engine destined for the bus."""
     source:      str
     signal_type: str
-    payload:     Dict[str, Any]
+    payload:     dict[str, Any]
     priority:    int   = NORMAL
     timestamp:   float = field(default_factory=time.time)
     signal_id:   str   = field(default_factory=lambda: str(uuid.uuid4())[:8])
@@ -86,7 +86,7 @@ class OrganSignal:
 class OrganSubscription:
     """A subscriber registration — one engine listening for signal types."""
     organ_name:   str
-    signal_types: List[str]          # which signal types to receive
+    signal_types: list[str]          # which signal types to receive
     handler:      Callable           # handler(payload: dict) -> None
     vocabulary:   str                # prose: what keys/values this organ understands
 
@@ -96,7 +96,7 @@ class DeliveryRecord:
     """Result of one signal delivery to one subscriber."""
     signal_id:   str
     receiver:    str
-    translated:  Dict[str, Any]      # what the receiver actually got
+    translated:  dict[str, Any]      # what the receiver actually got
     via_llm:     bool                # True = LLM translated; False = direct pass
     duration_ms: float
     success:     bool
@@ -225,10 +225,10 @@ class OrganBus:
         self._router          = llm_router
         self._db              = Path(db_path).expanduser()
         self._db.parent.mkdir(parents=True, exist_ok=True)
-        self._subscribers:    List[OrganSubscription] = []
-        self._cache:          Dict[Tuple[str, str, str], dict] = {}
+        self._subscribers:    list[OrganSubscription] = []
+        self._cache:          dict[tuple[str, str, str], dict] = {}
         self._cache_maxsize   = 512  # evict oldest 25% when limit reached
-        self._batch:          List[OrganSignal] = []
+        self._batch:          list[OrganSignal] = []
         self._lock            = threading.Lock()
         self.anomaly_detector = SignalAnomalyDetector()
         self._init_db()
@@ -240,7 +240,7 @@ class OrganBus:
     def register(
         self,
         organ_name:   str,
-        signal_types: List[str],
+        signal_types: list[str],
         handler:      Callable,
         vocabulary:   str = "",
     ) -> None:
@@ -277,7 +277,7 @@ class OrganBus:
             self._subscribers = [s for s in self._subscribers
                                   if s.organ_name != organ_name]
 
-    def emit(self, signal: OrganSignal) -> List[DeliveryRecord]:
+    def emit(self, signal: OrganSignal) -> list[DeliveryRecord]:
         """
         Emit a signal onto the bus.  Delivers synchronously to all matching
         subscribers (except LOW priority — those queue up for flush_batch()).
@@ -295,7 +295,7 @@ class OrganBus:
 
         return self._route(signal)
 
-    def flush_batch(self) -> List[DeliveryRecord]:
+    def flush_batch(self) -> list[DeliveryRecord]:
         """Deliver all queued LOW-priority signals now."""
         with self._lock:
             batch, self._batch = list(self._batch), []
@@ -304,7 +304,7 @@ class OrganBus:
             records.extend(self._route(sig))
         return records
 
-    def history(self, n: int = 20) -> List[dict]:
+    def history(self, n: int = 20) -> list[dict]:
         """Return the n most recent signal records from the DB."""
         try:
             con = self._connect()
@@ -320,7 +320,7 @@ class OrganBus:
             logger.debug("[organ_bus] history() failed: %s", exc)
             return []
 
-    def subscribers_for(self, signal_type: str) -> List[str]:
+    def subscribers_for(self, signal_type: str) -> list[str]:
         """Return organ names subscribed to a given signal type."""
         with self._lock:
             return [s.organ_name for s in self._subscribers
@@ -330,14 +330,14 @@ class OrganBus:
     # Internal routing
     # ------------------------------------------------------------------
 
-    def _route(self, signal: OrganSignal) -> List[DeliveryRecord]:
+    def _route(self, signal: OrganSignal) -> list[DeliveryRecord]:
         """Deliver signal to all matching subscribers."""
         with self._lock:
             matching = [s for s in self._subscribers
                         if signal.signal_type in s.signal_types
                         and s.organ_name != signal.source]
 
-        records: List[DeliveryRecord] = []
+        records: list[DeliveryRecord] = []
         for sub in matching:
             rec = self._deliver(signal, sub)
             records.append(rec)
@@ -417,7 +417,7 @@ class OrganBus:
 
     def _translate(
         self, signal: OrganSignal, sub: OrganSubscription
-    ) -> Tuple[dict, bool]:
+    ) -> tuple[dict, bool]:
         """
         LLM-translate signal payload into subscriber's vocabulary.
 
@@ -490,7 +490,7 @@ class OrganBus:
         con.close()
 
     def _persist_signal(
-        self, signal: OrganSignal, receivers: List[str]
+        self, signal: OrganSignal, receivers: list[str]
     ) -> None:
         try:
             con = self._connect()

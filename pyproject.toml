@@ -202,7 +202,13 @@ markers = [
 line-length = 120
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I"]
+select = ["E", "F", "W", "I", "UP", "B007", "B904", "SIM910", "SIM114"]
+ignore = [
+    "UP045",  # Optional[X] → X | None (large churn, deferred)
+    "UP035",  # deprecated typing imports (some are 3.11-safe but noisy)
+    "UP042",  # StrEnum — runtime behavior change, deferred
+    "B905",   # zip(strict=) — would require strict=False everywhere, deferred
+]
 
 [tool.ruff.lint.per-file-ignores]
 # HTML/SVG/JS embedded strings cannot be wrapped

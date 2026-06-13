@@ -251,7 +251,7 @@ Rules:
 
     def run(self, message: str, agent_execute_fn,
              base_ctx: dict,
-             step_callback=None) -> "PrismCard":
+             step_callback=None) -> PrismCard:
         """
         Run the alternating chain to completion.
 
@@ -724,7 +724,7 @@ Rules:
                 break
             yield item
 
-    def resume(self, goal_id: str, agent_execute_fn, base_ctx: dict) -> "PrismCard":
+    def resume(self, goal_id: str, agent_execute_fn, base_ctx: dict) -> PrismCard:
         """
         Resume an interrupted chain from its last checkpoint.
 
@@ -1224,7 +1224,7 @@ Rules:
 
     # ── Output builder ────────────────────────────────────────────────────────
 
-    def _build_card(self, state: ChainState) -> "PrismCard":
+    def _build_card(self, state: ChainState) -> PrismCard:
         from prism_responses import text_card
 
         n_steps  = len(state.steps)

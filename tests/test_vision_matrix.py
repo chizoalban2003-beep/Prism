@@ -204,7 +204,7 @@ class TestVisionMLBridge:
 
     def test_frames_buffered_increments(self):
         bridge = VisionMLBridge(_FakeAssembler(), min_frames=10)
-        for i in range(4):
+        for _ in range(4):
             result = bridge.ingest(_fake_bytes())
         assert result["frames_buffered"] == 4
 

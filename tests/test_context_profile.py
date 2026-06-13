@@ -9,7 +9,7 @@ from unittest.mock import MagicMock
 from prism_context_profile import BUILTIN_CONTEXTS, ContextManager, ContextProfile
 
 
-def _manager() -> "tuple[ContextManager, Path]":
+def _manager() -> tuple[ContextManager, Path]:
     d = tempfile.mkdtemp()
     p = Path(d) / "contexts.json"
     return ContextManager(db_path=str(p)), p

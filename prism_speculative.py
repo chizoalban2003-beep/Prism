@@ -73,7 +73,7 @@ class SpeculativeDecodingPipeline:
     def call(
         self,
         prompt: str,
-        budget: "ExecutionBudget",
+        budget: ExecutionBudget,
         system: str = "",
         conversation_history: list[dict] | None = None,
     ) -> SpeculativeResult:
@@ -134,7 +134,7 @@ class SpeculativeDecodingPipeline:
             corrected=corrected,
         )
 
-    def _should_bypass(self, draft_resp: str, budget: "ExecutionBudget") -> bool:
+    def _should_bypass(self, draft_resp: str, budget: ExecutionBudget) -> bool:
         """True when verification should be skipped."""
         # Hard bypass: budget ceiling too low
         if budget.capability_ceil <= 1:

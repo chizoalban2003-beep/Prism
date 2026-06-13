@@ -18,7 +18,7 @@ POST /household/broadcast      — emit signal to all users {signal_type, payloa
 from __future__ import annotations
 
 import time
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -73,7 +73,7 @@ async def list_users():
 
 @router.post("/users")
 async def register_user(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -197,7 +197,7 @@ async def user_identity(user_id: str):
             status_code=404,
         )
 
-    snapshot: Dict[str, Any] = {
+    snapshot: dict[str, Any] = {
         "user_id": profile.user_id,
         "name": profile.name,
         "role": profile.role,
@@ -271,7 +271,7 @@ async def household_analytics():
     active_today = sum(1 for p in profiles if (now - p.last_active) <= _24h)
     active_this_week = sum(1 for p in profiles if (now - p.last_active) <= _7d)
 
-    by_role: Dict[str, int] = {"admin": 0, "member": 0, "guest": 0}
+    by_role: dict[str, int] = {"admin": 0, "member": 0, "guest": 0}
     users_list = []
     for p in profiles:
         by_role[p.role] = by_role.get(p.role, 0) + 1
@@ -285,7 +285,7 @@ async def household_analytics():
             }
         )
 
-    recent_signals: list[Dict[str, Any]] = []
+    recent_signals: list[dict[str, Any]] = []
     bus = _household_bus()
     if bus is not None:
         recent_signals = bus.signal_history(n=10)
@@ -307,7 +307,7 @@ async def household_analytics():
 
 @router.post("/household/broadcast")
 async def household_broadcast(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:

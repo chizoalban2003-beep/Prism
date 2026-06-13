@@ -65,7 +65,7 @@ class UserProfile:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "UserProfile":
+    def from_dict(cls, d: dict[str, Any]) -> UserProfile:
         return cls(
             user_id=d["user_id"],
             name=d["name"],

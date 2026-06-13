@@ -66,9 +66,7 @@ def _parse_reminder(message: str) -> tuple:
                 hour = 0
             now = datetime.datetime.now()
             target = datetime.datetime(now.year, now.month, now.day, hour, minute, 0)
-            if tomorrow:
-                target += datetime.timedelta(days=1)
-            elif target <= now:
+            if tomorrow or target <= now:
                 target += datetime.timedelta(days=1)
             delay = int((target - now).total_seconds())
         else:
@@ -83,9 +81,7 @@ def _parse_reminder(message: str) -> tuple:
                     hour = 0
                 now = datetime.datetime.now()
                 target = datetime.datetime(now.year, now.month, now.day, hour, 0, 0)
-                if tomorrow:
-                    target += datetime.timedelta(days=1)
-                elif target <= now:
+                if tomorrow or target <= now:
                     target += datetime.timedelta(days=1)
                 delay = int((target - now).total_seconds())
 

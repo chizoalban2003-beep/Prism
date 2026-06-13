@@ -155,7 +155,7 @@ class KSAConfig:
     # ── Loaders ───────────────────────────────────────────────────────────────
 
     @classmethod
-    def load(cls, path: Optional[str] = None) -> "KSAConfig":
+    def load(cls, path: Optional[str] = None) -> KSAConfig:
         """
         Load configuration from a file.
 
@@ -206,7 +206,7 @@ class KSAConfig:
         raise ValueError(f"Unsupported config format: {path.suffix!r}")
 
     @classmethod
-    def _from_dict(cls, raw: dict) -> "KSAConfig":
+    def _from_dict(cls, raw: dict) -> KSAConfig:
         """
         Build a KSAConfig from a raw dict.
         Unknown keys are silently ignored to allow forward compatibility.

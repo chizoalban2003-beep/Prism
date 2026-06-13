@@ -91,7 +91,7 @@ class ContextProfile:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "ContextProfile":
+    def from_dict(cls, d: dict) -> ContextProfile:
         return cls(
             context_id       = d["context_id"],
             description      = d.get("description", ""),

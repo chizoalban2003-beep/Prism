@@ -37,11 +37,11 @@ class PrismNarrative:
 
     def __init__(
         self,
-        persona: "PrismPersona",
-        memory: Optional["PrismMemory"] = None,
-        outcome_tracker: Optional["OutcomeTracker"] = None,
-        calibration: Optional["PrismCalibration"] = None,
-        soul: Optional["PrismSoul"] = None,
+        persona: PrismPersona,
+        memory: Optional[PrismMemory] = None,
+        outcome_tracker: Optional[OutcomeTracker] = None,
+        calibration: Optional[PrismCalibration] = None,
+        soul: Optional[PrismSoul] = None,
         llm_router=None,
     ):
         self._persona = persona

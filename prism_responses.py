@@ -170,7 +170,7 @@ def identity_card(identity_data: dict) -> PrismCard:
     return PrismCard(CardType.IDENTITY, "Your Decision Profile", "", identity_data)
 
 
-def device_result_card(result: "DeviceTaskResult", task: str) -> PrismCard:
+def device_result_card(result: DeviceTaskResult, task: str) -> PrismCard:
     """Card for device task execution results."""
     if result.needs_approval:
         params = {}
@@ -210,7 +210,7 @@ def device_result_card(result: "DeviceTaskResult", task: str) -> PrismCard:
     )
 
 
-def plan_of_action_card(plan: "PlanOfAction") -> PrismCard:
+def plan_of_action_card(plan: PlanOfAction) -> PrismCard:
     """
     Renders a PlanOfAction as a PRISM chat card.
 

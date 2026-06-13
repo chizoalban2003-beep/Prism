@@ -482,8 +482,8 @@ class TestFullStackChaos:
         pipeline.start()
 
         try:
-            for batch in range(5):
-                for i in range(3):
+            for _ in range(5):
+                for _i in range(3):
                     graph.write_node(_node())
                 oracle.sample()
                 time.sleep(0.05)

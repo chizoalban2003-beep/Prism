@@ -163,7 +163,7 @@ class ArtifactStore:
         self,
         domain: str,
         situation: dict,
-        identity: "DigitalIdentity",
+        identity: DigitalIdentity,
     ) -> dict:
         """
         Compose a new recommendation by finding the best-matching

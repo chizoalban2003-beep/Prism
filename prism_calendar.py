@@ -6,7 +6,7 @@ import time
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -76,7 +76,7 @@ class PrismCalendar:
             self._provider = "google"
 
     @classmethod
-    def from_config(cls, config: dict) -> "PrismCalendar":
+    def from_config(cls, config: dict) -> PrismCalendar:
         cal = config.get("calendar", {})
         return cls(
             provider     = cal.get("provider", ""),
@@ -129,9 +129,8 @@ class PrismCalendar:
         token_valid = False
         if access_token and expiry_str:
             try:
-                from datetime import timezone
                 expiry = datetime.fromisoformat(expiry_str.replace("Z", "+00:00"))
-                token_valid = expiry > datetime.now(timezone.utc) + timedelta(seconds=60)
+                token_valid = expiry > datetime.now(UTC) + timedelta(seconds=60)
             except Exception:
                 token_valid = False
 
@@ -165,8 +164,7 @@ class PrismCalendar:
 
             new_token   = data["access_token"]
             expires_in  = int(data.get("expires_in", 3600))
-            from datetime import timezone
-            new_expiry  = (datetime.now(timezone.utc) + timedelta(seconds=expires_in)
+            new_expiry  = (datetime.now(UTC) + timedelta(seconds=expires_in)
                            ).isoformat()
 
             creds["access_token"] = new_token
@@ -321,8 +319,7 @@ class PrismCalendar:
 
     def _google_today(self) -> list:
         """Fetch today's events from Google Calendar API."""
-        from datetime import timezone as _tz
-        now   = datetime.now(_tz.utc)
+        now   = datetime.now(UTC)
         start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
         end   = now.replace(hour=23, minute=59, second=59, microsecond=0).isoformat()
         url   = (f"https://www.googleapis.com/calendar/v3/calendars/primary/events"

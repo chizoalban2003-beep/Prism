@@ -25,7 +25,7 @@ import uuid
 import xml.etree.ElementTree as ET
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from pathlib import Path
 from typing import Callable, Optional
@@ -309,7 +309,7 @@ class DeviceHub:
         device   = self._get_device(device_id)
         dtype    = device.device_type if device else DeviceType.MANUAL
         mtype    = _classify(str(p))
-        now      = datetime.now(timezone.utc).isoformat()
+        now      = datetime.now(UTC).isoformat()
         file_id  = uuid.uuid4().hex
 
         ingested = IngestedFile(
@@ -368,7 +368,7 @@ class DeviceHub:
             clauses.append("media_type = ?")
             params.append(media_type.value)
 
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=since_days)).isoformat()
+        cutoff = (datetime.now(UTC) - timedelta(days=since_days)).isoformat()
         clauses.append("ingested_at >= ?")
         params.append(cutoff)
 

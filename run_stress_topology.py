@@ -235,7 +235,7 @@ for intent, msg in APPROVAL_ORGANS:
 # ── 8. Synthesis blocking (L1 Constitution) ───────────────────────────────────
 hdr("8. Synthesis Blocking via L1 ConstitutionGuard")
 
-for blocked_intent in ["shell_run_v2", "phone_auto_dialler"]:
+for _blocked_intent in ["shell_run_v2", "phone_auto_dialler"]:
     # Simulate required capabilities for synthesis check
     for cap in ["subprocess", "telephony"]:
         blocked = not g.may_synthesize(cap)

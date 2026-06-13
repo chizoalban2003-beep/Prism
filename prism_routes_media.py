@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import os
 import tempfile
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -46,7 +46,7 @@ async def voice_transcribe(request: Request):
     raw_bytes  = None
 
     if "application/json" in content_type:
-        body: Dict[str, Any] = {}
+        body: dict[str, Any] = {}
         try:
             body = await request.json()
         except Exception:
@@ -119,7 +119,7 @@ async def voice_status():
 
 @router.post("/tts")
 async def tts(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -152,7 +152,7 @@ async def tts(request: Request):
 
 @router.post("/tts/speak")
 async def tts_speak(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:

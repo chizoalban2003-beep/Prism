@@ -15,7 +15,7 @@ Protected routes require X-Device-ID and X-Sync-Token headers.
 """
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import APIRouter, Header, Request
 from fastapi.responses import JSONResponse
@@ -69,7 +69,7 @@ async def mobile_register(request: Request):
     if mgr is None:
         return _unavailable()
 
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -131,7 +131,7 @@ async def mobile_health_data(
     if mgr is None:
         return _unavailable()
 
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -176,7 +176,7 @@ async def mobile_push_token(
     if mgr is None:
         return _unavailable()
 
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:

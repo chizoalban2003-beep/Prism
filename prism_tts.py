@@ -29,7 +29,7 @@ class PrismTTS:
         self._lock    = threading.Lock()
 
     @classmethod
-    def setup(cls, **kwargs) -> "PrismTTS":
+    def setup(cls, **kwargs) -> PrismTTS:
         return cls(**kwargs)
 
     def speak(self, text: str, blocking: bool = False) -> None:

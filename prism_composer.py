@@ -224,7 +224,7 @@ Rules:
 
     def execute(self, plan: CompositionPlan,
                  agent_execute_fn,
-                 base_ctx: dict) -> "PrismCard":
+                 base_ctx: dict) -> PrismCard:
         """
         Execute a CompositionPlan.
 
@@ -327,7 +327,7 @@ Rules:
     # ── Output composition ────────────────────────────────────────────────────
 
     def _compose_output(self, plan: CompositionPlan,
-                         results: dict[str, LogicResult]) -> "PrismCard":
+                         results: dict[str, LogicResult]) -> PrismCard:
         """
         Merge all step results into one coherent PrismCard.
         If an LLM router is available, synthesise a narrative summary.

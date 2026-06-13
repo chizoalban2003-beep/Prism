@@ -27,7 +27,7 @@ class SmartHomeDevice:
     friendly_name: str = ""
 
     @classmethod
-    def from_ha(cls, data: dict) -> "SmartHomeDevice":
+    def from_ha(cls, data: dict) -> SmartHomeDevice:
         attrs = data.get("attributes", {})
         return cls(
             entity_id     = data.get("entity_id", ""),
@@ -80,7 +80,7 @@ class PrismSmartHome:
         self._timeout = timeout
 
     @classmethod
-    def from_config(cls, config: dict) -> "PrismSmartHome":
+    def from_config(cls, config: dict) -> PrismSmartHome:
         sh = config.get("smarthome", {})
         return cls(
             ha_url = sh.get("ha_url", "http://homeassistant.local:8123"),

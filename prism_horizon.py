@@ -62,7 +62,7 @@ import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Callable, List, Optional
+from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +91,7 @@ class HorizonGoal:
 
     status:               HorizonGoalStatus = HorizonGoalStatus.WATCHING
     accumulated_context:  dict = field(default_factory=dict)
-    completed_steps:      List[str] = field(default_factory=list)
+    completed_steps:      list[str] = field(default_factory=list)
 
     created_at:           float = field(default_factory=time.time)
     last_checked_at:      Optional[float] = None
@@ -127,7 +127,7 @@ class HorizonGoal:
         )
 
     @classmethod
-    def from_row(cls, row: tuple) -> "HorizonGoal":
+    def from_row(cls, row: tuple) -> HorizonGoal:
         (
             goal_id, intent, trigger_condition, completion_condition,
             status, ctx_json, steps_json,
@@ -270,7 +270,7 @@ class HorizonPlanner:
         logger.info("HorizonPlanner: chain anchor created %s — %r", goal_id, intent[:60])
         return goal_id
 
-    def resumable_chains(self) -> List[HorizonGoal]:
+    def resumable_chains(self) -> list[HorizonGoal]:
         """Return PAUSED goals whose intent starts with 'chain:'.
 
         These are chains that were interrupted mid-run and can be resumed
@@ -359,7 +359,7 @@ class HorizonPlanner:
     # Session lifecycle hooks
     # ------------------------------------------------------------------
 
-    def on_session_start(self) -> List[str]:
+    def on_session_start(self) -> list[str]:
         """Evaluate all WATCHING goals; trigger those whose conditions are met.
 
         Also resumes PAUSED goals that were interrupted last session.
@@ -371,7 +371,7 @@ class HorizonPlanner:
             IDs of goals that were triggered or resumed this session.
         """
         goals     = self.list_goals()
-        activated: List[str] = []
+        activated: list[str] = []
 
         for goal in goals:
             if goal.status in (
@@ -452,7 +452,7 @@ class HorizonPlanner:
 
     def list_goals(
         self, status: Optional[HorizonGoalStatus] = None
-    ) -> List[HorizonGoal]:
+    ) -> list[HorizonGoal]:
         """Return all goals, optionally filtered by status."""
         with sqlite3.connect(self._db) as conn:
             if status is not None:

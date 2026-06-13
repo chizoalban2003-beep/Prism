@@ -146,7 +146,7 @@ class PrismChainExpert:
     # ── Public API ────────────────────────────────────────────────────────────
 
     def run(self, message: str, agent_execute_fn,
-             base_ctx: dict) -> Optional["PrismCard"]:
+             base_ctx: dict) -> Optional[PrismCard]:
         from prism_chain import ChainStep
         from prism_responses import text_card
 

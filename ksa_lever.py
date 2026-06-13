@@ -182,7 +182,7 @@ class Lever:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "Lever":
+    def from_dict(cls, d: dict) -> Lever:
         return cls(**d)
 
     def __repr__(self) -> str:
@@ -248,7 +248,7 @@ class ThreeBarSystem:
     # ── Factory ──────────────────────────────────────────────────────────────
 
     @classmethod
-    def from_defaults(cls) -> "ThreeBarSystem":
+    def from_defaults(cls) -> ThreeBarSystem:
         """
         A sensible starting configuration:
           - Lever 0: equal arms, no bias (pure input lever)
@@ -371,7 +371,7 @@ class ThreeBarSystem:
             json.dump(self.snapshot(), f, indent=2)
 
     @classmethod
-    def load_snapshot(cls, path: str) -> "ThreeBarSystem":
+    def load_snapshot(cls, path: str) -> ThreeBarSystem:
         """Reconstruct a ThreeBarSystem from a saved JSON snapshot."""
         with open(path, encoding="utf-8") as f:
             s = json.load(f)

@@ -43,7 +43,7 @@ import sqlite3
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any, Optional
 
 import psutil
@@ -103,7 +103,7 @@ class ActResult:
 # ---------------------------------------------------------------------------
 
 def _now_iso() -> str:
-    return datetime.now(tz=timezone.utc).isoformat()
+    return datetime.now(tz=UTC).isoformat()
 
 
 def _hardware_pressure() -> tuple[float, float]:

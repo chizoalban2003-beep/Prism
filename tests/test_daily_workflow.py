@@ -7,7 +7,7 @@ pytest + tmp_path. Mocks device hub, media processor, and vision analyzer.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -181,7 +181,7 @@ class TestEveningReview:
     def test_returns_evening_review(self, workflow):
         review = workflow.evening_review()
         assert isinstance(review, EveningReview)
-        assert review.date_str == datetime.now(tz=timezone.utc).date().isoformat()
+        assert review.date_str == datetime.now(tz=UTC).date().isoformat()
         assert isinstance(review.recovery_protocol, list)
         assert isinstance(review.sleep_target_hrs, float)
         assert review.sleep_target_hrs >= 7.0

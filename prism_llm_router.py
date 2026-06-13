@@ -128,7 +128,7 @@ class LLMRouter:
 
     @classmethod
     def from_config(cls, config_path: str = "~/.prism/config.toml",
-                    claude_api_key: str = "") -> "LLMRouter":
+                    claude_api_key: str = "") -> LLMRouter:
         """Load LLM preferences from prism_config.toml [llm] section."""
         try:
             import tomllib

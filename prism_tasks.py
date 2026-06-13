@@ -51,7 +51,7 @@ class PrismTasks:
         self._init_db()
 
     @classmethod
-    def from_config(cls, config: dict) -> "PrismTasks":
+    def from_config(cls, config: dict) -> PrismTasks:
         t = config.get("tasks", {})
         return cls(
             todoist_token = t.get("todoist_token",""),
@@ -299,9 +299,9 @@ class PrismTasks:
             return []
 
     def _linear_complete(self, task_id: str) -> None:
-        cancel_query = """
-        mutation { issueUpdate(id: "%s", input: {stateType: "completed"}) { success } }
-        """ % task_id
+        cancel_query = f"""
+        mutation {{ issueUpdate(id: "{task_id}", input: {{stateType: "completed"}}) {{ success }} }}
+        """
         payload = json.dumps({"query": cancel_query}).encode()
         req = urllib.request.Request(
             "https://api.linear.app/graphql",

@@ -26,7 +26,7 @@ Routes:
 """
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -171,7 +171,7 @@ async def policy_spend(user: str = "", category: str = "", days: int = 30):
 
 @router.post("/policy/set")
 async def policy_set(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -217,7 +217,7 @@ async def policy_set(request: Request):
 
 @router.post("/policy/update_from_chat")
 async def policy_update_from_chat(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -287,7 +287,7 @@ async def settings_llm_get():
 
 @router.post("/settings/llm")
 async def settings_llm_post(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -345,7 +345,7 @@ async def settings_llm_post(request: Request):
 
 @router.post("/settings/llm/test")
 async def settings_llm_test(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:

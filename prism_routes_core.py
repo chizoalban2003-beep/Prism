@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import asdict as _asdict
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -37,7 +37,7 @@ router = APIRouter()
 
 @router.post("/ask")
 async def ask(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -69,7 +69,7 @@ async def ask(request: Request):
 
 @router.post("/chat")
 async def chat(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -107,7 +107,7 @@ async def chat(request: Request):
 
 @router.post("/rate")
 async def rate(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -133,7 +133,7 @@ async def rate(request: Request):
 
 @router.post("/session")
 async def session(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -219,7 +219,7 @@ async def device_capabilities():
 
 @router.post("/device/approve")
 async def device_approve(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -256,7 +256,7 @@ async def device_approve(request: Request):
 
 @router.post("/device/execute")
 async def device_execute(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:

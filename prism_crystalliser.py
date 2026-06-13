@@ -46,10 +46,10 @@ class PrismCrystalliser:
 
     def __init__(
         self,
-        persona: "PrismPersona",
-        memory: Optional["PrismMemory"] = None,
-        outcome_tracker: Optional["OutcomeTracker"] = None,
-        calibration: Optional["PrismCalibration"] = None,
+        persona: PrismPersona,
+        memory: Optional[PrismMemory] = None,
+        outcome_tracker: Optional[OutcomeTracker] = None,
+        calibration: Optional[PrismCalibration] = None,
         llm_router=None,
         ml_assembler=None,
     ):

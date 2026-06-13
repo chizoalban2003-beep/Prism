@@ -318,7 +318,7 @@ except Exception as e:
                 raise RuntimeError(f"Tool subprocess failed: {err}")
             return proc.stdout.strip() or "(no output)"
         except subprocess.TimeoutExpired:
-            raise RuntimeError("Tool timed out after 30 seconds")
+            raise RuntimeError("Tool timed out after 30 seconds") from None
         finally:
             for p in (tool_path, runner_path):
                 try:
@@ -339,7 +339,7 @@ except Exception as e:
             subprocess.run(
                 [sys.executable, "-m", "pip", "install", "--quiet"] + to_install,
                 check=True, timeout=60,
-                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                capture_output=True)
             logger.info("[autonomous] Installed: %s", to_install)
             return True
         except subprocess.CalledProcessError as e:

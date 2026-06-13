@@ -56,7 +56,7 @@ class ContextBudgetManager:
     def prune(
         self,
         messages: list[dict],
-        budget: "ExecutionBudget",
+        budget: ExecutionBudget,
         query: str = "",
     ) -> EvictionResult:
         """
@@ -200,7 +200,7 @@ class ContextBudgetManager:
         overlap = tw & qw
         return sum(1.0 / len(w) for w in overlap) / max(1, len(qw))
 
-    def vllm_eviction_policy(self, budget: "ExecutionBudget") -> dict:
+    def vllm_eviction_policy(self, budget: ExecutionBudget) -> dict:
         """
         Returns vLLM KV cache eviction policy configuration dict.
         Wire-up (GPU hardware):

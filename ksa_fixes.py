@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import logging
 import math
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import psutil
 
@@ -139,7 +139,7 @@ class LiveWeightInjector:
     @staticmethod
     def _time_of_day_weight() -> float:
         """Return 0–1 weight: higher in morning (peak focus), lower late evening."""
-        hour = datetime.now(tz=timezone.utc).hour
+        hour = datetime.now(tz=UTC).hour
         # Morning 6–10 → 0.8, Afternoon 11–17 → 0.6, Evening/Night → 0.4
         if 6 <= hour < 11:
             return 0.8

@@ -16,7 +16,7 @@ import threading
 import time
 import uuid
 from dataclasses import dataclass, field
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -121,7 +121,7 @@ class DailyWorkflow:
         6. Check for warnings
         7. Return MorningBrief
         """
-        now_str = datetime.now(tz=timezone.utc).isoformat()
+        now_str = datetime.now(tz=UTC).isoformat()
 
         # --- Step 1 & 2: wearable reading ---
         reading = manual_reading
@@ -205,7 +205,7 @@ class DailyWorkflow:
         5. Save SessionLog as artifact
         6. Update daily load metrics
         """
-        start_time = datetime.now(tz=timezone.utc).isoformat()
+        start_time = datetime.now(tz=UTC).isoformat()
         session_id = str(uuid.uuid4())
 
         # Step 1: ingest video
@@ -265,7 +265,7 @@ class DailyWorkflow:
             except Exception as exc:
                 logger.warning("Vision analysis failed: %s", exc)
 
-        end_time = datetime.now(tz=timezone.utc).isoformat()
+        end_time = datetime.now(tz=UTC).isoformat()
 
         session = SessionLog(
             session_id     = session_id,
@@ -309,7 +309,7 @@ class DailyWorkflow:
         5. Calculate sleep target
         6. Return EveningReview
         """
-        date_str = datetime.now(tz=timezone.utc).date().isoformat()
+        date_str = datetime.now(tz=UTC).date().isoformat()
 
         if day_rating is not None:
             try:
@@ -557,4 +557,4 @@ def _garmin_to_reading(data: dict) -> WearableReading:
 # ---------------------------------------------------------------------------
 
 def _now_iso() -> str:
-    return datetime.now(tz=timezone.utc).isoformat()
+    return datetime.now(tz=UTC).isoformat()

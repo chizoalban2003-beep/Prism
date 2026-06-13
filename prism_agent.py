@@ -785,7 +785,7 @@ class PrismAgent:
         sport: str = "Football",
         team: str = "",
         db_path: str = "~/.prism/prism.db",
-    ) -> "PrismAgent":
+    ) -> PrismAgent:
         try:
             from kde_agent import KDEAgent, KDEConfig
             from sports_pro import Role

@@ -132,7 +132,7 @@ class TestLLMLedgerUnit:
         assert chain["calls"] == 2
 
     def test_recent_returns_n_records(self, ledger):
-        for i in range(5):
+        for _ in range(5):
             ledger.record_call("ollama", "mistral", 10, 5, 100)
         rows = ledger.recent(n=3)
         assert len(rows) == 3

@@ -24,7 +24,7 @@ import sqlite3
 import uuid
 from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from enum import Enum
 from pathlib import Path
 from typing import Optional
@@ -306,7 +306,7 @@ class WearableReader:
     """Factory for WearableReading objects."""
 
     @staticmethod
-    def mock(seed: int = 42) -> "WearableReading":
+    def mock(seed: int = 42) -> WearableReading:
         """Return a deterministic mock reading for testing."""
         rng = random.Random(seed)
         baseline = 60.0
@@ -327,7 +327,7 @@ class WearableReader:
         soreness:     float,
         energy:       float,
         baseline_hrv: float = 60.0,
-    ) -> "WearableReading":
+    ) -> WearableReading:
         """Build a reading from manually entered values."""
         sleep_score   = min(100.0, (sleep_hrs / 9.0) * 100.0)
         body_battery  = min(100.0, energy * 10.0)
@@ -771,7 +771,7 @@ class SportsProAssistant:
 # ---------------------------------------------------------------------------
 
 def _now_iso() -> str:
-    return datetime.now(tz=timezone.utc).isoformat()
+    return datetime.now(tz=UTC).isoformat()
 
 
 # ---------------------------------------------------------------------------

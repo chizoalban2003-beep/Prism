@@ -100,7 +100,7 @@ class PhasePredictor:
     def observe(self, dh: float, ts: float | None = None) -> None:
         self._history.append((ts if ts is not None else time.monotonic(), dh))
 
-    def predict(self, current_dh: float) -> "PhaseState | None":
+    def predict(self, current_dh: float) -> PhaseState | None:
         """Return predicted phase if crossing is imminent, else None."""
         # Heavy process spawn takes priority
         if self._heavy_proc_running():

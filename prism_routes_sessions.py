@@ -17,7 +17,7 @@ Routes:
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -80,7 +80,7 @@ async def create_session(request: Request):
     if sm is None:
         return JSONResponse({"error": "session manager unavailable", "status": 503}, status_code=503)
 
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -129,7 +129,7 @@ async def set_active_session(request: Request):
     if sm is None:
         return JSONResponse({"error": "session manager unavailable", "status": 503}, status_code=503)
 
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -174,7 +174,7 @@ async def update_session(session_id: str, request: Request):
     if sm is None:
         return JSONResponse({"error": "session manager unavailable", "status": 503}, status_code=503)
 
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -241,7 +241,7 @@ async def add_message(session_id: str, request: Request):
     if sm is None:
         return JSONResponse({"error": "session manager unavailable", "status": 503}, status_code=503)
 
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:

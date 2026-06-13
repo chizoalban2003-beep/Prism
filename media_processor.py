@@ -126,8 +126,7 @@ class MediaProcessor:
         """Run a subprocess, capturing stdout/stderr."""
         return subprocess.run(
             cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            capture_output=True,
             **kwargs,
         )
 

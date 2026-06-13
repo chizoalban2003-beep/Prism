@@ -125,7 +125,7 @@ class OrchestratorNode:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "OrchestratorNode":
+    def from_dict(cls, d: dict) -> OrchestratorNode:
         valid = {k for k in cls.__dataclass_fields__}
         return cls(**{k: v for k, v in d.items() if k in valid})
 
@@ -182,7 +182,7 @@ class TaskGraph:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "TaskGraph":
+    def from_dict(cls, d: dict) -> TaskGraph:
         return cls(
             graph_id         = d["graph_id"],
             original         = d["original"],
@@ -311,10 +311,10 @@ class ChainOrchestrator:
 
     def __init__(
         self,
-        chain:           Optional["PrismChain"]       = None,
-        organ_loader:    Optional["OrganLoader"]      = None,
-        outcome_tracker: Optional["OutcomeTracker"]   = None,
-        horizon:         Optional["HorizonPlanner"]   = None,
+        chain:           Optional[PrismChain]       = None,
+        organ_loader:    Optional[OrganLoader]      = None,
+        outcome_tracker: Optional[OutcomeTracker]   = None,
+        horizon:         Optional[HorizonPlanner]   = None,
         router: Optional[Any]                          = None,
         soul: Optional[Any]                          = None,
         db_path:         str                          = "~/.prism/orchestrator.db",
@@ -361,7 +361,7 @@ class ChainOrchestrator:
         message:          str,
         agent_execute_fn: Callable,
         base_ctx:         dict,
-    ) -> "PrismCard":
+    ) -> PrismCard:
         """
         Main entry point. Decomposes → executes → synthesises.
         Falls back to a single chain.run() if decomposition fails or
@@ -435,12 +435,12 @@ class ChainOrchestrator:
         self,
         agent_execute_fn: Callable,
         base_ctx: dict,
-    ) -> list["PrismCard"]:
+    ) -> list[PrismCard]:
         """
         Called at session start. Checks all paused graphs for horizon goals
         that have since fired, and resumes them.
         """
-        cards: list["PrismCard"] = []
+        cards: list[PrismCard] = []
         if self._horizon is None:
             return cards
 
@@ -493,7 +493,7 @@ class ChainOrchestrator:
         message:          str,
         agent_execute_fn: Callable,
         base_ctx:         dict,
-    ) -> "PrismCard":
+    ) -> PrismCard:
         """
         Async entry point for orchestrate().
 
@@ -612,7 +612,7 @@ class ChainOrchestrator:
                         asyncio.gather(*[_run_one(n) for n in parallel_safe]),
                         timeout=60.0,
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     for n in parallel_safe:
                         if n.status == "running":
                             n.status = "failed"
@@ -843,7 +843,7 @@ class ChainOrchestrator:
         card = self._chain_run(node.goal, agent_execute_fn, ctx)
         return card.body if hasattr(card, "body") else str(card)
 
-    def _chain_run(self, message: str, agent_execute_fn: Callable, ctx: dict) -> "PrismCard":
+    def _chain_run(self, message: str, agent_execute_fn: Callable, ctx: dict) -> PrismCard:
         if self._chain is not None:
             return self._chain.run(message, agent_execute_fn, ctx)
         card = agent_execute_fn("autonomous", message, ctx)

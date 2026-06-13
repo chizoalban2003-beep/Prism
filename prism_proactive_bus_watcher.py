@@ -57,7 +57,7 @@ class ProactiveBusWatcher:
         self._bus_watcher.register()
     """
 
-    def __init__(self, proactive: "PrismProactive", organ_bus: "OrganBus"):
+    def __init__(self, proactive: PrismProactive, organ_bus: OrganBus):
         self._proactive = proactive
         self._bus       = organ_bus
 

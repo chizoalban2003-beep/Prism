@@ -21,7 +21,6 @@ import time
 import urllib.error
 import urllib.request
 from pathlib import Path
-from typing import Union
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +28,7 @@ STATSBOMB_BASE = (
     "https://raw.githubusercontent.com/statsbomb/open-data/master/data"
 )
 
-_JsonData = Union[dict, list]
+_JsonData = dict | list
 
 
 class StatsBombConnector:

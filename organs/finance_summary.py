@@ -85,7 +85,7 @@ def execute(intent: str, message: str, ctx: dict):
         last5 = transactions[-5:]
         last5_lines = "\n".join(
             f"  {t['date']}  {t['category']:<16} "
-            f"{'%+.2f' % t['amount']}  {t['description']}"
+            f"{t['amount']:+.2f}  {t['description']}"
             for t in reversed(last5)
         )
 

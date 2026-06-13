@@ -176,7 +176,7 @@ def test_allostatic_report_returns_all_rules():
     report = bridge.allostatic_report()
     assert isinstance(report, dict)
     assert len(report) > 0
-    for key, val in report.items():
+    for _, val in report.items():
         assert "ema" in val
         assert "slow_ema" in val
         assert "allostatic_load" in val

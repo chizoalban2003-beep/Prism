@@ -251,7 +251,7 @@ def test_calibration_gap():
     analyzer = _TrackedMomentAnalyzer()
     outcomes = [True, False, False, True, False, False, True, False]  # 3/8 ≈ 0.375 actual
 
-    for i, success in enumerate(outcomes):
+    for _, success in enumerate(outcomes):
         m  = _make_moment(xg_raw=0.30)
         _r = analyzer.analyze(m)
         oc = ActionOutcome(action_taken="shot", success=success, xg_delta=0.0)

@@ -362,7 +362,7 @@ class MLAssembler:
         cls = RandomForestRegressor if continuous else RandomForestClassifier
         m = cls(
             n_estimators=params.get("n_estimators", 100),
-            max_depth=params.get("max_depth", None),
+            max_depth=params.get("max_depth"),
             n_jobs=-1,
         )
         scoring = "r2" if continuous else "accuracy"

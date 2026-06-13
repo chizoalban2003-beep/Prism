@@ -33,7 +33,7 @@ class PrismWatchdog:
 
     def __init__(
         self,
-        pipeline:       "PrismShadowPipeline",
+        pipeline:       PrismShadowPipeline,
         dm_threshold:   int   = _DM_THRESHOLD,
         check_interval: float = _CHECK_INTERVAL,
     ) -> None:

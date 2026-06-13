@@ -16,7 +16,7 @@ GET  /ide/context     — current agent context (active session, phase, user)
 from __future__ import annotations
 
 import time
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -108,7 +108,7 @@ async def ide_complete(request: Request):
             "filename":    "main.py"   # optional
         }
     """
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:  # noqa: BLE001
@@ -157,7 +157,7 @@ async def ide_explain(request: Request):
             "question": "What does this do?"   # optional
         }
     """
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:  # noqa: BLE001
@@ -201,7 +201,7 @@ async def ide_review(request: Request):
             "filename": "app.py"   # optional
         }
     """
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:  # noqa: BLE001
@@ -248,7 +248,7 @@ async def ide_fix(request: Request):
             "language":      "python"
         }
     """
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:  # noqa: BLE001
@@ -298,7 +298,7 @@ async def ide_chat(request: Request):
             "filename":     "utils.py"                          # optional
         }
     """
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:  # noqa: BLE001
@@ -350,7 +350,7 @@ async def ide_context():
         except Exception:  # noqa: BLE001
             pass
 
-    user_info: Dict[str, Any] = {}
+    user_info: dict[str, Any] = {}
     if agent is not None:
         soul = getattr(agent, "_soul", None)
         if soul is not None:

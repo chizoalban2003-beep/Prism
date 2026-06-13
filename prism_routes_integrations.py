@@ -22,7 +22,7 @@ Routes:
 """
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -102,7 +102,7 @@ async def email_unread():
 
 @router.post("/email/send")
 async def email_send(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -205,7 +205,7 @@ async def instructions_get():
 
 @router.post("/instructions")
 async def instructions_post(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -246,7 +246,7 @@ async def discovery_services():
 
 @router.post("/discovery/build")
 async def discovery_build(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -294,7 +294,7 @@ async def messaging_send(request: Request):
 
     Body: {"platform": str, "chat_id": str, "text": str}
     """
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -391,7 +391,7 @@ def _get_lora_trainer():
     return _lora_trainer, None
 
 
-def _job_to_dict(job) -> Dict[str, Any]:
+def _job_to_dict(job) -> dict[str, Any]:
     return {
         "job_id":       job.job_id,
         "base_model":   job.base_model,
@@ -411,7 +411,7 @@ async def lora_train(request: Request):
     Body (optional JSON): {"base_model": "llama3.2:3b", "min_pairs": 10}
     Returns {"job_id": ..., "status": "pending"} or {"error": "not_enough_data"}.
     """
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:

@@ -36,7 +36,7 @@ class GraphNode:
                 "value": self.value, "ts": self.ts}
 
     @classmethod
-    def from_row(cls, row: tuple) -> "GraphNode":
+    def from_row(cls, row: tuple) -> GraphNode:
         node_id, node_type, value_json, ts = row
         return cls(node_id=node_id, node_type=node_type,
                    value=json.loads(value_json), ts=ts)

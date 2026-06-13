@@ -70,7 +70,7 @@ class PrismEmail:
         self._max_fetch = max_fetch
 
     @classmethod
-    def from_config(cls, config: dict) -> "PrismEmail":
+    def from_config(cls, config: dict) -> PrismEmail:
         em = config.get("email", {})
         return cls(
             address   = em.get("address", ""),

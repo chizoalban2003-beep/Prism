@@ -39,10 +39,10 @@ class PrismShadowPipeline:
 
     def __init__(
         self,
-        graph:         "PrismMemoryGraph",
+        graph:         PrismMemoryGraph,
         interval_s:    float = 5.0,
         max_restarts:  int   = 10,
-        soul: Optional["PrismSoul | None"] = None,
+        soul: Optional[PrismSoul | None] = None,
         phase_engine:  Any | None = None,
         bridge:        Any | None = None,
         kinetic:       Any | None = None,

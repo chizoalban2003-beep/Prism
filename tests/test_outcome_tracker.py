@@ -15,7 +15,7 @@ from prism_outcome_tracker import (
 )
 
 
-def _tracker(soul=None, horizon=None) -> "tuple[OutcomeTracker, str]":
+def _tracker(soul=None, horizon=None) -> tuple[OutcomeTracker, str]:
     d = tempfile.mkdtemp()
     db = str(Path(d) / "outcomes.db")
     return OutcomeTracker(db_path=db, soul=soul, horizon=horizon), db

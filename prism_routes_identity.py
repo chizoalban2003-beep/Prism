@@ -23,7 +23,7 @@ from __future__ import annotations
 import json
 import time
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -81,7 +81,7 @@ async def identity_dashboard():
     soul = _soul()
     persona = _persona()
 
-    snapshot: Dict[str, Any] = {"generated_at": time.time()}
+    snapshot: dict[str, Any] = {"generated_at": time.time()}
 
     # Phase
     phase_engine = _phase_engine()
@@ -369,7 +369,7 @@ async def onboarding_answer(request: Request):
 
     Returns the next question, or a completion summary when all are answered.
     """
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -552,7 +552,7 @@ async def calibration_feedback(request: Request):
 
     Returns the calibration event + before/after VEAX render.
     """
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -591,7 +591,7 @@ async def calibration_feedback(request: Request):
             render_gates,
             save_spectrum_state,
         )
-        _VEAX_DELTAS: Dict[str, Dict[str, float]] = {
+        _VEAX_DELTAS: dict[str, dict[str, float]] = {
             "too_aggressive":   {"A": -0.05, "V": +0.03},
             "too_conservative": {"A": +0.05, "V": -0.03},
             "wrong":            {"V": +0.05},

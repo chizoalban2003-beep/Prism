@@ -97,9 +97,9 @@ class PrismReflection:
 
     def __init__(
         self,
-        outcome_tracker: Optional["OutcomeTracker"] = None,
-        soul:            Optional["PrismSoul"]       = None,
-        horizon:         Optional["HorizonPlanner"]  = None,
+        outcome_tracker: Optional[OutcomeTracker] = None,
+        soul:            Optional[PrismSoul]       = None,
+        horizon:         Optional[HorizonPlanner]  = None,
         llm_router=None,
         auto_apply: bool = False,
         days: int = 7,

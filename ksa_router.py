@@ -353,8 +353,8 @@ class MasterFulcrum:
         """
         try:
             import urllib.request
-        except ImportError:
-            raise RuntimeError("urllib.request not available.")
+        except ImportError as exc:
+            raise RuntimeError("urllib.request not available.") from exc
 
         task_list_str = (
             "\n".join(f"  - {t}" for t in registered_tasks)

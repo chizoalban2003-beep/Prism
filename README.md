@@ -292,7 +292,7 @@ L3 Drift      Dm = pending WAL entries; critical alert when Dm growing AND Lr hi
 Canary probe  synthetic write→WAL→commit→read round-trip; tracks ρ (degradation slope)
 ```
 
-GET `/metrics?window_s=300` returns the full JSON report. A canary run is scheduled every 24 h by the horizon planner. CI enforces a **500 ms SLO** on the round-trip; break-glass via `DEBT_WAIVER.json`.
+GET `/metrics?window_s=300` returns the full JSON report. A canary run is scheduled every 24 h by the horizon planner. CI enforces a **1000 ms SLO** on the round-trip (configurable via `PRISM_PERF_SLO_MS` env var; production target is 500 ms); break-glass via `DEBT_WAIVER.json`.
 
 ---
 
@@ -1663,7 +1663,7 @@ All major capabilities are implemented and tested. The table below is the author
 | Three-layered observability | `prism_metrics.py` | **Working** — L1 counters, L2 Lr latency, L3 Dm drift, canary ρ |
 | Canary health probe | `organs/canary_check.py` | **Working** — synthetic WAL round-trip, measures degradation slope |
 | Chaos test suite | `tests/test_chaos.py` | **Working** — CHAOS-001/002/003 + ConsistencyOracle; 23 tests |
-| CI performance gate | `tests/test_performance_gate.py` | **Working** — 500 ms SLO; DEBT_WAIVER.json break-glass |
+| CI performance gate | `tests/test_performance_gate.py` | **Working** — 1000 ms SLO default (override via `PRISM_PERF_SLO_MS`; prod target 500 ms); DEBT_WAIVER.json break-glass |
 | Allostatic baseline shifting | `prism_perception.py` | **Working** — double-order hysteresis; slow_ema + baseline_shift [0,0.3]; 15 tests |
 | VEAX Jacobian debt dynamics | `prism_perception.py` | **Working** — coupled ODE dS/dt=M·S for VEAX debt cross-axis coupling; 12 tests |
 | Anticipatory phase shifting | `prism_phase.py` | **Working** — PhasePredictor with ΔH slope regression + heavy-proc detection; 12 tests |
@@ -1677,6 +1677,10 @@ All major capabilities are implemented and tested. The table below is the author
 | LoRA Fine-Tuning Pipeline | `prism_lora_trainer.py` | **Working** — DPO pairs from `OutcomeRecord.correction` → Unsloth QLoRA → GGUF → Ollama registration; `pip install ".[lora]"`; `POST /lora/train`, `GET /lora/status` |
 | System Tray (native desktop) | `prism_tray.py` | **Working** — pystray icon + pywebview window; `pip install ".[tray]"`; `prism-tray` CLI entry point |
 | Kinetic Decision Engine | `prism_kinetic_engine.py` | **Working** — cross-domain torque/lever arbitrage engine; Z-score normalisation, EMA damping, hysteresis, Black Swan bypass; `POST /kinetic/signal`, `GET /kinetic/windows` |
+| Surgical ML Assembler | `prism_ml_assembler.py` | **Working** — 11-algorithm DAG (Ridge→Lasso→XGBoost→LightGBM→MLP→LSTM→GRU→DBSCAN→KMeans); auto-profiles data; nightly sweep self-tunes params from failed outcomes; `POST /ml/run`, `GET /ml/status`, `POST /ml/nightly_sweep` |
+| PyTorch Deep Models | `prism_torch_models.py` | **Working** — PrismMLP, PrismLSTM, PrismGRU with dynamic depth/dropout; TorchTrainer (AdamW, HuberLoss, R²/accuracy scoring); activated via `is_sequential=True` or `n≥100+high-dim` in MLAssembler; `pip install ".[torch]"` |
+| Vision ML Bridge | `prism_vision_ml_bridge.py` | **Working** — converts raw image frames to 8×8 intensity/delta/spatial feature vectors (192 features); buffers frames and runs MLAssembler when `min_frames` reached; `POST /perception/visual/predict`, `GET /perception/visual/status` |
+| Session Manager | `prism_session_manager.py` | **Working** — named conversation sessions with full CRUD, message history, pagination, active-session tracking; `GET|POST /sessions`, `PATCH|DELETE /sessions/{id}`, `GET|POST|DELETE /sessions/{id}/history` |
 
 ---
 
@@ -1707,7 +1711,7 @@ Ollama + llava    vision analysis (ollama pull llava)
 playwright        browser automation (pip install playwright && playwright install chromium)
 ```
 
-No torch · no langchain · no openai required. Core decision mathematics is pure Python arithmetic. The optional `ml` extra (`pip install ".[ml]"`) adds scikit-learn + XGBoost + numpy for the Surgical ML Assembler; all other subsystems remain numpy-free.
+No torch · no langchain · no openai required. Core decision mathematics is pure Python arithmetic. The optional `ml` extra (`pip install ".[ml]"`) adds scikit-learn + XGBoost + numpy for the Surgical ML Assembler. The `torch` extra (`pip install ".[torch]"`) adds MLP/LSTM/GRU deep models via PyTorch; all other subsystems remain numpy-free.
 
 ---
 

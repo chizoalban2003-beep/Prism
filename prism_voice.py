@@ -53,7 +53,7 @@ class PrismVoice:
         self._bg_stop     = threading.Event()
 
     @classmethod
-    def from_config(cls, config: dict) -> "PrismVoice":
+    def from_config(cls, config: dict) -> PrismVoice:
         v = config.get("voice", {})
         return cls(
             model    = v.get("model", "base"),

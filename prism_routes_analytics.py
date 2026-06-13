@@ -32,7 +32,7 @@ import dataclasses
 import math
 import uuid
 from collections import defaultdict
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -157,7 +157,7 @@ async def domain_sensitivity(
 
 @router.post("/domain/validate")
 async def domain_validate(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -369,7 +369,7 @@ async def moment_player_stats(player: str = ""):
 
 @router.post("/moment/calibrate")
 async def moment_calibrate(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -430,7 +430,7 @@ async def moment_calibrate(request: Request):
 
 @router.post("/moment/live_frame")
 async def moment_live_frame(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -508,7 +508,7 @@ async def duel_summary():
 
 @router.post("/duel/add_match")
 async def duel_add_match(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:

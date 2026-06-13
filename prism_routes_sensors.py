@@ -23,7 +23,7 @@ Routes:
 from __future__ import annotations
 
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -69,7 +69,7 @@ async def memory_search(q: str = "", n: int = 5, source: Optional[str] = None):
 
 @router.post("/memory/ingest")
 async def memory_ingest(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -110,7 +110,7 @@ async def perception_status():
 
 @router.post("/perception/ingest")
 async def perception_ingest(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -128,7 +128,7 @@ async def perception_ingest(request: Request):
 
 @router.post("/perception/enable")
 async def perception_enable(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -366,7 +366,7 @@ async def smarthome_status():
 
 @router.post("/smarthome")
 async def smarthome(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:

@@ -396,7 +396,7 @@ LOW_RISK_ORGAN = textwrap.dedent("""
 """).strip()
 
 
-def _make_loader_with(*organs: tuple[str, str]) -> "tuple[OrganLoader, Path]":
+def _make_loader_with(*organs: tuple[str, str]) -> tuple[OrganLoader, Path]:
     import tempfile
     d = tempfile.mkdtemp()
     bundled = Path(d) / "bundled"

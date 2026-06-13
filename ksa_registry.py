@@ -38,7 +38,7 @@ import sqlite3
 import sys
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Optional
 
@@ -90,7 +90,7 @@ class PerformanceMetrics:
         }
 
     @classmethod
-    def from_dict(cls, d: dict) -> "PerformanceMetrics":
+    def from_dict(cls, d: dict) -> PerformanceMetrics:
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
 
@@ -188,7 +188,7 @@ class SnapshotRegistry:
 
     @staticmethod
     def _now() -> str:
-        return datetime.now(timezone.utc).isoformat()
+        return datetime.now(UTC).isoformat()
 
     def _next_version(self, conn: sqlite3.Connection, task_name: str) -> int:
         row = conn.execute(

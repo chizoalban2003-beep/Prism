@@ -16,7 +16,7 @@ All routes return 503 when FederationManager is not available.
 """
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -51,7 +51,7 @@ async def federation_announce(request: Request):
     if fm is None:
         return _503
 
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -168,7 +168,7 @@ async def federation_sync_post(request: Request):
     if fm is None:
         return _503
 
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -226,7 +226,7 @@ async def federation_identity_get():
     persona = getattr(agent, "_persona", None) if agent else None
     fm = _fed()
 
-    payload: Dict[str, Any] = {
+    payload: dict[str, Any] = {
         "node_id": fm.node_id if fm else None,
         "timestamp": _time.time(),
     }
@@ -278,7 +278,7 @@ async def federation_identity_merge(request: Request):
     Persona traits are upserted (higher confidence wins, source set to
     ``"federated"``).
     """
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:

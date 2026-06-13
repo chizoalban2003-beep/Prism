@@ -80,8 +80,8 @@ class OutcomeTracker:
     def __init__(
         self,
         db_path: str = "~/.prism/outcomes.db",
-        soul: Optional["PrismSoul"] = None,
-        horizon: Optional["HorizonPlanner"] = None,
+        soul: Optional[PrismSoul] = None,
+        horizon: Optional[HorizonPlanner] = None,
     ):
         self._db           = Path(db_path).expanduser()
         self._db.parent.mkdir(parents=True, exist_ok=True)
@@ -209,7 +209,7 @@ class OutcomeTracker:
             "completion_rate": round(done / total, 2) if total else 0.0,
         }
 
-    def feed_soul(self, soul: "PrismSoul", days: int = 7) -> int:
+    def feed_soul(self, soul: PrismSoul, days: int = 7) -> int:
         """
         Scan recent outcomes and update soul beliefs/lenses.
         Returns the number of belief updates applied.
@@ -223,7 +223,7 @@ class OutcomeTracker:
             updates += self._soul_update_for_record(rec, soul)
         return updates
 
-    def feed_horizon(self, horizon: "HorizonPlanner", days: int = 14) -> None:
+    def feed_horizon(self, horizon: HorizonPlanner, days: int = 14) -> None:
         """
         Update HorizonPlanner goal context with outcome rate data for each
         active goal whose intent overlaps with recently completed chains.
@@ -350,7 +350,7 @@ class OutcomeTracker:
         except Exception as exc:
             logger.debug("[outcome_tracker] fulcrum feedback failed: %s", exc)
 
-    def _soul_update_for_record(self, rec: OutcomeRecord, soul: "PrismSoul") -> int:
+    def _soul_update_for_record(self, rec: OutcomeRecord, soul: PrismSoul) -> int:
         updates = 0
         if rec.outcome == OUTCOME_DONE:
             lenses = soul.list_lenses()

@@ -1232,7 +1232,7 @@ class PrismPerception:
                 self._q, ollama_host=ollama_host))
 
     @classmethod
-    def setup(cls, **kwargs) -> "PrismPerception":
+    def setup(cls, **kwargs) -> PrismPerception:
         return cls(**kwargs)
 
     def start(self) -> None:

@@ -44,7 +44,7 @@ class PrismContacts:
         self._init_db()
 
     @classmethod
-    def from_config(cls, config: dict) -> "PrismContacts":
+    def from_config(cls, config: dict) -> PrismContacts:
         c = config.get("contacts", {})
         return cls(
             google_token = c.get("google_token",""),

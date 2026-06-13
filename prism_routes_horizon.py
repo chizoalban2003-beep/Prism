@@ -14,7 +14,7 @@ Routes:
 """
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -89,7 +89,7 @@ async def horizon_status():
 
 @router.post("/horizon/goal")
 async def horizon_goal_create(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -128,7 +128,7 @@ async def horizon_goal_create(request: Request):
 
 @router.post("/horizon/goal/{goal_id}/complete")
 async def horizon_goal_complete(goal_id: str, request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -152,7 +152,7 @@ async def horizon_goal_complete(goal_id: str, request: Request):
 
 @router.post("/horizon/goal/{goal_id}/abandon")
 async def horizon_goal_abandon(goal_id: str, request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -176,7 +176,7 @@ async def horizon_goal_abandon(goal_id: str, request: Request):
 
 @router.post("/horizon/goal/{goal_id}/context")
 async def horizon_goal_context(goal_id: str, request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:

@@ -512,7 +512,7 @@ class KDEAgent:
         profile: Optional[UserProfile] = None,
         config_path: Optional[str] = None,
         **kwargs,
-    ) -> "KDEAgent":
+    ) -> KDEAgent:
         """Create an agent from a UserProfile or legacy keyword arguments."""
         config = kwargs.pop("config", None)
         if profile is None:

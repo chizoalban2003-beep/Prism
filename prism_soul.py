@@ -48,7 +48,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -86,8 +86,8 @@ class SoulLens:
     lens_id: str
     name: str
     description: str
-    signal_types: List[str]
-    observations: List[dict] = field(default_factory=list)
+    signal_types: list[str]
+    observations: list[dict] = field(default_factory=list)
     user_created: bool = True
 
     @property
@@ -113,9 +113,9 @@ class SoulLens:
 @dataclass
 class SoulSeed:
     narrative: str
-    stated_values: List[str]
-    stated_goals: List[str]
-    stated_constraints: List[str]
+    stated_values: list[str]
+    stated_goals: list[str]
+    stated_constraints: list[str]
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
 
@@ -289,13 +289,13 @@ class PrismSoul:
 
     def list_beliefs(
         self, source: Optional[str] = None, belief_type: Optional[str] = None
-    ) -> List[BeliefNode]:
+    ) -> list[BeliefNode]:
         """Filter query."""
         query = (
             "SELECT node_id, text, belief_type, source, confidence,"
             " created_at, updated_at, observation_count, notes FROM beliefs WHERE 1=1"
         )
-        params: List[Any] = []
+        params: list[Any] = []
         if source is not None:
             query += " AND source=?"
             params.append(source)
@@ -313,8 +313,8 @@ class PrismSoul:
         observation_count_delta: int = 0,
     ) -> None:
         """Partial update."""
-        updates: List[str] = ["updated_at=?"]
-        params: List[Any] = [time.time()]
+        updates: list[str] = ["updated_at=?"]
+        params: list[Any] = [time.time()]
         if confidence is not None:
             updates.append("confidence=?")
             params.append(confidence)
@@ -349,10 +349,10 @@ class PrismSoul:
 
     def list_edges(
         self, from_id: Optional[str] = None, relation: Optional[str] = None
-    ) -> List[BeliefEdge]:
+    ) -> list[BeliefEdge]:
         """Filter query."""
         query = "SELECT edge_id, from_id, to_id, relation, strength, created_at FROM edges WHERE 1=1"
-        params: List[Any] = []
+        params: list[Any] = []
         if from_id is not None:
             query += " AND from_id=?"
             params.append(from_id)
@@ -370,7 +370,7 @@ class PrismSoul:
         self,
         name: str,
         description: str,
-        signal_types: Optional[List[str]] = None,
+        signal_types: Optional[list[str]] = None,
     ) -> str:
         """Insert SoulLens, return lens_id."""
         lens_id = str(uuid.uuid4())[:8]
@@ -407,7 +407,7 @@ class PrismSoul:
             user_created=bool(row[5]),
         )
 
-    def list_lenses(self) -> List[SoulLens]:
+    def list_lenses(self) -> list[SoulLens]:
         """All lenses."""
         rows = self._conn.execute(
             "SELECT lens_id, name, description, signal_types, observations, user_created FROM lenses"
@@ -456,7 +456,7 @@ class PrismSoul:
     # Delta report
     # ------------------------------------------------------------------
 
-    def delta_report(self, run_check: bool = False) -> List[dict]:
+    def delta_report(self, run_check: bool = False) -> list[dict]:
         """
         Find stated/observed pairs connected by a 'contradicts' edge.
         Returns list of {"stated": text, "observed": text, "strength": float}.
@@ -496,7 +496,7 @@ class PrismSoul:
             return 0.0
         return len(ta & tb) / len(ta | tb)
 
-    def run_entailment_check(self, sim_threshold: float = 0.15) -> List[dict]:
+    def run_entailment_check(self, sim_threshold: float = 0.15) -> list[dict]:
         """
         Compare stated beliefs against lens observation trends.
         When a stated belief overlaps with a lens that shows a consistently
@@ -505,7 +505,7 @@ class PrismSoul:
         """
         stated = [b for b in self.list_beliefs(belief_type=None) if b.source == "stated"]
         lenses = self.list_lenses()
-        created: List[dict] = []
+        created: list[dict] = []
 
         for lens in lenses:
             obs = lens.observations
@@ -796,7 +796,7 @@ class PrismSoul:
     def register_with_bus(self, organ_bus) -> None:
         """Register with OrganBus for all signal types across all lenses."""
         lenses = self.list_lenses()
-        all_signal_types: List[str] = []
+        all_signal_types: list[str] = []
         for lens in lenses:
             for st in lens.signal_types:
                 if st not in all_signal_types:

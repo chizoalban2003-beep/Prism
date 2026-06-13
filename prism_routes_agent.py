@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import asdict as _asdict
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -88,7 +88,7 @@ async def plan_get():
 
 @router.post("/plan")
 async def plan_post(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -151,7 +151,7 @@ async def artifacts(domain: Optional[str] = None, n: int = 10):
 
 @router.post("/artifacts/rate")
 async def artifacts_rate(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -192,7 +192,7 @@ async def identity_domains():
 
 @router.post("/identity/observe")
 async def identity_observe(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:
@@ -218,7 +218,7 @@ async def identity_observe(request: Request):
 
 @router.post("/identity/reset")
 async def identity_reset(request: Request):
-    body: Dict[str, Any] = {}
+    body: dict[str, Any] = {}
     try:
         body = await request.json()
     except Exception:

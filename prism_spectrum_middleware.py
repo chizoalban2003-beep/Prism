@@ -22,6 +22,7 @@ from __future__ import annotations
 import json as _json
 import threading as _threading
 from dataclasses import dataclass
+from datetime import UTC
 from pathlib import Path
 from typing import Any
 
@@ -298,9 +299,9 @@ def _load_spectrum_state() -> dict | None:
 
 def save_spectrum_state(gates: SpectrumGates, preset: str | None = None) -> None:
     """Persist VEAX values to ~/.prism/spectrum_state.json and sync singleton."""
-    from datetime import datetime, timezone
+    from datetime import datetime
     data: dict[str, Any] = gates.to_dict()
-    data["updated_at"] = datetime.now(timezone.utc).isoformat()
+    data["updated_at"] = datetime.now(UTC).isoformat()
     if preset:
         data["preset"] = preset
     _STATE_PATH.parent.mkdir(parents=True, exist_ok=True)

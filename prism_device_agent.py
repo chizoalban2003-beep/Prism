@@ -702,7 +702,7 @@ class PrismDeviceAgent:
         on_approval:   Optional[Callable[[str, str], bool]] = None,
         collaborator=None,
         user:          str = "default",
-    ) -> "PrismDeviceAgent":
+    ) -> PrismDeviceAgent:
         caps = DeviceCapabilityScanner().scan()
         return cls(
             capabilities=caps,

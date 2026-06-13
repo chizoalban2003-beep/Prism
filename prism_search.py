@@ -40,7 +40,7 @@ class PrismSearch:
         self._serp_key  = serp_key
 
     @classmethod
-    def from_config(cls, config: dict) -> "PrismSearch":
+    def from_config(cls, config: dict) -> PrismSearch:
         s = config.get("search", {})
         return cls(
             provider  = s.get("provider", "auto"),

@@ -39,7 +39,7 @@ class PrismPush:
         self._priority = default_priority
 
     @classmethod
-    def from_config(cls, config: dict) -> "PrismPush":
+    def from_config(cls, config: dict) -> PrismPush:
         p = config.get("push", {})
         return cls(
             topic            = p.get("topic", ""),
