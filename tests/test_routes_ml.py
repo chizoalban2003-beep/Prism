@@ -122,3 +122,43 @@ class TestMLRun:
         assert r.status_code == 200
         data = r.json()
         assert data["algorithm"] == "fallback_mean"
+
+
+class TestMLNightlySweep:
+    def test_sweep_200_no_tracker(self, client):
+        r = client.post("/ml/nightly_sweep")
+        assert r.status_code == 200
+
+    def test_sweep_returns_updated_dict(self, client):
+        data = client.post("/ml/nightly_sweep").json()
+        assert "updated" in data
+        assert "algos_updated" in data
+
+    def test_sweep_note_when_no_tracker(self, client):
+        data = client.post("/ml/nightly_sweep").json()
+        assert "note" in data
+        assert "outcome_tracker" in data["note"]
+
+    def test_sweep_with_tracker(self, client, monkeypatch):
+        """With a mock tracker wired into _state, sweep returns algos_updated list."""
+        from unittest.mock import MagicMock
+
+        mock_tracker = MagicMock()
+        mock_tracker.get_failed_outcomes.return_value = []
+
+        import prism_state
+        original_state = prism_state._state.copy()
+        prism_state._state["outcome_tracker"] = mock_tracker
+        try:
+            r = client.post("/ml/nightly_sweep")
+            assert r.status_code == 200
+            data = r.json()
+            assert "algos_updated" in data
+            assert isinstance(data["algos_updated"], list)
+        finally:
+            prism_state._state.clear()
+            prism_state._state.update(original_state)
+
+    def test_sweep_algos_updated_is_list(self, client):
+        data = client.post("/ml/nightly_sweep").json()
+        assert isinstance(data["algos_updated"], list)

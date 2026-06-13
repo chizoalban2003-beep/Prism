@@ -4,8 +4,9 @@ prism_routes_ml.py
 REST endpoints for the Surgical ML Assembler.
 
 Routes:
-  POST /ml/run     → profile data + run algorithm + translate → AssemblyResult
-  GET  /ml/status  → assembler health + nightly param overrides
+  POST /ml/run           → profile data + run algorithm + translate → AssemblyResult
+  GET  /ml/status        → assembler health + nightly param overrides
+  POST /ml/nightly_sweep → trigger nightly hyperparameter sweep against failed outcomes
 """
 
 from __future__ import annotations
@@ -90,4 +91,30 @@ async def ml_run(body: dict) -> JSONResponse:
         "duration_ms": round(result.duration_ms, 2),
         "params":      result.params,
         "error":       result.error,
+    })
+
+
+@router.post("/ml/nightly_sweep")
+async def ml_nightly_sweep() -> JSONResponse:
+    """Trigger the nightly hyperparameter sweep against failed outcomes."""
+    try:
+        from prism_state import _state  # type: ignore[attr-defined]
+        tracker = _state.get("outcome_tracker")
+    except Exception:
+        tracker = None
+
+    asm = get_or_set_assembler()
+
+    if tracker is None:
+        return JSONResponse({
+            "updated":       {},
+            "algos_updated": [],
+            "note":          "outcome_tracker not available",
+        })
+
+    from prism_ml_assembler import run_nightly_sweep
+    updated = run_nightly_sweep(asm, tracker)
+    return JSONResponse({
+        "updated":       updated,
+        "algos_updated": list(updated.keys()),
     })
