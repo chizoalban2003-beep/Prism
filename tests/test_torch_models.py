@@ -3,11 +3,11 @@ Tests for prism_torch_models and PyTorch integration in prism_ml_assembler.
 """
 from __future__ import annotations
 
-import numpy as np
 import pytest
 
 torch = pytest.importorskip("torch")
 
+import numpy as np
 import torch as th
 import torch.nn as nn
 
