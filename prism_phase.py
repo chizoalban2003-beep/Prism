@@ -21,6 +21,7 @@ Phases:
 from __future__ import annotations
 
 import logging
+import threading
 import time
 from collections import deque
 from dataclasses import dataclass, field
@@ -51,6 +52,7 @@ class PhaseReading:
     delta_H: float
     delta_K: float
     phase:   PhaseState
+    delta_B: float = 0.0
     ts:      float = field(default_factory=time.time)
 
 
@@ -88,6 +90,8 @@ class PhasePredictor:
         "npm", "node", "webpack", "tsc",
         "mvn", "gradle", "java",
         "rustc", "go", "ld",
+        # ML/training processes
+        "torchrun", "accelerate", "deepspeed", "unsloth",
     })
     _WINDOW_SIZE = 6    # samples
     _LOOKAHEAD_S = 30.0  # predict this far ahead
@@ -185,6 +189,7 @@ class CrystallizationEngine:
         self._last_entailment_ts:     float         = 0.0
         self._last_entailment_result: float         = 0.0
         self._entailment_ttl:         float         = 60.0   # seconds
+        self._lock = threading.Lock()
 
         # Anticipatory phase predictor (Vector III)
         self._predictor = PhasePredictor(melt_threshold, viscous_threshold)
@@ -204,6 +209,15 @@ class CrystallizationEngine:
         bridge:  optional BiometricVEAXBridge for biological pressure (ΔB, Vector IV).
         kinetic: optional KineticEngine — compound personal signal pressure (ΔC, Vector V).
         """
+        with self._lock:
+            return self._compute_locked(soul, bridge, kinetic)
+
+    def _compute_locked(
+        self,
+        soul: Optional[Any] = None,
+        bridge: Optional[Any] = None,
+        kinetic: Optional[Any] = None,
+    ) -> PhaseReading:
         delta_h = self._compute_delta_H()
         delta_k = self._compute_delta_K(soul)
         delta_b = self._compute_delta_B(bridge)
@@ -230,7 +244,7 @@ class CrystallizationEngine:
         if predicted is not None and _phase_order(predicted) > _phase_order(phase):
             phase = predicted
 
-        reading = PhaseReading(phi=phi, delta_H=delta_h, delta_K=delta_k, phase=phase)
+        reading = PhaseReading(phi=phi, delta_H=delta_h, delta_K=delta_k, phase=phase, delta_B=delta_b)
         self.history.append(reading)
         logger.debug(
             "[phase] ΔH=%.3f ΔK=%.3f ΔB=%.3f ΔC=%.3f Φ=%.3f phase=%s",

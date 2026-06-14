@@ -46,6 +46,28 @@ class PrismLoraTrainer:
 
     def start_training(self, base_model: str = "llama3.2:3b", min_pairs: int = 10) -> Optional[str]:
         """Collect DPO pairs, launch background training. Returns job_id or None."""
+        # Concurrency guard: refuse if a training job is already running
+        with self._lock:
+            if any(j.status == "running" for j in self._jobs.values()):
+                logger.info("[lora] training already in progress — skipping")
+                return None
+        # RAM gate: require ≥ 4 GB free to load a quantised model
+        try:
+            import psutil as _ps
+            if _ps.virtual_memory().available < 4 * 1024 ** 3:
+                logger.info("[lora] <4 GB RAM free — skipping training")
+                return None
+        except Exception:
+            pass
+        # Phase gate: defer if system is under thermal/RAM pressure
+        try:
+            import prism_phase as _pp
+            _engine = _pp.get_engine()
+            if _engine.history and _engine.current_phase.value in ("VISCOUS", "LIQUID"):
+                logger.info("[lora] phase=%s — skipping training", _engine.current_phase.value)
+                return None
+        except Exception:
+            pass
         pairs = self._collect_dpo_pairs()
         if len(pairs) < min_pairs:
             logger.info("[lora] Only %d pairs (need %d), skipping", len(pairs), min_pairs)

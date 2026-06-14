@@ -316,8 +316,15 @@ class LLMRouter:
                             _phase_name = _eng.current_phase.value
                     except Exception:
                         pass
-                # Get delta_b from bridge if engine has one
-                # Bridge is not directly accessible from router — use policy's own extended ΔH
+                # Wire delta_b from the perception bridge via the phase engine's last ΔB reading
+                try:
+                    if _prism_phase is not None:
+                        _eng = _prism_phase.get_engine()
+                        if _eng.history:
+                            last = _eng.history[-1]
+                            _delta_b = getattr(last, "delta_B", 0.0)
+                except Exception:
+                    pass
                 _budget = _policy.current_budget(delta_b=_delta_b, phase_name=_phase_name)
                 _eff_capability = min(_eff_capability, _budget.capability_ceil)
                 _eff_max_tokens = min(_eff_max_tokens, _budget.max_tokens)

@@ -713,6 +713,16 @@ class ChainOrchestrator:
     # Graph execution
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _is_liquid_phase() -> bool:
+        """Return True when Φ_melt ≥ 0.70 — used to pause mid-DAG execution."""
+        try:
+            import prism_phase as _pp
+            _engine = _pp.get_engine()
+            return bool(_engine.history and _engine.current_phase.value == "LIQUID")
+        except Exception:
+            return False
+
     def _run_graph(
         self,
         graph:            TaskGraph,
@@ -723,6 +733,15 @@ class ChainOrchestrator:
         max_rounds = len(graph.nodes) + 2  # guard against cycles
         for _ in range(max_rounds):
             if graph.is_complete() or graph.is_paused():
+                break
+
+            # Phase gate: pause the DAG if system enters LIQUID phase mid-execution
+            if self._is_liquid_phase():
+                for n in graph.nodes:
+                    if n.status == "pending":
+                        n.status = "waiting"
+                graph.status = "paused"
+                logger.info("[orch] LIQUID phase detected mid-DAG — graph %s paused", graph.graph_id)
                 break
 
             ready = graph.ready_nodes()

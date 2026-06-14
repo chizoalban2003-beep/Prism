@@ -95,6 +95,15 @@ def _horizon_worker(agent, interval: int = 300):
         h = getattr(agent, '_horizon', None)
         if h is None:
             continue
+        # Phase gate: defer evaluation in LIQUID (system under thermal stress)
+        try:
+            import prism_phase as _pp
+            _engine = _pp.get_engine()
+            if _engine.history and _engine.current_phase.value == "LIQUID":
+                logger.debug("[horizon] LIQUID phase — deferring goal evaluation")
+                continue
+        except Exception:
+            pass
         try:
             triggered = h.on_session_start()
             if triggered:
@@ -198,21 +207,73 @@ def _narrative_worker(agent, interval: int = 604800):
             logger.debug("[narrative] Error: %s", exc)
 
 
+def _phase_ticker_worker(agent, interval: int = 10):
+    """Recompute Φ_melt every 10 s so phase stays current for all consumers."""
+    try:
+        import prism_phase as _pp
+        engine = _pp.get_engine()
+    except Exception:
+        return  # phase module unavailable; skip silently
+    while not _SHUTDOWN.wait(timeout=interval):
+        try:
+            soul    = getattr(agent, '_soul', None)
+            kinetic = getattr(agent, '_kinetic', None)
+            engine.compute(soul=soul, kinetic=kinetic)
+        except Exception as exc:
+            logger.debug("[phase-ticker] Error: %s", exc)
+
+
 def _lora_weekly_worker(agent, interval: int = 604800):
-    """Weekly LoRA training if trainer is available."""
+    """Weekly LoRA training — skipped when system is under thermal/RAM pressure."""
     while not _SHUTDOWN.wait(timeout=interval):
         trainer = getattr(agent, '_lora_trainer', None)
-        if trainer is not None:
-            try:
-                trainer.start_training()
-                logger.info("[lora-weekly] Training started")
-            except Exception as exc:
-                logger.debug("[lora-weekly] Error: %s", exc)
+        if trainer is None:
+            continue
+        # Phase gate: defer training if VISCOUS or LIQUID
+        try:
+            import prism_phase as _pp
+            _engine = _pp.get_engine()
+            if _engine.history:
+                _phase = _engine.current_phase
+                if _phase.value in ("VISCOUS", "LIQUID"):
+                    logger.info("[lora-weekly] phase=%s — deferring training", _phase.value)
+                    continue
+        except Exception:
+            pass
+        # RAM gate: require ≥ 4 GB free
+        try:
+            import psutil as _ps
+            if _ps.virtual_memory().available < 4 * 1024 ** 3:
+                logger.info("[lora-weekly] <4 GB RAM free — deferring training")
+                continue
+        except Exception:
+            pass
+        # Concurrency guard: skip if a job is already running
+        try:
+            if any(j.status == "running" for j in trainer.list_jobs()):
+                logger.debug("[lora-weekly] training job already running — skipping")
+                continue
+        except Exception:
+            pass
+        try:
+            trainer.start_training()
+            logger.info("[lora-weekly] Training started")
+        except Exception as exc:
+            logger.debug("[lora-weekly] Error: %s", exc)
 
 
 def _federation_push_worker(agent, interval: int = 300):
-    """Push pending federation state to stale peers every 300 seconds."""
+    """Push pending federation state — skipped when system is in LIQUID phase."""
     while not _SHUTDOWN.wait(timeout=interval):
+        # Phase gate: skip in LIQUID (thermal throttling — avoid extra network I/O)
+        try:
+            import prism_phase as _pp
+            _engine = _pp.get_engine()
+            if _engine.history and _engine.current_phase.value == "LIQUID":
+                logger.debug("[federation-push] LIQUID phase — skipping push")
+                continue
+        except Exception:
+            pass
         fed = getattr(agent, '_federation', None)
         if fed is not None and hasattr(fed, 'push_pending'):
             try:
@@ -453,6 +514,7 @@ def main():
 
     # Background workers
     workers = [
+        threading.Thread(target=_phase_ticker_worker,        args=(agent,), daemon=True, name="phase-ticker"),
         threading.Thread(target=_bus_flush_worker,    args=(agent,), daemon=True, name="bus-flush"),
         threading.Thread(target=_horizon_worker,      args=(agent,), daemon=True, name="horizon"),
         threading.Thread(target=_health_worker,       args=(agent,), daemon=True, name="health"),

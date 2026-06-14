@@ -59,6 +59,7 @@ import sqlite3
 import threading
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -374,52 +375,71 @@ class HorizonPlanner:
         goals     = self.list_goals()
         activated: list[str] = []
 
-        for goal in goals:
-            if goal.status in (
-                HorizonGoalStatus.COMPLETED, HorizonGoalStatus.ABANDONED
-            ):
-                continue
+        # Separate deterministic (fast) goals from LLM-evaluated ones
+        fast_goals: list[HorizonGoal] = []
+        llm_goals:  list[HorizonGoal] = []
 
-            # Hard-expire goals that have passed their deadline
+        for goal in goals:
+            if goal.status in (HorizonGoalStatus.COMPLETED, HorizonGoalStatus.ABANDONED):
+                continue
             if goal.is_expired():
                 self.abandon(goal.goal_id, reason="deadline passed")
                 continue
-
             with self._lock:
                 g = self._load_goal(goal.goal_id)
                 if g is None:
                     continue
-                g.session_count     += 1
-                g.last_checked_at    = time.time()
+                g.session_count  += 1
+                g.last_checked_at = time.time()
                 self._upsert(g)
+            if goal.status in (HorizonGoalStatus.PAUSED, HorizonGoalStatus.WATCHING):
+                # Goals with a registered probe or simple deterministic trigger → fast
+                _det = self._deterministic_condition(goal.trigger_condition, goal.accumulated_context)
+                if goal.goal_id in self._probes or _det is not None:
+                    fast_goals.append(goal)
+                else:
+                    llm_goals.append(goal)
 
+        def _eval_one(goal: HorizonGoal) -> tuple[HorizonGoal, bool]:
             if goal.status == HorizonGoalStatus.PAUSED:
-                logger.info(
-                    "HorizonPlanner: resuming paused goal %s (%d steps done)",
-                    goal.goal_id, len(goal.completed_steps),
-                )
+                return goal, True
+            return goal, self._evaluate_trigger(goal)
+
+        # Evaluate fast goals serially, LLM goals concurrently (max 4 workers)
+        results: list[tuple[HorizonGoal, bool]] = []
+        results.extend(_eval_one(g) for g in fast_goals)
+        if llm_goals:
+            with ThreadPoolExecutor(max_workers=min(len(llm_goals), 4),
+                                    thread_name_prefix="horizon-eval") as pool:
+                futs = {pool.submit(_eval_one, g): g for g in llm_goals}
+                for fut in as_completed(futs, timeout=90.0):
+                    try:
+                        results.append(fut.result())
+                    except Exception as exc:
+                        logger.debug("HorizonPlanner: eval error for %s: %s",
+                                     futs[fut].goal_id, exc)
+
+        for goal, triggered in results:
+            if goal.status == HorizonGoalStatus.PAUSED and triggered:
+                logger.info("HorizonPlanner: resuming paused goal %s (%d steps done)",
+                            goal.goal_id, len(goal.completed_steps))
                 self._hand_off(goal, resume=True)
                 activated.append(goal.goal_id)
-                continue
-
-            if goal.status == HorizonGoalStatus.WATCHING:
-                if self._evaluate_trigger(goal):
-                    with self._lock:
-                        g = self._load_goal(goal.goal_id)
-                        if g is None:
-                            continue
-                        g.status       = HorizonGoalStatus.TRIGGERED
-                        g.triggered_at = time.time()
-                        self._upsert(g)
-                    self._notify(f"Horizon goal triggered: {goal.intent[:60]}")
-                    logger.info("HorizonPlanner: goal %s triggered", goal.goal_id)
-                    self._hand_off(goal, resume=False)
-                    activated.append(goal.goal_id)
-                else:
-                    logger.debug(
-                        "HorizonPlanner: goal %s still watching (session #%d)",
-                        goal.goal_id, goal.session_count,
-                    )
+            elif goal.status == HorizonGoalStatus.WATCHING and triggered:
+                with self._lock:
+                    g = self._load_goal(goal.goal_id)
+                    if g is None:
+                        continue
+                    g.status       = HorizonGoalStatus.TRIGGERED
+                    g.triggered_at = time.time()
+                    self._upsert(g)
+                self._notify(f"Horizon goal triggered: {goal.intent[:60]}")
+                logger.info("HorizonPlanner: goal %s triggered", goal.goal_id)
+                self._hand_off(goal, resume=False)
+                activated.append(goal.goal_id)
+            else:
+                logger.debug("HorizonPlanner: goal %s still watching (session #%d)",
+                             goal.goal_id, goal.session_count)
 
         return activated
 
@@ -662,6 +682,23 @@ class HorizonPlanner:
                 "HorizonPlanner: no TaskQueue — goal %s cannot execute", goal.goal_id
             )
             return
+        # Phase gate: defer goal execution if system is in LIQUID phase
+        try:
+            import prism_phase as _pp
+            _engine = _pp.get_engine()
+            if _engine.history and _engine.current_phase.value == "LIQUID":
+                logger.info(
+                    "HorizonPlanner: LIQUID phase — deferring goal %s to next session",
+                    goal.goal_id,
+                )
+                with self._lock:
+                    g = self._load_goal(goal.goal_id)
+                    if g and g.status == HorizonGoalStatus.TRIGGERED:
+                        g.status = HorizonGoalStatus.PAUSED
+                        self._upsert(g)
+                return
+        except Exception:
+            pass
 
         description = self._build_execution_prompt(goal, resume)
 
