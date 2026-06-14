@@ -62,7 +62,7 @@ import uuid
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -191,7 +191,7 @@ class HorizonPlanner:
         self._db.parent.mkdir(parents=True, exist_ok=True)
         self._probes: dict[str, Callable[[dict], bool]] = {}
         self._lock   = threading.Lock()
-        self._chain  = None  # optional PrismChain for richer hand-off
+        self._chain: Any = None  # optional PrismChain for richer hand-off
         self._init_db()
 
     # ------------------------------------------------------------------
