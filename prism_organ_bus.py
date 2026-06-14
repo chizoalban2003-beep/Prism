@@ -66,6 +66,8 @@ LOW    = 1
 NORMAL = 2
 HIGH   = 3
 
+_CACHE_TTL = 300.0  # seconds — evict LLM-translation cache entries after 5 min
+
 
 @dataclass
 class OrganSignal:
@@ -226,7 +228,8 @@ class OrganBus:
         self._db              = Path(db_path).expanduser()
         self._db.parent.mkdir(parents=True, exist_ok=True)
         self._subscribers:    list[OrganSubscription] = []
-        self._cache:          dict[tuple[str, str, str], dict] = {}
+        self._cache:          dict[tuple[str, str, str], dict]  = {}
+        self._cache_ts:       dict[tuple[str, str, str], float] = {}
         self._cache_maxsize   = 512  # evict oldest 25% when limit reached
         self._batch:          list[OrganSignal] = []
         self._lock            = threading.Lock()
@@ -429,7 +432,9 @@ class OrganBus:
 
         # Cache key: (signal_type, source, receiver) — HIGH bypasses cache
         cache_key = (signal.signal_type, signal.source, sub.organ_name)
-        if signal.priority != HIGH and cache_key in self._cache:
+        _now = time.monotonic()
+        if (signal.priority != HIGH and cache_key in self._cache
+                and _now - self._cache_ts.get(cache_key, 0.0) < _CACHE_TTL):
             cached = dict(self._cache[cache_key])
             # Merge current payload values into the cached structure
             cached.update({k: v for k, v in signal.payload.items()
@@ -460,11 +465,13 @@ class OrganBus:
         if signal.priority != HIGH:
             with self._lock:
                 if len(self._cache) >= self._cache_maxsize:
-                    # Evict oldest quarter of entries
+                    # Evict oldest quarter of entries (by insertion order)
                     evict_keys = list(self._cache.keys())[:self._cache_maxsize // 4]
                     for k in evict_keys:
                         del self._cache[k]
-                self._cache[cache_key] = dict(translated)
+                        self._cache_ts.pop(k, None)
+                self._cache[cache_key]    = dict(translated)
+                self._cache_ts[cache_key] = time.monotonic()
 
         return translated, True
 

@@ -209,8 +209,7 @@ class PrismAgent:
          r"(?:email|mail).*(?:unread|new|recent)|send.*(?:email|mail)|"
          r"draft.*(?:email|reply)|reply.*email|email.*summary",
          "email_read"),
-        # Organ-mapped intents
-        (r"news|headlines|top stories|latest stories", "news_headlines"),
+        # Organ-mapped intents (broad fallback patterns — do not duplicate entries above)
         (r"weather|temperature|forecast|how (?:hot|cold)|rain|sunny", "weather_check"),
         (r"wikipedia|look up|tell me about|who (?:is|was)|what (?:is|was) (?:a |an |the )?[A-Za-z]",
          "wikipedia_lookup"),
@@ -258,6 +257,9 @@ class PrismAgent:
         (r"(?:overdue|due today|pending|upcoming) (?:tasks?|reminders?|todos?)|task reminder",
          "task_reminder"),
         (r"policy (?:audit|log|history)|audit (?:log|trail)", "policy_audit"),
+        # NOTE: entries below are intentionally absent — the following patterns
+        # were duplicates of earlier INTENTS entries and have been removed:
+        #   news_headlines (subset of the first news entry above)
     ]
 
     def __init__(
@@ -516,6 +518,7 @@ class PrismAgent:
             self._horizon._chain = self._chain
 
         # OrganBus — LLM-mediated inter-engine communication bus
+        self._organ_bus: Optional[Any] = None
         try:
             from prism_organ_bus import OrganBus
             self._organ_bus = OrganBus(llm_router=self._router)
@@ -590,19 +593,11 @@ class PrismAgent:
             logger.warning("OutcomeTracker not available: %s", e)
             self._outcome_tracker = None
 
-        # Wire living model dependencies now that outcome_tracker exists
-        if getattr(self, '_crystalliser', None) is not None:
-            self._crystalliser._outcome_tracker = getattr(self, '_outcome_tracker', None)
-        if getattr(self, '_chain', None) is not None:
-            self._chain._persona = getattr(self, '_persona', None)
-        _ot = getattr(self, '_outcome_tracker', None)
-        if _ot is not None:
-            _ot._crystalliser = getattr(self, '_crystalliser', None)
-            _ot._kinetic      = getattr(self, '_kinetic', None)
-        # Retroactively wire outcome_tracker into ML assembler (created before tracker)
-        _asm = getattr(self, '_ml_assembler', None)
-        if _asm is not None and _ot is not None:
-            _asm._tracker = _ot
+        # Wire living model dependencies now that outcome_tracker exists.
+        # All cross-component back-patches are consolidated in _wire_backpatches()
+        # and called again at the end of __init__ to ensure nothing is missed even
+        # if construction order changes.
+        self._wire_backpatches()
 
         # ContextManager — work/personal/focus context switching
         try:
@@ -684,6 +679,59 @@ class PrismAgent:
                 logger.info("Advanced proactive triggers registered: %d", len(advanced))
             except Exception as e:
                 logger.warning("Advanced proactive triggers failed: %s", e)
+
+        # Final pass: re-apply all back-patches in one explicit place so the
+        # dependency graph is always consistent regardless of construction order.
+        self._wire_backpatches()
+
+    def _wire_backpatches(self) -> None:
+        """
+        Consolidate all cross-component back-patches.
+
+        Construction order constraints in __init__:
+          chain → organ_loader  (chain built before soul/persona/outcome_tracker)
+          soul  → chain         (soul back-patched into chain after soul is built)
+          horizon → chain       (horizon wired into chain for anchor creation)
+          outcome_tracker → chain, crystalliser, ml_assembler, kinetic
+          orchestrator → persona
+
+        This method is idempotent and called twice: once after OutcomeTracker is
+        created (to wire everything that exists at that point) and once at the very
+        end of __init__ (to pick up ChainOrchestrator and any late-registered deps).
+        """
+        _chain       = getattr(self, '_chain',          None)
+        _soul        = getattr(self, '_soul',            None)
+        _persona     = getattr(self, '_persona',         None)
+        _crystalliser= getattr(self, '_crystalliser',    None)
+        _horizon     = getattr(self, '_horizon',         None)
+        _ot          = getattr(self, '_outcome_tracker', None)
+        _kinetic     = getattr(self, '_kinetic',         None)
+        _asm         = getattr(self, '_ml_assembler',    None)
+        _orch        = getattr(self, '_orchestrator',    None)
+        _organ_loader= getattr(self, '_organ_loader',    None)
+
+        if _chain is not None:
+            if _soul is not None:
+                _chain._soul = _soul
+            if _persona is not None:
+                _chain._persona = _persona
+            if _ot is not None:
+                _chain._outcome_tracker = _ot
+            if _organ_loader is not None:
+                _chain._organ_loader = _organ_loader
+
+        if _horizon is not None and _chain is not None:
+            _horizon._chain = _chain
+        if _crystalliser is not None and _ot is not None:
+            _crystalliser._outcome_tracker = _ot
+        if _ot is not None and _crystalliser is not None:
+            _ot._crystalliser = _crystalliser
+        if _ot is not None and _kinetic is not None:
+            _ot._kinetic = _kinetic
+        if _asm is not None and _ot is not None:
+            _asm._tracker = _ot
+        if _orch is not None and _persona is not None:
+            _orch._persona = _persona
 
     def stop(self) -> None:
         """Gracefully shut down all background subsystems."""

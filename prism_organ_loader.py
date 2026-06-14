@@ -114,6 +114,39 @@ def _is_safe(code: str) -> tuple[bool, str]:
     return (False, "; ".join(v.violations)) if v.violations else (True, "")
 
 
+# ── Capability audit for synthesized organs ───────────────────────────────────
+# Map constitutionally sensitive capabilities to code-level signals.
+# If a signal appears in synthesized code but the capability isn't declared in
+# ORGAN_META["capabilities"], we flag it — and block critical ones.
+
+_CAPABILITY_SIGNALS: dict[str, list[str]] = {
+    "shell_execution": ["shell_run", "subprocess", "os.system", "popen", "pty"],
+    "file_write":      ["write_text", "write_bytes", ".write(", "open(", "fh.write"],
+    "network":         ["urllib.request", "urlopen", "http.client", "requests."],
+    "telephony":       ["twilio", "phone_call", "make_call", "plivo"],
+    "email":           ["smtplib", "email_send", "sendmail"],
+}
+
+_CRITICAL_CAPABILITIES = frozenset({"shell_execution", "telephony"})
+
+
+def _audit_capability_gap(code: str, declared: set[str]) -> list[str]:
+    """
+    Return list of capability names that appear to be used in *code* but are
+    absent from *declared*.  Does a simple substring scan — fast and
+    conservative (may have false positives, but never false negatives for the
+    signals listed).
+    """
+    warnings = []
+    for cap, signals in _CAPABILITY_SIGNALS.items():
+        if cap not in declared:
+            for sig in signals:
+                if sig in code:
+                    warnings.append(cap)
+                    break
+    return warnings
+
+
 # ── Synthesis prompt ──────────────────────────────────────────────────────────
 
 _SYNTHESIS_PROMPT = """\
@@ -407,6 +440,20 @@ class OrganLoader:
         if not safe:
             logger.warning("[organ_loader] Unsafe organ blocked (%s): %s", intent, reason)
             return False
+
+        # Cross-check declared capabilities vs. actual code signals.
+        # Critical undeclared capabilities (shell, telephony) are hard-blocked.
+        _declared_caps: set[str] = set(data.get("capabilities", []) or [])
+        _cap_gaps = _audit_capability_gap(code, _declared_caps)
+        if _cap_gaps:
+            logger.warning("[organ_loader] Undeclared capabilities in %s: %s", intent, _cap_gaps)
+            _critical = [c for c in _cap_gaps if c in _CRITICAL_CAPABILITIES]
+            if _critical:
+                logger.warning(
+                    "[organ_loader] Synthesis blocked — critical undeclared capabilities %s in %s",
+                    _critical, intent,
+                )
+                return False
 
         out_path = self._user / f"{intent}.py"
         out_path.write_text(code)

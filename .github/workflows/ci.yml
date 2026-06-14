@@ -53,7 +53,7 @@ jobs:
           python3 -m pytest -x -q --tb=short \
             --cov=. --cov-report=xml --cov-report=term-missing:skip-covered \
             --cov-fail-under=70 \
-            --ignore=tests/test_device_agent.py
+            -m "not requires_hardware"
 
       - name: Performance gate (TAD §8 SLO)
         env:
