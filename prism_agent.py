@@ -512,6 +512,9 @@ class PrismAgent:
             logger.warning("HorizonPlanner not available: %s", e)
             self._horizon = None
 
+        if hasattr(self, '_horizon') and self._horizon and hasattr(self, '_chain') and self._chain:
+            self._horizon._chain = self._chain
+
         # OrganBus — LLM-mediated inter-engine communication bus
         try:
             from prism_organ_bus import OrganBus

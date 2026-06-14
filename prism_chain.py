@@ -264,6 +264,9 @@ Rules:
 
         self._sync_spectrum()   # pick up any in-session VEAX updates
 
+        # Capture perception context for _llm_node injection
+        self._current_perception = base_ctx.get("perception") or base_ctx.get("perception_summary") or {}
+
         if not self._router:
             logger.debug("PrismChain: no router, skipping chain")
             return None   # caller falls back to normal routing
@@ -914,6 +917,12 @@ Rules:
             except Exception:
                 pass
         system = self.SYSTEM_PROMPT.format(registry=self._registry_str) + soul_ctx
+
+        _perc = getattr(self, '_current_perception', {}) or {}
+        if _perc:
+            _high = [f"{k}={v:.2f}" for k, v in _perc.items() if isinstance(v, float) and v > 0.6]
+            if _high:
+                system += f"\n[Perception: {', '.join(_high[:4])}]"
 
         if step_num == 1:
             user_prompt = (

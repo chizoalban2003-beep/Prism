@@ -185,6 +185,21 @@ class LLMRouter:
             available=True, capability=0,
             notes="No LLM — limited to Python stdlib operations only"))
 
+        # Update latency_ms from historical ledger data (7-day average)
+        try:
+            from prism_llm_ledger import get_ledger
+            _ledger = get_ledger()
+            _hist = {
+                row["model"]: row["avg_latency_ms"]
+                for row in _ledger.by_model(days=7)
+                if row.get("avg_latency_ms")
+            }
+            for opt in options:
+                if opt.model in _hist:
+                    opt.latency_ms = _hist[opt.model]
+        except Exception:
+            pass
+
         # Rank by capability then latency
         options.sort(key=lambda o: (-_rank(o), o.latency_ms if o.available else 9999))
         # Apply capability field

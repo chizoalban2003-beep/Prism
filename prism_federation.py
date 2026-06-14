@@ -360,6 +360,50 @@ class FederationManager:
     # Pending sync detection
     # ------------------------------------------------------------------
 
+    def push_pending(self) -> dict[str, int]:
+        """Push local state to all peers that haven't been synced recently.
+
+        Returns ``{"pushed": int, "failed": int}``.
+        """
+        import json as _json
+        import urllib.request as _urlreq
+
+        peer_ids = self.pending_sync()
+        pushed = 0
+        failed = 0
+
+        if not peer_ids:
+            return {"pushed": 0, "failed": 0}
+
+        payload = self.get_sync_payload()
+        payload_bytes = _json.dumps(payload).encode()
+
+        for peer_id in peer_ids:
+            try:
+                with sqlite3.connect(self._db) as conn:
+                    row = conn.execute(
+                        "SELECT url FROM federation_peers WHERE peer_id = ?",
+                        (peer_id,),
+                    ).fetchone()
+                if row is None:
+                    failed += 1
+                    continue
+                peer_url = row[0].rstrip("/")
+                req = _urlreq.Request(
+                    f"{peer_url}/federation/receive",
+                    data=payload_bytes,
+                    headers={"Content-Type": "application/json"},
+                )
+                _urlreq.urlopen(req, timeout=5)
+                self._update_peer_last_seen(peer_id, payload["version"])
+                pushed += 1
+                logger.debug("FederationManager: pushed to peer %s", peer_id)
+            except Exception as exc:
+                failed += 1
+                logger.debug("FederationManager: push to peer %s failed: %s", peer_id, exc)
+
+        return {"pushed": pushed, "failed": failed}
+
     def pending_sync(self) -> list[str]:
         """Return peer_ids of peers that have not been synced recently.
 

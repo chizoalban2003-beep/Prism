@@ -52,6 +52,7 @@ class PrismCrystalliser:
         calibration: Optional[PrismCalibration] = None,
         llm_router=None,
         ml_assembler=None,
+        soul=None,
     ):
         self._persona = persona
         self._memory = memory
@@ -59,6 +60,7 @@ class PrismCrystalliser:
         self._calibration = calibration
         self._router = llm_router
         self._ml_assembler = ml_assembler
+        self._soul = soul
 
     # ── Real-time heuristics ──────────────────────────────────────────────────
 
@@ -152,7 +154,7 @@ class PrismCrystalliser:
         outcome_stats = {}
         if self._outcome_tracker is not None:
             try:
-                outcome_stats = self._outcome_tracker.stats(days=max(1, lookback_hours // 24))
+                outcome_stats = self._outcome_tracker.stats(days=max(1, (lookback_hours + 23) // 24))
             except Exception as exc:
                 logger.debug("[crystalliser] outcome stats failed: %s", exc)
 
@@ -188,6 +190,30 @@ class PrismCrystalliser:
             return 0
 
         n_updates = self._apply_extraction(parsed)
+
+        # Write high-confidence traits to Soul belief graph (cap at 3 per run)
+        if self._soul is not None:
+            _trait_map = {
+                "communication_style": parsed.get("communication_style"),
+                "technical_depth": parsed.get("technical_depth"),
+                "decision_style": parsed.get("decision_style"),
+            }
+            _written = 0
+            for _key, _value in _trait_map.items():
+                if _written >= 3:
+                    break
+                if _value and isinstance(_value, str) and _value.strip() and _value.strip() != "unknown":
+                    try:
+                        self._soul.add_belief(
+                            text=f"User's {_key} is {_value.strip()}",
+                            belief_type="pattern",
+                            source="crystalliser",
+                            confidence=0.72,
+                        )
+                        _written += 1
+                    except Exception as _se:
+                        logger.debug("[crystalliser] soul add_belief failed: %s", _se)
+
         self._run_ml_sweep()
         return n_updates
 

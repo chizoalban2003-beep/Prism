@@ -16,6 +16,7 @@ All routes return 503 when FederationManager is not available.
 """
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -30,9 +31,25 @@ _503 = JSONResponse(
     status_code=503,
 )
 
+_401 = JSONResponse(
+    {"error": "Unauthorized", "status": 401},
+    status_code=401,
+)
+
 
 def _fed():
     return _state.get("federation")
+
+
+def _require_federation_auth(request: Request) -> bool:
+    """Return True if the request is authorized (or auth is not configured)."""
+    token = os.environ.get("PRISM_FEDERATION_TOKEN", "")
+    if not token:
+        return True  # no token configured — allow unauthenticated
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header == f"Bearer {token}":
+        return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -47,6 +64,8 @@ async def federation_announce(request: Request):
     Body: ``{url: str, name: str}``
     Returns: ``{node_id: str, peers: list}``
     """
+    if not _require_federation_auth(request):
+        return _401
     fm = _fed()
     if fm is None:
         return _503
@@ -164,6 +183,8 @@ async def federation_sync_post(request: Request):
     Body: ``{peer_id: str, payload: dict}``
     Returns: ``{merged_count, conflicts_resolved, peer_version}``
     """
+    if not _require_federation_auth(request):
+        return _401
     fm = _fed()
     if fm is None:
         return _503
@@ -278,6 +299,8 @@ async def federation_identity_merge(request: Request):
     Persona traits are upserted (higher confidence wins, source set to
     ``"federated"``).
     """
+    if not _require_federation_auth(request):
+        return _401
     body: dict[str, Any] = {}
     try:
         body = await request.json()

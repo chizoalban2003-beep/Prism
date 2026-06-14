@@ -96,7 +96,7 @@ def _horizon_worker(agent, interval: int = 300):
         if h is None:
             continue
         try:
-            triggered = h.check_now()
+            triggered = h.on_session_start()
             if triggered:
                 logger.info("HorizonPlanner: %d goal(s) triggered in background", len(triggered))
         except Exception as exc:
@@ -196,6 +196,32 @@ def _narrative_worker(agent, interval: int = 604800):
             logger.info("[narrative] Weekly narrative generated")
         except Exception as exc:
             logger.debug("[narrative] Error: %s", exc)
+
+
+def _lora_weekly_worker(agent, interval: int = 604800):
+    """Weekly LoRA training if trainer is available."""
+    while not _SHUTDOWN.wait(timeout=interval):
+        trainer = getattr(agent, '_lora_trainer', None)
+        if trainer is not None:
+            try:
+                trainer.start_training()
+                logger.info("[lora-weekly] Training started")
+            except Exception as exc:
+                logger.debug("[lora-weekly] Error: %s", exc)
+
+
+def _federation_push_worker(agent, interval: int = 300):
+    """Push pending federation state to stale peers every 300 seconds."""
+    while not _SHUTDOWN.wait(timeout=interval):
+        fed = getattr(agent, '_federation', None)
+        if fed is not None and hasattr(fed, 'push_pending'):
+            try:
+                result = fed.push_pending()
+                if result and result.get("pushed"):
+                    logger.debug("[federation-push] pushed=%d failed=%d",
+                                 result.get("pushed", 0), result.get("failed", 0))
+            except Exception as exc:
+                logger.debug("[federation-push] Error: %s", exc)
 
 
 def _health_worker(agent, interval: int = 120):
@@ -435,6 +461,8 @@ def main():
         threading.Thread(target=_surprise_reflection_worker,args=(agent,), daemon=True, name="surprise-refl"),
         threading.Thread(target=_crystalliser_worker,       args=(agent,), daemon=True, name="crystalliser"),
         threading.Thread(target=_narrative_worker,          args=(agent,), daemon=True, name="narrative"),
+        threading.Thread(target=_lora_weekly_worker,        args=(agent,), daemon=True, name="lora-weekly"),
+        threading.Thread(target=_federation_push_worker,    args=(agent,), daemon=True, name="federation-push"),
     ]
     for w in workers:
         w.start()

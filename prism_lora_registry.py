@@ -9,12 +9,17 @@ serve as the behavioral equivalent — same selection logic, different backend.
 from __future__ import annotations
 
 import logging
+import sqlite3
 import subprocess
+import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     pass
+
+_DB_PATH = Path("~/.prism/lora_registry.db")
 
 _log = logging.getLogger(__name__)
 
@@ -169,7 +174,7 @@ class LoRARegistry:
     def register(self, job_id: str, gguf_path: str, ollama_model: str) -> LoRAAdapter:
         """
         Register a freshly trained LoRA adapter produced by PrismLoraTrainer.
-        Adds it to the in-memory registry and returns the new LoRAAdapter.
+        Adds it to the in-memory registry, persists to SQLite, and returns the adapter.
         """
         adapter_id = f"trained-{job_id}"
         adapter = LoRAAdapter(
@@ -182,8 +187,58 @@ class LoRARegistry:
             base_model=ollama_model,
         )
         self._adapters[adapter_id] = adapter
+        try:
+            db = _DB_PATH.expanduser()
+            db.parent.mkdir(parents=True, exist_ok=True)
+            with sqlite3.connect(db) as conn:
+                conn.execute(
+                    "CREATE TABLE IF NOT EXISTS adapters "
+                    "(adapter_id TEXT PRIMARY KEY, name TEXT, path TEXT, "
+                    "task_type TEXT, base_model TEXT, created_at REAL)"
+                )
+                conn.execute(
+                    "INSERT OR REPLACE INTO adapters "
+                    "(adapter_id, name, path, task_type, base_model, created_at) "
+                    "VALUES (?,?,?,?,?,?)",
+                    (adapter_id, adapter_id, gguf_path or "", "trained", ollama_model, time.time()),
+                )
+        except Exception as _dbe:
+            _log.debug("[lora] DB persist failed: %s", _dbe)
         _log.info("[lora] Registered trained adapter %s (gguf=%s)", adapter_id, gguf_path)
         return adapter
+
+    def list_adapters(self) -> list[LoRAAdapter]:
+        """Return all in-memory adapters; load from DB if in-memory list only has built-ins."""
+        # Built-in adapters are always populated; trained ones come from DB
+        trained = [a for a in self._adapters.values() if a.task_type == "trained"]
+        if not trained:
+            self._load_from_db()
+        return list(self._adapters.values())
+
+    def _load_from_db(self) -> None:
+        """Populate in-memory registry from SQLite on first access."""
+        try:
+            db = _DB_PATH.expanduser()
+            if not db.exists():
+                return
+            with sqlite3.connect(db) as conn:
+                rows = conn.execute(
+                    "SELECT adapter_id, path, task_type, base_model FROM adapters"
+                ).fetchall()
+            for row in rows:
+                adapter_id, path, task_type, base_model = row
+                if adapter_id not in self._adapters:
+                    self._adapters[adapter_id] = LoRAAdapter(
+                        adapter_id=adapter_id,
+                        task_type=task_type or "trained",
+                        system_prompt=(
+                            "You are PRISM, a local-first AI assistant personalised to this user."
+                        ),
+                        weights_path=path or None,
+                        base_model=base_model or "any",
+                    )
+        except Exception as _dbe:
+            _log.debug("[lora] DB load failed: %s", _dbe)
 
 
 # Module-level singleton

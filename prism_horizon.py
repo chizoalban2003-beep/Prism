@@ -191,6 +191,7 @@ class HorizonPlanner:
         self._db.parent.mkdir(parents=True, exist_ok=True)
         self._probes: dict[str, Callable[[dict], bool]] = {}
         self._lock   = threading.Lock()
+        self._chain  = None  # optional PrismChain for richer hand-off
         self._init_db()
 
     # ------------------------------------------------------------------
@@ -665,10 +666,24 @@ class HorizonPlanner:
         description = self._build_execution_prompt(goal, resume)
 
         def _execute_step(params: dict) -> str:
-            # When the LLM is available, ask it to execute the next step
+            # Prefer PrismChain for richer execution; fall back to bare LLM
+            goal_prompt = params.get("prompt", description)
+            if self._chain is not None:
+                try:
+                    card = self._chain.run(
+                        goal_prompt,
+                        agent_execute_fn=lambda intent, msg, ctx: None,
+                        base_ctx={},
+                    )
+                    step_text = (getattr(card, "body", None) or "").strip()[:200]
+                    if step_text:
+                        self.record_step(goal.goal_id, step_text)
+                        return step_text
+                except Exception as exc:
+                    logger.debug("HorizonPlanner: chain hand-off failed, falling back to LLM: %s", exc)
             if self._llm is None:
                 return "No LLM available — manual execution required."
-            response, _ = self._llm.call(params.get("prompt", description))
+            response, _ = self._llm.call(goal_prompt)
             step_text = (response or "").strip()[:200]
             self.record_step(goal.goal_id, step_text)
             return step_text
