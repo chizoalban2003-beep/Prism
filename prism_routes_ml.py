@@ -98,7 +98,7 @@ async def ml_run(body: dict) -> JSONResponse:
 async def ml_nightly_sweep() -> JSONResponse:
     """Trigger the nightly hyperparameter sweep against failed outcomes."""
     try:
-        from prism_state import _state  # type: ignore[attr-defined]
+        from prism_state import _state
         tracker = _state.get("outcome_tracker")
     except Exception:
         tracker = None

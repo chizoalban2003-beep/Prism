@@ -541,6 +541,9 @@ class PrismAgent:
             self._soul = None
 
         # Living user model — persona, crystalliser, narrative
+        self._persona: Any = None
+        self._crystalliser: Any = None
+        self._narrative: Any = None
         try:
             from prism_crystalliser import PrismCrystalliser
             from prism_narrative import PrismNarrative
