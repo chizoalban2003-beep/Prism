@@ -16,10 +16,12 @@ if TYPE_CHECKING:
     from prism_memory_graph import PrismMemoryGraph
     from prism_soul import PrismSoul
 
+_prism_phase_mod: Any = None
 try:
-    import prism_phase as _prism_phase_mod
+    import prism_phase as _pp_mod
+    _prism_phase_mod = _pp_mod
 except ImportError:
-    _prism_phase_mod = None
+    pass
 
 _log = logging.getLogger(__name__)
 
