@@ -542,6 +542,21 @@ def main():
         w.start()
     logger.info("Background workers started: %s", [w.name for w in workers])
 
+    # Federation security advisory
+    import os as _os
+    if not _os.environ.get("PRISM_FEDERATION_REQUIRE_AUTH"):
+        logger.warning(
+            "Federation running in legacy-permissive mode. "
+            "Set PRISM_FEDERATION_REQUIRE_AUTH=1 and PRISM_FEDERATION_TOKEN=<secret> "
+            "to harden multi-node deployments."
+        )
+    if not _os.environ.get("PRISM_FEDERATION_HMAC_SECRET"):
+        logger.warning(
+            "Federation payload signing disabled. "
+            "Set PRISM_FEDERATION_HMAC_SECRET=<secret> to enable HMAC-SHA256 "
+            "verification on incoming sync and identity-merge payloads."
+        )
+
     # Primary ASGI server (FastAPI/uvicorn — Phase 4: sole HTTP server on main port)
     if not args.no_server:
         asgi_srv = threading.Thread(

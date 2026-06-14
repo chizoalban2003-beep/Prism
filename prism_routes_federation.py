@@ -16,6 +16,9 @@ All routes return 503 when FederationManager is not available.
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 import os
 from typing import Any
 
@@ -36,9 +39,32 @@ _401 = JSONResponse(
     status_code=401,
 )
 
+_403 = JSONResponse(
+    {"error": "Payload signature invalid", "status": 403},
+    status_code=403,
+)
+
 
 def _fed():
     return _state.get("federation")
+
+
+def _verify_payload_hmac(raw_body: bytes, request: Request) -> bool:
+    """Return True if HMAC-SHA256 payload signature is valid.
+
+    When PRISM_FEDERATION_HMAC_SECRET is not set the check is skipped (returns
+    True) so that deployments without HMAC remain unaffected.  When the secret
+    IS set the ``X-Prism-Signature: sha256=<hex>`` header is required and must
+    match ``hmac(secret, raw_body)``.
+    """
+    secret = os.environ.get("PRISM_FEDERATION_HMAC_SECRET", "")
+    if not secret:
+        return True
+    sig_header = request.headers.get("X-Prism-Signature", "")
+    if not sig_header.startswith("sha256="):
+        return False
+    expected = "sha256=" + hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
+    return hmac.compare_digest(expected, sig_header)
 
 
 def _require_federation_auth(request: Request) -> bool:
@@ -205,9 +231,13 @@ async def federation_sync_post(request: Request):
     if fm is None:
         return _503
 
+    raw = await request.body()
+    if not _verify_payload_hmac(raw, request):
+        return _403
+
     body: dict[str, Any] = {}
     try:
-        body = await request.json()
+        body = json.loads(raw)
     except Exception:
         pass
 
@@ -322,9 +352,14 @@ async def federation_identity_merge(request: Request):
     """
     if not _require_federation_auth(request):
         return _401
+
+    raw = await request.body()
+    if not _verify_payload_hmac(raw, request):
+        return _403
+
     body: dict[str, Any] = {}
     try:
-        body = await request.json()
+        body = json.loads(raw)
     except Exception:
         pass
 

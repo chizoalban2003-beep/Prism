@@ -389,11 +389,19 @@ class FederationManager:
                     failed += 1
                     continue
                 peer_url = row[0].rstrip("/")
+                import hashlib as _hashlib
+                import hmac as _hmac
                 import os as _os
                 _hdrs: dict[str, str] = {"Content-Type": "application/json"}
                 _tok = _os.environ.get("PRISM_FEDERATION_TOKEN", "")
                 if _tok:
                     _hdrs["Authorization"] = f"Bearer {_tok}"
+                _secret = _os.environ.get("PRISM_FEDERATION_HMAC_SECRET", "")
+                if _secret:
+                    _sig = _hmac.new(
+                        _secret.encode(), payload_bytes, _hashlib.sha256
+                    ).hexdigest()
+                    _hdrs["X-Prism-Signature"] = f"sha256={_sig}"
                 req = _urlreq.Request(
                     f"{peer_url}/federation/receive",
                     data=payload_bytes,

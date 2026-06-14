@@ -46,6 +46,9 @@ google_creds.json
 # Binary / archive artefacts
 files.zip
 
+# Archived / experimental code
+_archived/
+
 # macOS
 .DS_Store
 
