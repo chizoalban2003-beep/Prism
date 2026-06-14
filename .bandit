@@ -1,0 +1,10 @@
+skips:
+  - B108
+  - B310
+  - B314
+  - B608
+exclude_dirs:
+  - tests
+  - organs
+  - .claude
+  - vscode-extension

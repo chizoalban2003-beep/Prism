@@ -99,7 +99,7 @@ jobs:
       - name: Security scan (medium + high severity)
         run: |
           python3 -m pip install bandit --quiet
-          python3 -m bandit -r . -ll -x tests/,organs/,.claude/ --quiet
+          python3 -m bandit -r . -ll -c .bandit --quiet
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
