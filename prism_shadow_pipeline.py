@@ -6,8 +6,10 @@ on a fixed interval. Isolated from the user interaction loop.
 from __future__ import annotations
 
 import logging
+import sqlite3
 import threading
 import time
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
@@ -17,7 +19,7 @@ if TYPE_CHECKING:
 try:
     import prism_phase as _prism_phase_mod
 except ImportError:
-    _prism_phase_mod = None  # type: ignore[assignment]
+    _prism_phase_mod = None
 
 _log = logging.getLogger(__name__)
 
@@ -36,6 +38,12 @@ class PrismShadowPipeline:
 
     # Entailment check runs every N commit cycles to amortize the cost
     _ENTAILMENT_INTERVAL = 12
+    # GC runs every N cycles (~1 h at 5 s interval) to trim old DB rows
+    _GC_INTERVAL         = 720
+    _GC_OUTCOMES_DAYS    = 90
+    _GC_SIGNALS_DAYS     = 7
+    _GC_CHAINS_DAYS      = 90
+    _GC_HORIZON_DAYS     = 90
 
     def __init__(
         self,
@@ -82,11 +90,12 @@ class PrismShadowPipeline:
     # ── Internal loop ─────────────────────────────────────────────────────────
 
     def _run(self) -> None:
-        _metrics: Any
+        _metrics: Any = None
         try:
-            from prism_metrics import metrics as _metrics
+            from prism_metrics import metrics as _m
+            _metrics = _m
         except Exception:
-            _metrics = None
+            pass
 
         while not self._stop.is_set():
             t0 = time.monotonic()
@@ -115,6 +124,14 @@ class PrismShadowPipeline:
                                       len(new_contradictions))
                     except Exception as ec:
                         _log.debug("Entailment check error: %s", ec)
+
+                # Periodic DB GC (every _GC_INTERVAL cycles ≈ 1 h)
+                if (self._commit_cycles > 0
+                        and self._commit_cycles % self._GC_INTERVAL == 0):
+                    try:
+                        self._run_gc()
+                    except Exception as gc_exc:
+                        _log.debug("GC error: %s", gc_exc)
 
                 # Phase engine feedback loop — after each commit cycle
                 if self._phase_engine is not None:
@@ -184,6 +201,62 @@ class PrismShadowPipeline:
                     _log.error("Pipeline exceeded max restarts — halting")
                     break
             self._stop.wait(self._interval)
+
+    # ── DB GC ─────────────────────────────────────────────────────────────────
+
+    def _run_gc(self) -> None:
+        """Trim time-bounded rows from the four high-growth SQLite databases.
+
+        Retention windows:
+        - outcomes.db       — outcomes + ml_results: 90 days
+        - organ_bus.db      — delivered signals: 7 days
+        - chains.db         — chain run history: 90 days
+        - horizon.db        — COMPLETED/ABANDONED goals: 90 days
+
+        Each DB is VACUUMed after deletion to reclaim disk space.
+        All errors are swallowed to keep the pipeline alive.
+        """
+        base = Path("~/.prism").expanduser()
+        now  = time.time()
+
+        def _gc(db_path: Path, stmts: list[tuple[str, tuple]]) -> None:
+            if not db_path.exists():
+                return
+            try:
+                with sqlite3.connect(db_path) as con:
+                    for sql, params in stmts:
+                        con.execute(sql, params)
+                con.execute("VACUUM")
+            except Exception as exc:
+                _log.debug("[shadow-gc] %s: %s", db_path.name, exc)
+
+        outcomes_cutoff = now - self._GC_OUTCOMES_DAYS * 86_400
+        _gc(base / "outcomes.db", [
+            ("DELETE FROM outcomes   WHERE timestamp  < ?", (outcomes_cutoff,)),
+            ("DELETE FROM ml_results WHERE timestamp  < ?", (outcomes_cutoff,)),
+        ])
+
+        signals_cutoff = now - self._GC_SIGNALS_DAYS * 86_400
+        _gc(base / "organ_bus.db", [
+            ("DELETE FROM signals WHERE timestamp < ? AND status = 'delivered'",
+             (signals_cutoff,)),
+        ])
+
+        chains_cutoff = now - self._GC_CHAINS_DAYS * 86_400
+        _gc(base / "chains.db", [
+            ("DELETE FROM chains WHERE created_at < ?", (chains_cutoff,)),
+        ])
+
+        horizon_cutoff = now - self._GC_HORIZON_DAYS * 86_400
+        _gc(base / "horizon.db", [
+            ("DELETE FROM horizon_goals WHERE status IN ('completed','abandoned') "
+             "AND created_at < ?", (horizon_cutoff,)),
+        ])
+
+        _log.info("[shadow-gc] retention pass complete (outcomes≥%dd signals≥%dd "
+                  "chains≥%dd horizon≥%dd)",
+                  self._GC_OUTCOMES_DAYS, self._GC_SIGNALS_DAYS,
+                  self._GC_CHAINS_DAYS, self._GC_HORIZON_DAYS)
 
     # ── Introspection ─────────────────────────────────────────────────────────
 

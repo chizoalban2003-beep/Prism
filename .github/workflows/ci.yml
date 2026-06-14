@@ -94,7 +94,7 @@ jobs:
           prism_multi_user.py prism_mobile_sync.py prism_federation.py
           prism_visual_perception.py prism_causality.py
           prism_vision_ml_bridge.py prism_torch_models.py
-          --ignore-missing-imports --follow-imports=skip --no-error-summary || true
+          --ignore-missing-imports --follow-imports=skip --no-error-summary
 
       - name: Security scan (medium + high severity)
         run: |

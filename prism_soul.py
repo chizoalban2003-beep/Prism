@@ -496,6 +496,42 @@ class PrismSoul:
             return 0.0
         return len(ta & tb) / len(ta | tb)
 
+    @staticmethod
+    def _embed_sim(a: str, b: str, ollama_host: str = "http://localhost:11434") -> float:
+        """Cosine similarity via Ollama embeddings; returns -1.0 on failure."""
+        import json
+        import math
+        import urllib.request as _ur
+        try:
+            def _get(text: str) -> list[float]:
+                payload = json.dumps(
+                    {"model": "nomic-embed-text", "prompt": text}
+                ).encode()
+                req = _ur.Request(
+                    f"{ollama_host}/api/embeddings",
+                    data=payload,
+                    headers={"Content-Type": "application/json"},
+                )
+                resp = _ur.urlopen(req, timeout=5)
+                return json.loads(resp.read()).get("embedding", [])
+
+            va, vb = _get(a), _get(b)
+            if not va or not vb or len(va) != len(vb):
+                return -1.0
+            dot = sum(x * y for x, y in zip(va, vb))
+            na  = math.sqrt(sum(x * x for x in va))
+            nb  = math.sqrt(sum(x * x for x in vb))
+            return dot / (na * nb + 1e-9)
+        except Exception:
+            return -1.0
+
+    def _text_sim(self, a: str, b: str) -> float:
+        """Semantic similarity: embedding cosine when Ollama available, Jaccard fallback."""
+        score = self._embed_sim(a, b)
+        if score >= 0.0:
+            return score
+        return self._keyword_sim(a, b)
+
     def run_entailment_check(self, sim_threshold: float = 0.15) -> list[dict]:
         """
         Compare stated beliefs against lens observation trends.
@@ -521,7 +557,7 @@ class PrismSoul:
                 continue  # no significant negative trend
 
             for belief in stated:
-                sim = self._keyword_sim(belief.text, lens.description)
+                sim = self._text_sim(belief.text, lens.description)
                 if sim < sim_threshold:
                     continue
 
@@ -599,8 +635,8 @@ class PrismSoul:
         lenses_line = "Lenses: " + (", ".join(lens_parts) if lens_parts else "none")
 
         tension_parts = []
-        for t in tensions:
-            tension_parts.append(f"{t['stated']!r} vs {t['observed']!r}")
+        for tension in tensions:
+            tension_parts.append(f"{tension['stated']!r} vs {tension['observed']!r}")
         tensions_line = "Tensions: " + ("; ".join(tension_parts) if tension_parts else "none")
 
         summary = "\n".join(
@@ -767,9 +803,9 @@ class PrismSoul:
 
         lines.append("\n\n## Tensions\n")
         if tensions:
-            for t in tensions:
-                lines.append(f"- **Stated:** {t['stated']}")
-                lines.append(f"  **Observed:** {t['observed']} (strength: {t['strength']:.2f})")
+            for tension in tensions:
+                lines.append(f"- **Stated:** {tension['stated']}")
+                lines.append(f"  **Observed:** {tension['observed']} (strength: {tension['strength']:.2f})")
         else:
             lines.append("_No contradictions detected._")
 
