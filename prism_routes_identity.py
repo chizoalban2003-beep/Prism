@@ -513,7 +513,7 @@ async def calibration_summary_route():
     veax_state = None
     veax_render = None
     try:
-        from prism_spectrum_middleware import get_current_gates, render_gates
+        from prism_veax import get_current_gates, render_gates
         gates = get_current_gates()
         if gates is not None:
             veax_state = {"V": gates.V, "E": gates.E, "A": gates.A, "X": gates.X}
@@ -585,7 +585,7 @@ async def calibration_feedback(request: Request):
     veax_before = None
     veax_after = None
     try:
-        from prism_spectrum_middleware import (
+        from prism_veax import (
             SpectrumGates,
             get_current_gates,
             render_gates,

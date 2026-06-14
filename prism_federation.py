@@ -389,10 +389,15 @@ class FederationManager:
                     failed += 1
                     continue
                 peer_url = row[0].rstrip("/")
+                import os as _os
+                _hdrs: dict[str, str] = {"Content-Type": "application/json"}
+                _tok = _os.environ.get("PRISM_FEDERATION_TOKEN", "")
+                if _tok:
+                    _hdrs["Authorization"] = f"Bearer {_tok}"
                 req = _urlreq.Request(
                     f"{peer_url}/federation/receive",
                     data=payload_bytes,
-                    headers={"Content-Type": "application/json"},
+                    headers=_hdrs,
                 )
                 _urlreq.urlopen(req, timeout=5)
                 self._update_peer_last_seen(peer_id, payload["version"])

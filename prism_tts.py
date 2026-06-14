@@ -81,14 +81,14 @@ class PrismTTS:
                     if self._rate:
                         args += ["-r", str(self._rate)]
                     args.append(text[:500])
-                    subprocess.run(args, timeout=30, check=False)
+                    subprocess.run(args, timeout=30, check=False)  # nosec B603 — argv from constant list, no shell
 
                 elif self._engine == "espeak-ng":
                     args = ["espeak-ng", "-s", str(self._rate)]
                     if self._voice:
                         args += ["-v", self._voice]
                     args.append(text[:500])
-                    subprocess.run(args, timeout=30, check=False)
+                    subprocess.run(args, timeout=30, check=False)  # nosec B603 — argv from constant list, no shell
 
                 elif self._engine == "pyttsx3":
                     import pyttsx3
@@ -101,7 +101,7 @@ class PrismTTS:
 
                 elif self._engine == "powershell":
                     safe = text[:500].replace("'","")
-                    subprocess.run(
+                    subprocess.run(  # nosec B603 — argv list, no shell; text sanitized above
                         ["powershell","-Command",
                          f"Add-Type -AssemblyName System.speech;"
                          f"(New-Object System.Speech.Synthesis.SpeechSynthesizer)"

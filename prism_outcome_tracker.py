@@ -329,7 +329,7 @@ class OutcomeTracker:
     def _fulcrum_feedback(self, rec: OutcomeRecord) -> None:
         """Feed real outcome payoff into the live DecisionNetwork's AdaptiveFulcrums."""
         try:
-            from prism_spectrum_middleware import get_current_network, observe_outcome
+            from prism_veax import get_current_network, observe_outcome
             net = get_current_network()
             if net is None:
                 return

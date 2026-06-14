@@ -131,7 +131,7 @@ class PrismShadowPipeline:
                             )
                             deltas = self._phase_engine.veax_delta(reading.phase)
                             if deltas:
-                                from prism_spectrum_middleware import (
+                                from prism_veax import (
                                     SpectrumGates,
                                     get_current_gates,
                                     save_spectrum_state,

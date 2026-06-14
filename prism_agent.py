@@ -43,15 +43,15 @@ from prism_responses import (
 from prism_search import PrismSearch
 from prism_service_discovery import PrismServiceDiscovery
 from prism_smart_home import PrismSmartHome
-from prism_spectrum_middleware import (
+from prism_task_queue import TaskQueue
+from prism_tasks import PrismTasks
+from prism_tts import PrismTTS
+from prism_veax import (
     SpectrumGates,
     get_current_gates,
     render_gates,
     save_spectrum_state,
 )
-from prism_task_queue import TaskQueue
-from prism_tasks import PrismTasks
-from prism_tts import PrismTTS
 from prism_voice import PrismVoice
 
 logger = logging.getLogger(__name__)
@@ -461,7 +461,8 @@ class PrismAgent:
             autonomous         = self._autonomous,
             memory             = self._memory,
             interceptor_policy = InterceptorPolicy(),
-            soul               = getattr(self, '_soul', None),
+            # soul omitted — PrismSoul is built ~70 lines later and
+            # back-patched via _wire_backpatches(); passing it here is a no-op.
         )
         self._organ_loader = OrganLoader(llm_router=self._router)
         self._chain._organ_loader = self._organ_loader

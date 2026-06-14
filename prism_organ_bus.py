@@ -436,9 +436,10 @@ class OrganBus:
         if (signal.priority != HIGH and cache_key in self._cache
                 and _now - self._cache_ts.get(cache_key, 0.0) < _CACHE_TTL):
             cached = dict(self._cache[cache_key])
-            # Merge current payload values into the cached structure
-            cached.update({k: v for k, v in signal.payload.items()
-                           if k in cached})
+            # Merge ALL current payload keys — cached translation provides
+            # vocabulary mapping for known keys; new keys pass through raw
+            # so receivers always see the full signal, never truncated.
+            cached.update(dict(signal.payload))
             return cached, True
 
         prompt = _TRANSLATE_PROMPT.format(

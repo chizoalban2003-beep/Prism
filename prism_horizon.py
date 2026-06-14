@@ -372,6 +372,17 @@ class HorizonPlanner:
         list[str]
             IDs of goals that were triggered or resumed this session.
         """
+        # Phase gate: skip expensive LLM evaluation when LIQUID.
+        # Daemon worker also gates, but HTTP route callers bypass it.
+        try:
+            import prism_phase as _pp
+            _eng = _pp.get_engine()
+            if _eng.history and _eng.current_phase.value == "LIQUID":
+                logger.info("HorizonPlanner.on_session_start: LIQUID — deferred")
+                return []
+        except Exception:
+            pass
+
         goals     = self.list_goals()
         activated: list[str] = []
 

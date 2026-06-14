@@ -42,14 +42,26 @@ def _fed():
 
 
 def _require_federation_auth(request: Request) -> bool:
-    """Return True if the request is authorized (or auth is not configured)."""
-    token = os.environ.get("PRISM_FEDERATION_TOKEN", "")
+    """Return True if the request is authorized.
+
+    Auth modes
+    ----------
+    PRISM_FEDERATION_REQUIRE_AUTH=1
+        Strict mode: token MUST be set and present in every request.
+        Returns False when no token is configured (forces admin to set one).
+    default
+        Legacy mode: allow when no token configured (backward-compatible).
+
+    Set PRISM_FEDERATION_TOKEN=<secret> to enable bearer-token auth.
+    Set PRISM_FEDERATION_REQUIRE_AUTH=1 in multi-node deployments to
+    prevent unauthenticated peers from joining.
+    """
+    token  = os.environ.get("PRISM_FEDERATION_TOKEN", "")
+    strict = os.environ.get("PRISM_FEDERATION_REQUIRE_AUTH", "") in ("1", "true", "yes")
     if not token:
-        return True  # no token configured — allow unauthenticated
+        return not strict  # strict → deny (no token = misconfigured); legacy → allow
     auth_header = request.headers.get("Authorization", "")
-    if auth_header == f"Bearer {token}":
-        return True
-    return False
+    return auth_header == f"Bearer {token}"
 
 
 # ---------------------------------------------------------------------------
@@ -141,8 +153,10 @@ async def federation_peers():
 
 
 @router.delete("/federation/peers/{peer_id}")
-async def federation_remove_peer(peer_id: str):
+async def federation_remove_peer(request: Request, peer_id: str):
     """Remove a federation peer."""
+    if not _require_federation_auth(request):
+        return _401
     fm = _fed()
     if fm is None:
         return _503
@@ -162,8 +176,10 @@ async def federation_remove_peer(peer_id: str):
 
 
 @router.get("/federation/sync")
-async def federation_sync_get():
+async def federation_sync_get(request: Request):
     """Return the local state snapshot to send to peers."""
+    if not _require_federation_auth(request):
+        return _401
     fm = _fed()
     if fm is None:
         return _503
@@ -217,8 +233,10 @@ async def federation_sync_post(request: Request):
 
 
 @router.get("/federation/status")
-async def federation_status():
+async def federation_status(request: Request):
     """Return sync status: pending peers, last sync times, vector clock."""
+    if not _require_federation_auth(request):
+        return _401
     fm = _fed()
     if fm is None:
         return _503
@@ -232,13 +250,16 @@ async def federation_status():
 
 
 @router.get("/federation/identity")
-async def federation_identity_get():
+async def federation_identity_get(request: Request):
     """
     Return a portable identity payload (soul + persona) for syncing to a peer.
 
     Peers call this endpoint then POST the result to their own
     ``/federation/identity/merge``.
     """
+    if not _require_federation_auth(request):
+        return _401
+
     import time as _time
 
     from prism_state import _get_agent as _ga

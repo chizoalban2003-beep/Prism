@@ -181,7 +181,7 @@ Rules:
         self._persona            = None
 
         # ── Spectrum middleware (VEAX vector) ─────────────────────────────────
-        from prism_spectrum_middleware import load_spectrum
+        from prism_veax import load_spectrum
         self._spectrum_gates, self._spectrum_network = load_spectrum(config)
 
         # Thread-safety note: _state_lock protects the internal results list
@@ -210,7 +210,7 @@ Rules:
 
     def _sync_spectrum(self) -> None:
         """Pick up in-session VEAX updates made by the veax_control organ."""
-        from prism_spectrum_middleware import get_current_gates, get_current_network
+        from prism_veax import get_current_gates, get_current_network
         live = get_current_gates()
         if live is not None and live is not self._spectrum_gates:
             self._spectrum_gates = live

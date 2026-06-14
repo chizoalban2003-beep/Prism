@@ -308,7 +308,7 @@ except Exception as e:
             runner_file.close()
 
         try:
-            proc = subprocess.run(
+            proc = subprocess.run(  # nosec B603 — isolated sandbox subprocess, no shell, argv is [python, tempfile]
                 [sys.executable, runner_path],
                 capture_output=True, text=True,
                 timeout=30,
@@ -336,7 +336,7 @@ except Exception as e:
         if not to_install:
             return True
         try:
-            subprocess.run(
+            subprocess.run(  # nosec B603 — pip install, no shell; packages validated against stdlib allowlist above
                 [sys.executable, "-m", "pip", "install", "--quiet"] + to_install,
                 check=True, timeout=60,
                 capture_output=True)

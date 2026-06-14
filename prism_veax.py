@@ -22,6 +22,7 @@ from prism_spectrum_middleware import (
     get_current_network,
     load_spectrum,
     nl_to_veax,
+    observe_outcome,
     render_gates,
     save_spectrum_state,
     set_current_gates,
@@ -36,6 +37,8 @@ __all__ = [
     "get_current_network",
     "load_spectrum",
     "save_spectrum_state",
+    # Outcome feedback
+    "observe_outcome",
     # NL control
     "nl_to_veax",
     # Display

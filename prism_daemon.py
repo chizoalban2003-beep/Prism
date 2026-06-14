@@ -491,6 +491,18 @@ def main():
 
     logger.info("PRISM daemon starting (pid=%d)", os.getpid())
 
+    # Eagerly migrate all 22 SQLite databases before agent touches them.
+    try:
+        from prism_schema_registry import run_migrations
+        _mig = run_migrations()
+        _errs = {k: v for k, v in _mig.items() if v.startswith("error:")}
+        if _errs:
+            logger.warning("Schema migration issues: %s", _errs)
+        else:
+            logger.info("Schema migrations: %d db(s) ok", len(_mig))
+    except Exception as _exc:
+        logger.warning("Schema migration step failed: %s", _exc)
+
     # Build agent
     try:
         agent = build_agent()

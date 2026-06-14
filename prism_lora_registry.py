@@ -134,7 +134,7 @@ class LoRARegistry:
     def gpu_available(self) -> bool:
         """Check if vLLM LoRA loading is feasible."""
         try:
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603 — constant argv, no shell, no user input
                 ["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"],
                 capture_output=True,
                 text=True,

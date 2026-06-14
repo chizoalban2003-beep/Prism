@@ -42,7 +42,7 @@ def execute(intent: str, message: str, ctx: dict):
     from prism_responses import text_card
 
     try:
-        from prism_spectrum_middleware import (
+        from prism_veax import (
             VEAX_PRESETS,
             SpectrumGates,
             get_current_gates,

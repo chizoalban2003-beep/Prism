@@ -423,3 +423,75 @@ def validate_present(prism_dir: Optional[Path] = None) -> dict[str, bool]:
     """
     base = (prism_dir or Path.home() / ".prism").expanduser()
     return {s.db_path: (base / s.db_path).exists() for s in REGISTRY}
+
+
+# Convention: every owner module that needs schema migration should expose a
+# module-level function `migrate(prism_dir: Path) -> None` that creates tables
+# and applies ALTER TABLE upgrades idempotently.  Legacy modules without this
+# function fall back to bare instantiation (which runs _init_db in __init__).
+_MIGRATE_CONVENTION = "migrate"
+
+
+def run_migrations(prism_dir: Optional[Path] = None) -> dict[str, str]:
+    """
+    Eagerly trigger every registered owner module's migration at startup.
+
+    Call this once from prism_daemon.main() before the agent starts serving
+    requests, so all 22 SQLite databases are at their expected schema version
+    before any module touches them lazily.
+
+    Returns ``{db_path: status}`` where status is one of:
+        "ok"              — migration ran without error
+        "skipped"         — module has no migrate() and no default constructor
+        "error: <detail>" — exception raised during migration
+    """
+    import importlib
+
+    # Ordered by dependency: soul before outcome_tracker, memory first.
+    _OWNERS: list[tuple[str, str]] = [
+        ("prism_memory",          "PrismMemory"),
+        ("prism_soul",            "PrismSoul"),
+        ("prism_outcome_tracker", "OutcomeTracker"),
+        ("prism_horizon",         "HorizonPlanner"),
+        ("prism_organ_bus",       "OrganBus"),
+        ("prism_federation",      "FederationManager"),
+        ("prism_lora_registry",   "LoRARegistry"),
+        ("prism_session_manager", "SessionManager"),
+        ("prism_causality",       "CausalityEngine"),
+    ]
+
+    base  = (prism_dir or Path.home() / ".prism").expanduser()
+    base.mkdir(parents=True, exist_ok=True)
+    result: dict[str, str] = {}
+
+    for module_name, class_name in _OWNERS:
+        owned = [s.db_path for s in REGISTRY if s.owner == module_name]
+        try:
+            mod = importlib.import_module(module_name)
+            # Prefer the migrate(prism_dir) convention if present.
+            migrate_fn = getattr(mod, _MIGRATE_CONVENTION, None)
+            if callable(migrate_fn):
+                migrate_fn(base)
+                for p in owned:
+                    result[p] = "ok"
+                continue
+            # Fallback: bare constructor triggers _init_db in __init__.
+            # Only works for modules whose constructors need no required args.
+            cls = getattr(mod, class_name, None)
+            if cls is None:
+                for p in owned:
+                    result[p] = "skipped"
+                continue
+            try:
+                cls()
+            except TypeError:
+                for p in owned:
+                    result[p] = "skipped"
+                continue
+            for p in owned:
+                result[p] = "ok"
+        except Exception as exc:
+            for p in owned:
+                result[p] = f"error: {exc!r}"
+
+    return result

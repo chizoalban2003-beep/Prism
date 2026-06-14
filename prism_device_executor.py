@@ -146,7 +146,7 @@ class SafeSubprocess:
 
         start = time.time()
         try:
-            proc = subprocess.run(
+            proc = subprocess.run(  # nosec B603 — shell=False enforced by module contract (see docstring)
                 args,
                 capture_output = True,
                 text           = True,

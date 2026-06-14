@@ -96,10 +96,10 @@ jobs:
           prism_vision_ml_bridge.py prism_torch_models.py
           --ignore-missing-imports --follow-imports=skip --no-error-summary || true
 
-      - name: Security scan (high severity only)
+      - name: Security scan (medium + high severity)
         run: |
           python3 -m pip install bandit --quiet
-          python3 -m bandit -r . -lll -x tests/,organs/,.claude/ --quiet
+          python3 -m bandit -r . -ll -x tests/,organs/,.claude/ --quiet
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4

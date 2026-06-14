@@ -601,14 +601,14 @@ class BiometricVEAXBridge:
 
         # Apply deltas to current VEAX gates
         try:
-            from prism_spectrum_middleware import (
+            from prism_veax import (
                 SpectrumGates,
                 get_current_gates,
                 save_spectrum_state,
             )
             current = get_current_gates()
             if current is None:
-                from prism_spectrum_middleware import load_spectrum
+                from prism_veax import load_spectrum
                 loaded = load_spectrum()
                 # load_spectrum may return (gates, network) tuple or just gates
                 current = loaded[0] if isinstance(loaded, tuple) else loaded
