@@ -14,13 +14,24 @@ def _make_engine(synthesised_code=None):
             "requirements": [],
             "code": synthesised_code,
         }), {})
-    eng = PrismAutonomous(
-        llm_router=router,
-        push=MagicMock(configured=False),
-    )
-    # Override tool dir to temp
+    # Override tool dir BEFORE construction. __init__ calls _load_cached_tools()
+    # which reads from TOOL_DIR — patching the instance attribute after construction
+    # would still leave the engine populated with whatever was in the real
+    # ~/.prism/tools/, which is why test_list_tools_empty_initially used to
+    # fail on machines with a live daemon. Patch the class attribute for the
+    # duration of construction, then move it onto the instance.
     import pathlib
-    eng.TOOL_DIR = pathlib.Path(tempfile.mkdtemp())
+    tmp_dir = pathlib.Path(tempfile.mkdtemp())
+    original_dir = PrismAutonomous.TOOL_DIR
+    PrismAutonomous.TOOL_DIR = tmp_dir
+    try:
+        eng = PrismAutonomous(
+            llm_router=router,
+            push=MagicMock(configured=False),
+        )
+    finally:
+        PrismAutonomous.TOOL_DIR = original_dir
+    eng.TOOL_DIR = tmp_dir
     return eng
 
 
