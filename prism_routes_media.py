@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -21,6 +22,32 @@ from fastapi.responses import JSONResponse
 from prism_state import _get_agent
 
 router = APIRouter()
+
+
+# Sandbox for client-supplied audio paths. /voice/transcribe accepts a `path`
+# field from JSON requests; without this guard a caller could read arbitrary
+# files (e.g. /etc/passwd) via the voice subsystem.
+_AUDIO_SANDBOX = Path(
+    os.environ.get("PRISM_AUDIO_SANDBOX")
+    or (Path.home() / ".prism" / "uploads")
+).expanduser().resolve()
+
+
+def _validate_audio_path(raw: str) -> Path | None:
+    """Resolve `raw` and confirm it lives under the audio sandbox.
+
+    Returns the resolved Path on success, or None if the path escapes the
+    sandbox or cannot be resolved.
+    """
+    try:
+        resolved = Path(raw).expanduser().resolve(strict=False)
+    except (OSError, ValueError):
+        return None
+    try:
+        resolved.relative_to(_AUDIO_SANDBOX)
+    except ValueError:
+        return None
+    return resolved
 
 
 
@@ -51,12 +78,19 @@ async def voice_transcribe(request: Request):
             body = await request.json()
         except Exception:
             pass
-        audio_path = body.get("path", "")
-        if not audio_path:
+        audio_path_raw = body.get("path", "")
+        if not audio_path_raw:
             return JSONResponse(
                 {"error": "Provide {'path': '/path/to/audio'} or raw audio bytes", "status": 400},
                 status_code=400,
             )
+        resolved = _validate_audio_path(audio_path_raw)
+        if resolved is None:
+            return JSONResponse(
+                {"error": f"audio path must be under {_AUDIO_SANDBOX}", "status": 400},
+                status_code=400,
+            )
+        audio_path = str(resolved)
     else:
         # Raw audio bytes
         raw_bytes = await request.body()
