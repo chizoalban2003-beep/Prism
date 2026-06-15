@@ -28,7 +28,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from prism_state import _get_agent, _state
+from prism_state import _get_agent, _state, set_state
 
 router = APIRouter()
 
@@ -263,7 +263,7 @@ async def weekly_report_generate():
             "applied": report.applied,
             "error": report.error,
         }
-        _state["_last_weekly_report"] = result
+        set_state("_last_weekly_report", result)
         return result
     except Exception as exc:
         return JSONResponse({"error": str(exc), "status": 500}, status_code=500)

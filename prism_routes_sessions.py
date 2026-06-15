@@ -22,7 +22,7 @@ from typing import Any, Optional
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
-from prism_state import _state
+from prism_state import _state, set_state
 
 router = APIRouter()
 
@@ -143,7 +143,7 @@ async def set_active_session(request: Request):
     if session is None:
         return JSONResponse({"error": "session not found", "status": 404}, status_code=404)
 
-    _state["active_session_id"] = session_id
+    set_state("active_session_id", session_id)
     return {"active_session_id": session_id, "session": _session_to_dict(session)}
 
 

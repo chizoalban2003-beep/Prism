@@ -23,7 +23,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from prism_state import _state
+from prism_state import _state, set_state
 
 router = APIRouter()
 
@@ -152,7 +152,7 @@ async def activate_user(user_id: str):
             pass
 
     # Store in state so other routers can see who is active
-    _state["active_user_id"] = user_id
+    set_state("active_user_id", user_id)
 
     reg.touch(user_id)
     return {"ok": True, "active_user_id": user_id, "profile": profile.to_dict()}
