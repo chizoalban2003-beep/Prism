@@ -507,7 +507,8 @@ def main():
     # The daemon is the only process expected to call this; tests run the
     # ASGI app directly and opt out via PRISM_AUTH_DISABLE.
     try:
-        from prism_auth import TOKEN_FILE as _AUTH_TOKEN_FILE, ensure_token
+        from prism_auth import TOKEN_FILE as _AUTH_TOKEN_FILE
+        from prism_auth import ensure_token
         ensure_token()
         logger.info("HTTP auth token at %s (chmod 600)", _AUTH_TOKEN_FILE)
     except Exception as _exc:

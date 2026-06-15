@@ -56,7 +56,6 @@ from prism_auth import get_token as _get_auth_token  # noqa: E402
 # Module-level state — wired by prism_daemon via _set_state()
 # Re-exported here so prism_daemon can do: from prism_asgi import _set_state
 # ---------------------------------------------------------------------------
-
 from prism_state import _state  # noqa: E402  re-export
 
 
