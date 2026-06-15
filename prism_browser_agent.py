@@ -1,12 +1,50 @@
 from __future__ import annotations
 
+import ipaddress
 import json
 import logging
 import time
 from dataclasses import dataclass
 from typing import Optional
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
+
+
+# SSRF guard. The browser agent receives URLs chosen by the LLM in response
+# to prompts that may contain attacker-controlled text, so any local/internal
+# target must be refused before page.goto runs.
+def _is_safe_url(url: str) -> bool:
+    if not isinstance(url, str) or not url:
+        return False
+    try:
+        parsed = urlparse(url.strip())
+    except Exception:
+        return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    host = (parsed.hostname or "").lower()
+    if not host:
+        return False
+    # Block well-known hostnames that resolve to loopback or cloud metadata.
+    if host in {
+        "localhost", "ip6-localhost", "ip6-loopback",
+        "metadata.google.internal", "metadata", "instance-data",
+    }:
+        return False
+    # Block by literal IP if the host is an address.
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return True  # not an IP literal — accept (DNS rebinding is out of scope)
+    return not (
+        addr.is_loopback
+        or addr.is_private
+        or addr.is_link_local
+        or addr.is_multicast
+        or addr.is_reserved
+        or addr.is_unspecified
+    )
 
 
 @dataclass
@@ -97,6 +135,11 @@ class PrismBrowserAgent:
                 page.set_default_timeout(self.PAGE_TIMEOUT)
 
                 # Navigate to start URL
+                if not _is_safe_url(start_url):
+                    browser.close()
+                    return BrowserTaskResult(
+                        goal=goal, success=False, steps=steps,
+                        error=f"start_url blocked by SSRF guard: {start_url}")
                 page.goto(start_url)
                 steps.append(BrowserStep(
                     "navigate", start_url,
@@ -202,6 +245,11 @@ class PrismBrowserAgent:
         try:
             if action == "navigate":
                 url = target if target.startswith("http") else f"https://{target}"
+                if not _is_safe_url(url):
+                    return BrowserStep(
+                        action, target,
+                        f"navigation blocked by SSRF guard: {url}",
+                        False, "blocked")
                 page.goto(url, wait_until="domcontentloaded",
                           timeout=self.PAGE_TIMEOUT)
                 return BrowserStep(action, target, description, True)
