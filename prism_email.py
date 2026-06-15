@@ -3,6 +3,7 @@ from __future__ import annotations
 import email as _email
 import imaplib
 import logging
+import os
 import smtplib
 from dataclasses import dataclass, field
 from email.mime.multipart import MIMEMultipart
@@ -10,6 +11,38 @@ from email.mime.text import MIMEText
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_email_password(config_password: str = "") -> str:
+    """Resolve the email password from the safest available source.
+
+    Order:
+      1. ``PRISM_EMAIL_PASSWORD`` env var
+      2. system keyring entry (service=``prism``, username=``email_password``)
+      3. ``config_password`` argument (legacy plaintext in ~/.prism/config.toml)
+
+    A plaintext config password emits a warning so the operator knows to
+    migrate. Missing keyring backend is silent — that's not an error, just
+    "try the next source".
+    """
+    env = os.environ.get("PRISM_EMAIL_PASSWORD")
+    if env:
+        return env
+    try:
+        import keyring  # type: ignore[import-not-found]
+        kr_pw = keyring.get_password("prism", "email_password")
+        if kr_pw:
+            return kr_pw
+    except Exception:
+        pass
+    if config_password:
+        logger.warning(
+            "prism_email: using plaintext password from config — set "
+            "PRISM_EMAIL_PASSWORD or store via keyring "
+            "(keyring set prism email_password) instead."
+        )
+        return config_password
+    return ""
 
 
 @dataclass
@@ -46,9 +79,12 @@ class PrismEmail:
       imap_port   = 993
       smtp_host   = "smtp.gmail.com"
       smtp_port   = 587
-      # For Gmail: generate an App Password at myaccount.google.com/apppasswords
-      password    = "your-app-password"
       max_fetch   = 20            # emails to fetch per sync
+
+    The password is resolved by ``_resolve_email_password()`` — set the
+    env var ``PRISM_EMAIL_PASSWORD`` or store it via ``keyring set prism
+    email_password``. A plaintext ``password = "..."`` line in the TOML
+    still works for backward compatibility but logs a warning at startup.
     """
 
     def __init__(
@@ -74,7 +110,7 @@ class PrismEmail:
         em = config.get("email", {})
         return cls(
             address   = em.get("address", ""),
-            password  = em.get("password", ""),
+            password  = _resolve_email_password(em.get("password", "")),
             imap_host = em.get("imap_host", "imap.gmail.com"),
             imap_port = int(em.get("imap_port", 993)),
             smtp_host = em.get("smtp_host", "smtp.gmail.com"),
