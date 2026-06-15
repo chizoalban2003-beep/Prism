@@ -42,12 +42,21 @@ _BLOCKED_IMPORTS = {
 }
 _BLOCKED_ATTRS = {
     # os.system, os.remove, os.chmod, shutil.rmtree, etc.
-    "system", "popen", "remove", "unlink", "rmtree",
+    "system", "popen", "remove", "unlink", "rmtree", "rmdir",
     "chmod", "chown", "rename", "replace", "symlink",
     "fork", "spawn", "execv", "execve", "kill",
     # pathlib write methods
     "write_text", "write_bytes",
+    # Sandbox-escape vectors: type('').__mro__[1].__subclasses__()[…] gives
+    # arbitrary class access; func.__globals__ reaches the host module's
+    # builtins. Blocking the dunders is cheaper than chasing all the chains.
+    "__mro__", "__subclasses__", "__bases__", "__globals__", "__class__",
 }
+# Bare-name references to these in a Load context are flagged. Without this,
+# `e = eval; e('1+1')` sails past visit_Call (the callee is a Name "e",
+# not "eval"), and `getattr(__builtins__, 'exec')(...)` reaches `exec` via a
+# subscript bypass. Catching the Name at load-time closes both routes.
+_BLOCKED_NAME_LOADS = _BLOCKED_CALLS | {"globals", "vars", "__builtins__"}
 
 class _SafetyVisitor(ast.NodeVisitor):
     def __init__(self):
@@ -80,6 +89,11 @@ class _SafetyVisitor(ast.NodeVisitor):
     def visit_Attribute(self, node):
         if node.attr in _BLOCKED_ATTRS:
             self.violations.append(f"blocked attribute access: .{node.attr}")
+        self.generic_visit(node)
+
+    def visit_Name(self, node):
+        if isinstance(node.ctx, ast.Load) and node.id in _BLOCKED_NAME_LOADS:
+            self.violations.append(f"blocked name reference: {node.id}")
         self.generic_visit(node)
 
 

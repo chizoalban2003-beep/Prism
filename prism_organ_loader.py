@@ -67,8 +67,10 @@ _BLOCKED_IMPORTS = {
 }
 _BLOCKED_CALLS = {"eval", "exec", "compile", "__import__", "breakpoint", "open"}
 _BLOCKED_ATTRS = {
-    "system", "popen", "remove", "unlink", "rmtree", "chmod", "chown",
+    "system", "popen", "remove", "unlink", "rmtree", "rmdir", "chmod", "chown",
     "rename", "symlink", "fork", "spawn", "execv", "execve", "kill",
+    # Sandbox-escape vectors via the type/MRO chain or func.__globals__.
+    "__mro__", "__subclasses__", "__bases__", "__globals__", "__class__",
     # "replace" intentionally omitted — str.replace() is safe and commonly used.
     # Bundled organs (./organs/) are version-controlled and may legitimately
     # call Path.write_text / write_bytes, so those are NOT in this set.
@@ -76,6 +78,9 @@ _BLOCKED_ATTRS = {
 # Stricter set applied at synthesize() time: an LLM-generated organ must not
 # write arbitrary files to disk, even into the user's home directory.
 _BLOCKED_ATTRS_STRICT = _BLOCKED_ATTRS | {"write_text", "write_bytes", "write"}
+# Bare-name Load references to these are flagged so that `e = eval; e('1')`
+# and `getattr(__builtins__, 'exec')(...)` can't bypass visit_Call.
+_BLOCKED_NAME_LOADS = _BLOCKED_CALLS | {"globals", "vars", "__builtins__"}
 
 
 class _SafetyVisitor(ast.NodeVisitor):
@@ -104,6 +109,11 @@ class _SafetyVisitor(ast.NodeVisitor):
     def visit_Attribute(self, node):
         if node.attr in self._blocked_attrs:
             self.violations.append(f"blocked attribute: .{node.attr}")
+        self.generic_visit(node)
+
+    def visit_Name(self, node):
+        if isinstance(node.ctx, ast.Load) and node.id in _BLOCKED_NAME_LOADS:
+            self.violations.append(f"blocked name reference: {node.id}")
         self.generic_visit(node)
 
 
