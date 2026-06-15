@@ -20,7 +20,14 @@ import hashlib
 import hmac
 import json
 import os
+import time
 from typing import Any
+
+# Reject signed requests whose timestamp is more than this many seconds out
+# of sync with the local clock. Five minutes is the standard skew window
+# (matches AWS Signature v4); narrows the replay window without forcing
+# tight NTP sync across federated nodes.
+_FED_HMAC_MAX_SKEW = 300.0
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -50,12 +57,20 @@ def _fed():
 
 
 def _verify_payload_hmac(raw_body: bytes, request: Request) -> bool:
-    """Return True if HMAC-SHA256 payload signature is valid.
+    """Return True if HMAC-SHA256 payload signature is valid and fresh.
 
     When PRISM_FEDERATION_HMAC_SECRET is not set the check is skipped (returns
-    True) so that deployments without HMAC remain unaffected.  When the secret
-    IS set the ``X-Prism-Signature: sha256=<hex>`` header is required and must
-    match ``hmac(secret, raw_body)``.
+    True) so deployments without HMAC remain unaffected. When the secret IS
+    set the request must carry both:
+
+      * ``X-Prism-Timestamp: <unix-epoch-seconds>``
+      * ``X-Prism-Signature: sha256=<hex>`` where ``hex = hmac(secret,
+        "<timestamp>\\n" + raw_body)``
+
+    The timestamp must be within ``_FED_HMAC_MAX_SKEW`` of the local clock —
+    this bounds the replay window. Older senders that don't include a
+    timestamp fail the freshness check, which is intentional: replay-prone
+    sync traffic should be refused.
     """
     secret = os.environ.get("PRISM_FEDERATION_HMAC_SECRET", "")
     if not secret:
@@ -63,7 +78,15 @@ def _verify_payload_hmac(raw_body: bytes, request: Request) -> bool:
     sig_header = request.headers.get("X-Prism-Signature", "")
     if not sig_header.startswith("sha256="):
         return False
-    expected = "sha256=" + hmac.new(secret.encode(), raw_body, hashlib.sha256).hexdigest()
+    ts_header = request.headers.get("X-Prism-Timestamp", "")
+    try:
+        ts = float(ts_header)
+    except (TypeError, ValueError):
+        return False
+    if abs(time.time() - ts) > _FED_HMAC_MAX_SKEW:
+        return False
+    signed = ts_header.encode() + b"\n" + raw_body
+    expected = "sha256=" + hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
     return hmac.compare_digest(expected, sig_header)
 
 

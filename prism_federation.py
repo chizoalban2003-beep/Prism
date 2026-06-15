@@ -398,9 +398,14 @@ class FederationManager:
                     _hdrs["Authorization"] = f"Bearer {_tok}"
                 _secret = _os.environ.get("PRISM_FEDERATION_HMAC_SECRET", "")
                 if _secret:
+                    # Include a Unix timestamp in the signed payload so the
+                    # receiver can reject replays outside its skew window.
+                    _ts = f"{time.time():.3f}"
+                    _signed = _ts.encode() + b"\n" + payload_bytes
                     _sig = _hmac.new(
-                        _secret.encode(), payload_bytes, _hashlib.sha256
+                        _secret.encode(), _signed, _hashlib.sha256
                     ).hexdigest()
+                    _hdrs["X-Prism-Timestamp"] = _ts
                     _hdrs["X-Prism-Signature"] = f"sha256={_sig}"
                 req = _urlreq.Request(
                     f"{peer_url}/federation/receive",
