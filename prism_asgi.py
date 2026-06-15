@@ -12,8 +12,33 @@ from __future__ import annotations
 import hmac
 import json
 import logging
+import os
+import time
 
 logger = logging.getLogger(__name__)
+
+
+# ── Chat rate limit ─────────────────────────────────────────────────────────
+# Even though the daemon is loopback-only and bearer-authenticated, a leaked
+# token would otherwise allow unbounded LLM spend. Token-bucket per client
+# host: sustained refill rate per second, burst capped at bucket size.
+# Defaults match a generous human cadence (~30/min sustained, 60 burst).
+
+_CHAT_BUCKET_SIZE = float(os.environ.get("PRISM_CHAT_RATE_BUCKET", "60"))
+_CHAT_REFILL_PER_SEC = float(os.environ.get("PRISM_CHAT_RATE_REFILL", "0.5"))
+_chat_buckets: dict[str, tuple[float, float]] = {}
+
+
+def _chat_rate_allow(key: str) -> bool:
+    """Token-bucket gate. True if the request fits within the budget for *key*."""
+    now = time.monotonic()
+    tokens, last = _chat_buckets.get(key, (_CHAT_BUCKET_SIZE, now))
+    tokens = min(_CHAT_BUCKET_SIZE, tokens + (now - last) * _CHAT_REFILL_PER_SEC)
+    if tokens < 1.0:
+        _chat_buckets[key] = (tokens, now)
+        return False
+    _chat_buckets[key] = (tokens - 1.0, now)
+    return True
 
 try:
     from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
@@ -191,6 +216,14 @@ if _FASTAPI_AVAILABLE:
         bridges events into the asyncio event loop via an asyncio.Queue.
         True async — does not block other requests while the chain runs.
         """
+        client_host = request.client.host if request.client else "anon"
+        if not _chat_rate_allow(client_host):
+            return JSONResponse(
+                {"error": "rate limit exceeded", "status": 429},
+                status_code=429,
+                headers={"Retry-After": "2"},
+            )
+
         msg = message or q
         if not msg:
             return JSONResponse({"error": "'message' query parameter required"}, status_code=400)
@@ -251,12 +284,16 @@ if _FASTAPI_AVAILABLE:
             await websocket.close(1011)
             return
 
+        client_host = websocket.client.host if websocket.client else "anon"
         try:
             while True:
                 data = await websocket.receive_json()
                 msg = data.get("message") or data.get("q", "")
                 if not msg:
                     await websocket.send_json({"event": "error", "message": "'message' required"})
+                    continue
+                if not _chat_rate_allow(client_host):
+                    await websocket.send_json({"event": "error", "message": "rate limit exceeded"})
                     continue
 
                 session_id = data.get("session_id") or _state.get("active_session_id")
