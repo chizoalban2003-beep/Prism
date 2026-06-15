@@ -88,7 +88,7 @@ MODEL_CAPABILITY: dict[str, int] = {
     "deepseek-r1": 3, "deepseek-v3": 2,
     "llama3": 2, "llama3.1": 2, "llama3.2": 2,
     "mistral": 2, "mixtral": 2,
-    "qwen": 1, "phi": 1, "gemma": 1,
+    "qwen": 1, "phi": 1, "gemma": 1, "tinyllama": 2,
     "stdlib": 0,
 }
 
@@ -444,6 +444,20 @@ class LLMRouter:
                 opt.available = False  # mark down until next discovery
                 continue
 
+        # Last-resort: retry with any available LLM ignoring capability floor
+        for opt in self.discover():
+            if not opt.available or opt.provider == "stdlib":
+                continue
+            try:
+                text = self._call_option(
+                    opt, _effective_prompt, _eff_max_tokens, system,
+                    json_mode, _pruned_history, images=images)
+                if text:
+                    logger.warning("LLM fallback (cap ignored): %s/%s", opt.provider, opt.model)
+                    return text, f"{opt.provider}/{opt.model}"
+            except Exception as e:
+                logger.warning("LLM fallback %s/%s failed: %s", opt.provider, opt.model, e)
+                continue
         return "", "none"
 
     def speculative_call(
@@ -578,7 +592,7 @@ class LLMRouter:
             headers={"Content-Type":"application/json",
                      "anthropic-version":"2023-06-01",
                      "x-api-key":api_key})
-        resp = urllib.request.urlopen(req, timeout=30)
+        resp = urllib.request.urlopen(req, timeout=120)
         return json.loads(resp.read())["content"][0]["text"]
 
     def _call_ollama(self, opt: LLMOption, prompt: str,
@@ -601,7 +615,7 @@ class LLMRouter:
         payload = json.dumps(body).encode()
         req = urllib.request.Request(f"{opt.endpoint}/api/generate",
             data=payload,headers={"Content-Type":"application/json"})
-        resp = urllib.request.urlopen(req, timeout=30)
+        resp = urllib.request.urlopen(req, timeout=120)
         return json.loads(resp.read()).get("response","")
 
     def _call_openai(self, opt: LLMOption, prompt: str,
@@ -632,7 +646,7 @@ class LLMRouter:
             data=payload,
             headers={"Content-Type":"application/json",
                      "Authorization": "Bearer " + api_key})
-        resp = urllib.request.urlopen(req, timeout=30)
+        resp = urllib.request.urlopen(req, timeout=120)
         return json.loads(resp.read())["choices"][0]["message"]["content"]
 
     # ── Async interface ───────────────────────────────────────────────────
@@ -711,7 +725,7 @@ class LLMRouter:
         body: dict = {"model": opt.model, "max_tokens": max_tokens, "messages": msgs}
         if system:
             body["system"] = system
-        async with _httpx.AsyncClient(timeout=30) as client:
+        async with _httpx.AsyncClient(timeout=120) as client:
             resp = await client.post(
                 "https://api.anthropic.com/v1/messages",
                 json=body,
@@ -744,7 +758,7 @@ class LLMRouter:
         body: dict = {"model": opt.model, "prompt": full_prompt, "stream": False}
         if json_mode:
             body["format"] = "json"
-        async with _httpx.AsyncClient(timeout=30) as client:
+        async with _httpx.AsyncClient(timeout=120) as client:
             resp = await client.post(
                 f"{opt.endpoint}/api/generate",
                 json=body,
@@ -771,7 +785,7 @@ class LLMRouter:
         body: dict = {"model": "gpt-4o-mini", "max_tokens": max_tokens, "messages": msgs}
         if json_mode:
             body["response_format"] = {"type": "json_object"}
-        async with _httpx.AsyncClient(timeout=30) as client:
+        async with _httpx.AsyncClient(timeout=120) as client:
             resp = await client.post(
                 f"{opt.endpoint}/v1/chat/completions",
                 json=body,
@@ -837,7 +851,7 @@ class LLMRouter:
                       "messages": msgs, "stream": True}
         if system:
             body["system"] = system
-        async with _httpx.AsyncClient(timeout=60) as client:
+        async with _httpx.AsyncClient(timeout=120) as client:
             async with client.stream(
                 "POST", "https://api.anthropic.com/v1/messages",
                 json=body,
@@ -872,7 +886,7 @@ class LLMRouter:
             full_prompt = f"Previous conversation:\n{ctx}\n\nUser: {prompt}"
         else:
             full_prompt = prompt
-        async with _httpx.AsyncClient(timeout=60) as client:
+        async with _httpx.AsyncClient(timeout=120) as client:
             async with client.stream(
                 "POST", f"{opt.endpoint}/api/generate",
                 json={"model": opt.model, "prompt": full_prompt, "stream": True},
@@ -902,7 +916,7 @@ class LLMRouter:
         msgs.append({"role": "user", "content": prompt})
         body: dict = {"model": "gpt-4o-mini", "max_tokens": max_tokens,
                       "messages": msgs, "stream": True}
-        async with _httpx.AsyncClient(timeout=60) as client:
+        async with _httpx.AsyncClient(timeout=120) as client:
             async with client.stream(
                 "POST", f"{opt.endpoint}/v1/chat/completions",
                 json=body,
