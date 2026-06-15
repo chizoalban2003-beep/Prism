@@ -491,6 +491,16 @@ def main():
 
     logger.info("PRISM daemon starting (pid=%d)", os.getpid())
 
+    # Ensure the HTTP bearer auth token exists before the ASGI server boots.
+    # The daemon is the only process expected to call this; tests run the
+    # ASGI app directly and opt out via PRISM_AUTH_DISABLE.
+    try:
+        from prism_auth import TOKEN_FILE as _AUTH_TOKEN_FILE, ensure_token
+        ensure_token()
+        logger.info("HTTP auth token at %s (chmod 600)", _AUTH_TOKEN_FILE)
+    except Exception as _exc:
+        logger.warning("Failed to ensure auth token: %s", _exc)
+
     # Eagerly migrate all 22 SQLite databases before agent touches them.
     try:
         from prism_schema_registry import run_migrations

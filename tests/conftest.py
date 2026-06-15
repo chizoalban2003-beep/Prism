@@ -1,6 +1,13 @@
 """Shared pytest fixtures for the PRISM test suite."""
+import os
 import pathlib
 import sys
+
+# Disable HTTP bearer auth in tests. The middleware enforces auth when a
+# token is configured via env or ~/.prism/auth_token; tests would fail if
+# a developer has the daemon running locally and the file exists. Setting
+# this before any prism_* import ensures prism_asgi sees the override.
+os.environ["PRISM_AUTH_DISABLE"] = "1"
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 

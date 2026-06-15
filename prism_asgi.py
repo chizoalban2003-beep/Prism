@@ -9,6 +9,7 @@ SECURITY: Always bound to 127.0.0.1 — never expose to 0.0.0.0.
 """
 from __future__ import annotations
 
+import hmac
 import json
 import logging
 
@@ -18,10 +19,13 @@ try:
     from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse, StreamingResponse
+    from starlette.middleware.base import BaseHTTPMiddleware
     _FASTAPI_AVAILABLE = True
 except ImportError:
     _FASTAPI_AVAILABLE = False
     FastAPI = None
+
+from prism_auth import get_token as _get_auth_token  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Module-level state — wired by prism_daemon via _set_state()
@@ -46,6 +50,48 @@ def _get_chain():
 
 if _FASTAPI_AVAILABLE:
     app = FastAPI(title="Prism ASGI", version="0.2")
+
+    # ── Bearer auth ───────────────────────────────────────────────────────
+    # When prism_auth.get_token() returns a token (set via env var or the
+    # ~/.prism/auth_token file), every HTTP request must carry
+    #   Authorization: Bearer <token>
+    # Disabled (no-op pass-through) when no token is configured — see
+    # prism_auth for the resolution order. WebSocket routes do their own
+    # check via the `token` query parameter; BaseHTTPMiddleware only sees
+    # HTTP traffic.
+
+    class BearerAuthMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            token = _get_auth_token()
+            if token is None:
+                return await call_next(request)
+            if request.method == "OPTIONS":
+                # CORS preflights never carry Authorization.
+                return await call_next(request)
+            header = request.headers.get("authorization", "")
+            scheme, _, supplied = header.partition(" ")
+            if scheme.lower() != "bearer" or not supplied:
+                return JSONResponse(
+                    {"error": "unauthorized"},
+                    status_code=401,
+                    headers={"WWW-Authenticate": 'Bearer realm="prism"'},
+                )
+            if not hmac.compare_digest(supplied.strip(), token):
+                return JSONResponse(
+                    {"error": "unauthorized"},
+                    status_code=401,
+                    headers={"WWW-Authenticate": 'Bearer realm="prism"'},
+                )
+            return await call_next(request)
+
+    app.add_middleware(BearerAuthMiddleware)
+
+    if _get_auth_token() is None:
+        logger.warning(
+            "prism_asgi: auth disabled — no token in env (PRISM_AUTH_TOKEN) "
+            "or file (~/.prism/auth_token). Call prism_auth.ensure_token() "
+            "or set PRISM_AUTH_TOKEN before exposing the server."
+        )
 
     # CORS — restrict to local dashboard origins only.
     # The server is always bound to 127.0.0.1, but without origin restriction
@@ -185,7 +231,18 @@ if _FASTAPI_AVAILABLE:
 
         The connection stays open for multiple turns — send another message
         after receiving the "done" event for the previous turn.
+
+        Auth: when an auth token is configured, the client must connect with
+        `?token=<token>` (browsers cannot set Authorization on WS handshakes).
         """
+        expected = _get_auth_token()
+        if expected is not None:
+            supplied = websocket.query_params.get("token", "")
+            if not supplied or not hmac.compare_digest(supplied, expected):
+                # 1008 = policy violation; close before accept to avoid
+                # leaking that the endpoint exists.
+                await websocket.close(code=1008)
+                return
         await websocket.accept()
 
         chain = _get_chain()
