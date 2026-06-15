@@ -8,9 +8,9 @@ team  = ""
 db_path      = "~/.prism/prism.db"
 media_dir    = "~/.prism/media"
 auto_watch   = true
-ollama_model = "mistral"
+ollama_model = "tinyllama"
 ollama_host  = "http://localhost:11434"
-text_model   = "mistral"
+text_model   = "tinyllama"
 ffmpeg_path  = "ffmpeg"
 poll_interval = 30
 

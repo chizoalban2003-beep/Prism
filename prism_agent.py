@@ -1058,7 +1058,7 @@ class PrismAgent:
                 data=payload,
                 headers={"Content-Type": "application/json"},
             )
-            with urllib.request.urlopen(request, timeout=5) as response:
+            with urllib.request.urlopen(request, timeout=30) as response:
                 result = json.loads(response.read()).get("response", "").strip().lower()
             return result if result in labels else None
         except Exception:
