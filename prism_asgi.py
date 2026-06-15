@@ -85,6 +85,12 @@ if _FASTAPI_AVAILABLE:
     # check via the `token` query parameter; BaseHTTPMiddleware only sees
     # HTTP traffic.
 
+    # Liveness probes must remain reachable so orchestrators (systemd
+    # WatchdogSec, k8s livenessProbe, docker HEALTHCHECK, uptime monitors)
+    # can distinguish "process down" from "auth misconfigured". The route
+    # reveals only {"ok": True, "server": "prism-asgi"} — no internal state.
+    _AUTH_EXEMPT_PATHS = frozenset({"/_health"})
+
     class BearerAuthMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request: Request, call_next):
             token = _get_auth_token()
@@ -92,6 +98,8 @@ if _FASTAPI_AVAILABLE:
                 return await call_next(request)
             if request.method == "OPTIONS":
                 # CORS preflights never carry Authorization.
+                return await call_next(request)
+            if request.url.path in _AUTH_EXEMPT_PATHS:
                 return await call_next(request)
             header = request.headers.get("authorization", "")
             scheme, _, supplied = header.partition(" ")
