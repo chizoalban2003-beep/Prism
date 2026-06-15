@@ -424,6 +424,18 @@ def _build_asgi_state(agent) -> dict:
     except Exception:
         pass
 
+    # Federation: lazily construct one process-wide FederationManager and pin
+    # it both into _state (where prism_routes_federation looks it up) and onto
+    # the agent (where _federation_push_worker looks). Without this wiring,
+    # /federation/* routes always 503 and the push worker is a no-op.
+    try:
+        from prism_federation import FederationManager
+        fed = getattr(agent, "_federation", None) or FederationManager()
+        agent._federation = fed
+        state["federation"] = fed
+    except Exception as _exc:
+        logger.warning("FederationManager wire failed: %s", _exc)
+
     state["ml_assembler"] = getattr(agent, "_ml_assembler", None)
 
     try:
