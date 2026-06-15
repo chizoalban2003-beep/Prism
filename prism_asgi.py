@@ -47,10 +47,19 @@ def _get_chain():
 if _FASTAPI_AVAILABLE:
     app = FastAPI(title="Prism ASGI", version="0.2")
 
-    # CORS — allow all origins for local dashboard access
+    # CORS — restrict to local dashboard origins only.
+    # The server is always bound to 127.0.0.1, but without origin restriction
+    # any webpage in the user's browser could drive the agent via CSRF.
+    import os as _os
+    _extra_origins = [o.strip() for o in _os.environ.get("PRISM_CORS_ORIGINS", "").split(",") if o.strip()]
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
+        allow_origins=[
+            "http://127.0.0.1",
+            "http://localhost",
+            "tauri://localhost",  # tray webview
+        ] + _extra_origins,
+        allow_origin_regex=r"^https?://(127\.0\.0\.1|localhost)(:\d+)?$",
         allow_methods=["*"],
         allow_headers=["*"],
     )
