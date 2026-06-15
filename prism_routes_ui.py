@@ -20,6 +20,11 @@ from fastapi.responses import HTMLResponse, JSONResponse, Response
 router = APIRouter()
 
 
+def _safe_html(raw: str) -> str:
+    """Normalise surrogate pairs produced by narrow-string emoji literals."""
+    return raw.encode("utf-16", "surrogatepass").decode("utf-16")
+
+
 # ---------------------------------------------------------------------------
 # Chat HTML (/, /app, /index.html)
 # ---------------------------------------------------------------------------
@@ -28,7 +33,7 @@ router = APIRouter()
 async def root():
     try:
         from prism_chat import get_chat_html
-        return HTMLResponse(content=get_chat_html(), status_code=200)
+        return HTMLResponse(content=_safe_html(get_chat_html()), status_code=200)
     except ImportError as exc:
         return HTMLResponse(
             content=f"<html><body><p>prism_chat not available: {exc}</p></body></html>",
@@ -40,7 +45,7 @@ async def root():
 async def app_page():
     try:
         from prism_chat import get_chat_html
-        return HTMLResponse(content=get_chat_html(), status_code=200)
+        return HTMLResponse(content=_safe_html(get_chat_html()), status_code=200)
     except ImportError as exc:
         return HTMLResponse(
             content=f"<html><body><p>prism_chat not available: {exc}</p></body></html>",
@@ -52,7 +57,7 @@ async def app_page():
 async def index_html():
     try:
         from prism_chat import get_chat_html
-        return HTMLResponse(content=get_chat_html(), status_code=200)
+        return HTMLResponse(content=_safe_html(get_chat_html()), status_code=200)
     except ImportError as exc:
         return HTMLResponse(
             content=f"<html><body><p>prism_chat not available: {exc}</p></body></html>",
