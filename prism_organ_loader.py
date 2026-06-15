@@ -69,16 +69,19 @@ _BLOCKED_CALLS = {"eval", "exec", "compile", "__import__", "breakpoint", "open"}
 _BLOCKED_ATTRS = {
     "system", "popen", "remove", "unlink", "rmtree", "chmod", "chown",
     "rename", "symlink", "fork", "spawn", "execv", "execve", "kill",
-    # "replace" intentionally omitted — str.replace() is safe and commonly used
-    # Note: write_text/write_bytes are NOT blocked here because bundled organs
-    # in ./organs/ are version-controlled and legitimately write user files.
-    # Synthesized organs (prism_autonomous.py) have their own stricter checker.
+    # "replace" intentionally omitted — str.replace() is safe and commonly used.
+    # Bundled organs (./organs/) are version-controlled and may legitimately
+    # call Path.write_text / write_bytes, so those are NOT in this set.
 }
+# Stricter set applied at synthesize() time: an LLM-generated organ must not
+# write arbitrary files to disk, even into the user's home directory.
+_BLOCKED_ATTRS_STRICT = _BLOCKED_ATTRS | {"write_text", "write_bytes", "write"}
 
 
 class _SafetyVisitor(ast.NodeVisitor):
-    def __init__(self):
+    def __init__(self, blocked_attrs: set[str] = _BLOCKED_ATTRS):
         self.violations: list[str] = []
+        self._blocked_attrs = blocked_attrs
 
     def visit_Import(self, node):
         for alias in node.names:
@@ -94,22 +97,22 @@ class _SafetyVisitor(ast.NodeVisitor):
     def visit_Call(self, node):
         if isinstance(node.func, ast.Name) and node.func.id in _BLOCKED_CALLS:
             self.violations.append(f"blocked call: {node.func.id}()")
-        elif isinstance(node.func, ast.Attribute) and node.func.attr in _BLOCKED_ATTRS:
+        elif isinstance(node.func, ast.Attribute) and node.func.attr in self._blocked_attrs:
             self.violations.append(f"blocked attr call: .{node.func.attr}()")
         self.generic_visit(node)
 
     def visit_Attribute(self, node):
-        if node.attr in _BLOCKED_ATTRS:
+        if node.attr in self._blocked_attrs:
             self.violations.append(f"blocked attribute: .{node.attr}")
         self.generic_visit(node)
 
 
-def _is_safe(code: str) -> tuple[bool, str]:
+def _is_safe(code: str, strict: bool = False) -> tuple[bool, str]:
     try:
         tree = ast.parse(code)
     except SyntaxError as exc:
         return False, f"SyntaxError: {exc}"
-    v = _SafetyVisitor()
+    v = _SafetyVisitor(_BLOCKED_ATTRS_STRICT if strict else _BLOCKED_ATTRS)
     v.visit(tree)
     return (False, "; ".join(v.violations)) if v.violations else (True, "")
 
@@ -178,7 +181,8 @@ def execute(intent: str, message: str, ctx: dict):
 Constraints:
 - Allowed: json, re, datetime, pathlib, urllib.request, urllib.parse,
   urllib.error, base64, hashlib, math, random, time, collections, html
-- FORBIDDEN: os, subprocess, shutil, socket, ctypes, eval, exec, open(write)
+- FORBIDDEN: os, subprocess, shutil, socket, ctypes, eval, exec, any file
+  write — open(), Path.write_text, Path.write_bytes, fh.write — all banned
 - Never raise — catch all exceptions and return text_card with error message
 - API keys: read from ctx.get("{intent}_key", "") or ctx.get("api_key", "")
 - Keep code under 80 lines
@@ -436,7 +440,7 @@ class OrganLoader:
             logger.warning("[organ_loader] Synthesized code missing interface for %s", intent)
             return False
 
-        safe, reason = _is_safe(code)
+        safe, reason = _is_safe(code, strict=True)
         if not safe:
             logger.warning("[organ_loader] Unsafe organ blocked (%s): %s", intent, reason)
             return False
@@ -503,7 +507,7 @@ class OrganLoader:
                         and cached.get("safe", False)
                     )
 
-                fn = self._load_file(path, trusted=trusted)
+                fn = self._load_file(path, trusted=trusted, strict=(source == "user"))
                 if fn is None:
                     continue
                 meta   = getattr(fn, "_organ_meta", {})
@@ -530,11 +534,14 @@ class OrganLoader:
         if index_dirty:
             self._save_index()
 
-    def _load_file(self, path: Path, trusted: bool = False) -> Optional[Callable]:
-        """Load an organ from *path*.  When *trusted* is True, skip AST safety scan."""
+    def _load_file(self, path: Path, trusted: bool = False, strict: bool = False) -> Optional[Callable]:
+        """Load an organ from *path*.  When *trusted* is True, skip AST safety
+        scan. When *strict* is True (user organs), also reject file-write
+        operations (write_text/write_bytes/write) in addition to the base set.
+        """
         if not trusted:
             code = path.read_text()
-            safe, reason = _is_safe(code)
+            safe, reason = _is_safe(code, strict=strict)
             if not safe:
                 logger.warning("[organ_loader] Skipping unsafe organ %s: %s",
                                path.name, reason)
