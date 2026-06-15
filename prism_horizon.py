@@ -486,7 +486,7 @@ class HorizonPlanner:
         self, status: Optional[HorizonGoalStatus] = None
     ) -> list[HorizonGoal]:
         """Return all goals, optionally filtered by status."""
-        with sqlite3.connect(self._db) as conn:
+        with sqlite3.connect(self._db, timeout=30.0) as conn:
             if status is not None:
                 rows = conn.execute(
                     "SELECT * FROM horizon_goals WHERE status = ? ORDER BY created_at DESC",
@@ -793,7 +793,7 @@ class HorizonPlanner:
     # ------------------------------------------------------------------
 
     def _init_db(self) -> None:
-        with sqlite3.connect(self._db) as conn:
+        with sqlite3.connect(self._db, timeout=30.0) as conn:
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS horizon_goals (
                     goal_id              TEXT PRIMARY KEY,
@@ -830,7 +830,7 @@ class HorizonPlanner:
             conn.execute("PRAGMA user_version = 1")
 
     def _upsert(self, goal: HorizonGoal) -> None:
-        with sqlite3.connect(self._db) as conn:
+        with sqlite3.connect(self._db, timeout=30.0) as conn:
             conn.execute(
                 """INSERT OR REPLACE INTO horizon_goals VALUES
                    (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
@@ -838,7 +838,7 @@ class HorizonPlanner:
             )
 
     def _load_goal(self, goal_id: str) -> Optional[HorizonGoal]:
-        with sqlite3.connect(self._db) as conn:
+        with sqlite3.connect(self._db, timeout=30.0) as conn:
             row = conn.execute(
                 "SELECT * FROM horizon_goals WHERE goal_id = ?", (goal_id,)
             ).fetchone()

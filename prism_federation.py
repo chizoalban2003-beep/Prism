@@ -178,7 +178,7 @@ class FederationManager:
         where to push back.
         """
         with self._lock:
-            with sqlite3.connect(self._db) as conn:
+            with sqlite3.connect(self._db, timeout=30.0) as conn:
                 conn.execute(
                     "INSERT OR REPLACE INTO federation_self(key, value) VALUES (?,?)",
                     ("url", url),
@@ -200,7 +200,7 @@ class FederationManager:
             sync_version=0,
         )
         with self._lock:
-            with sqlite3.connect(self._db) as conn:
+            with sqlite3.connect(self._db, timeout=30.0) as conn:
                 # Preserve existing sync_version on update
                 existing = conn.execute(
                     "SELECT sync_version FROM federation_peers WHERE peer_id = ?",
@@ -219,7 +219,7 @@ class FederationManager:
     def remove_peer(self, peer_id: str) -> bool:
         """Remove a peer by ID. Returns True if it existed."""
         with self._lock:
-            with sqlite3.connect(self._db) as conn:
+            with sqlite3.connect(self._db, timeout=30.0) as conn:
                 cur = conn.execute(
                     "DELETE FROM federation_peers WHERE peer_id = ?", (peer_id,)
                 )
@@ -230,7 +230,7 @@ class FederationManager:
 
     def list_peers(self) -> list[FederationPeer]:
         """Return all known peers."""
-        with sqlite3.connect(self._db) as conn:
+        with sqlite3.connect(self._db, timeout=30.0) as conn:
             rows = conn.execute(
                 "SELECT peer_id, name, url, last_seen, sync_version"
                 " FROM federation_peers ORDER BY name"
@@ -380,7 +380,7 @@ class FederationManager:
 
         for peer_id in peer_ids:
             try:
-                with sqlite3.connect(self._db) as conn:
+                with sqlite3.connect(self._db, timeout=30.0) as conn:
                     row = conn.execute(
                         "SELECT url FROM federation_peers WHERE peer_id = ?",
                         (peer_id,),
@@ -423,7 +423,7 @@ class FederationManager:
         A peer is considered stale when ``time.time() - last_seen > 300``.
         """
         threshold = time.time() - _STALE_THRESHOLD
-        with sqlite3.connect(self._db) as conn:
+        with sqlite3.connect(self._db, timeout=30.0) as conn:
             rows = conn.execute(
                 "SELECT peer_id FROM federation_peers WHERE last_seen < ?",
                 (threshold,),
@@ -463,7 +463,7 @@ class FederationManager:
     # ------------------------------------------------------------------
 
     def _load_or_create_node_id(self) -> str:
-        with sqlite3.connect(self._db) as conn:
+        with sqlite3.connect(self._db, timeout=30.0) as conn:
             row = conn.execute(
                 "SELECT value FROM federation_self WHERE key = 'node_id'"
             ).fetchone()
@@ -482,14 +482,14 @@ class FederationManager:
 
     def _persist_vector(self) -> None:
         vec_json = json.dumps(self._vector.to_dict())
-        with sqlite3.connect(self._db) as conn:
+        with sqlite3.connect(self._db, timeout=30.0) as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO federation_self(key, value) VALUES ('vector', ?)",
                 (vec_json,),
             )
 
     def _load_vector(self) -> None:
-        with sqlite3.connect(self._db) as conn:
+        with sqlite3.connect(self._db, timeout=30.0) as conn:
             row = conn.execute(
                 "SELECT value FROM federation_self WHERE key = 'vector'"
             ).fetchone()
@@ -534,7 +534,7 @@ class FederationManager:
             return []
 
     def _load_local_goal(self, goal_id: str) -> dict[str, Any] | None:
-        with sqlite3.connect(self._db) as conn:
+        with sqlite3.connect(self._db, timeout=30.0) as conn:
             row = conn.execute(
                 "SELECT goal_id, intent, status, updated_at, user_priority"
                 " FROM fed_goals WHERE goal_id = ?",
@@ -551,7 +551,7 @@ class FederationManager:
         }
 
     def _upsert_local_goal(self, goal: dict[str, Any]) -> None:
-        with sqlite3.connect(self._db) as conn:
+        with sqlite3.connect(self._db, timeout=30.0) as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO fed_goals"
                 "(goal_id, intent, status, updated_at, user_priority)"
@@ -571,7 +571,7 @@ class FederationManager:
 
     def _load_beliefs_summary(self) -> dict[str, Any]:
         """Return a lightweight summary of local beliefs/context."""
-        with sqlite3.connect(self._db) as conn:
+        with sqlite3.connect(self._db, timeout=30.0) as conn:
             rows = conn.execute(
                 "SELECT key, value, updated_at FROM fed_beliefs"
             ).fetchall()
@@ -581,7 +581,7 @@ class FederationManager:
         for key, info in remote.items():
             value = info.get("value") if isinstance(info, dict) else info
             remote_ts = info.get("updated_at", fallback_ts) if isinstance(info, dict) else fallback_ts
-            with sqlite3.connect(self._db) as conn:
+            with sqlite3.connect(self._db, timeout=30.0) as conn:
                 existing = conn.execute(
                     "SELECT updated_at FROM fed_beliefs WHERE key = ?", (key,)
                 ).fetchone()
@@ -597,7 +597,7 @@ class FederationManager:
     # ------------------------------------------------------------------
 
     def _update_peer_last_seen(self, peer_id: str, version: int) -> None:
-        with sqlite3.connect(self._db) as conn:
+        with sqlite3.connect(self._db, timeout=30.0) as conn:
             conn.execute(
                 "UPDATE federation_peers"
                 " SET last_seen = ?, sync_version = ?"
@@ -610,7 +610,7 @@ class FederationManager:
     # ------------------------------------------------------------------
 
     def _init_db(self) -> None:
-        with sqlite3.connect(self._db) as conn:
+        with sqlite3.connect(self._db, timeout=30.0) as conn:
             conn.executescript("""
                 CREATE TABLE IF NOT EXISTS federation_self (
                     key   TEXT PRIMARY KEY,

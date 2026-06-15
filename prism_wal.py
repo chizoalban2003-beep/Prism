@@ -20,7 +20,7 @@ class PrismWAL:
     def __init__(self, db_path: Path | str = _DEFAULT_PATH):
         self._db = Path(db_path)
         self._db.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(self._db), check_same_thread=False)
+        self._conn = sqlite3.connect(str(self._db), check_same_thread=False, timeout=30.0)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._lock = threading.Lock()
         self._setup()

@@ -67,7 +67,7 @@ class CausalGraph:
     def __init__(self, db_path: str = "~/.prism/causality.db") -> None:
         self._db_path = Path(db_path).expanduser()
         self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False)
+        self._conn = sqlite3.connect(str(self._db_path), check_same_thread=False, timeout=30.0)
         self._init_db()
 
     # ------------------------------------------------------------------
