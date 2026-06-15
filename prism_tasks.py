@@ -102,7 +102,7 @@ class PrismTasks:
             remote = self._linear_list()
             if remote:
                 return remote
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             if project:
                 rows = c.execute(
                     "SELECT * FROM tasks WHERE done=? AND project=? "
@@ -122,13 +122,13 @@ class PrismTasks:
             self._github_close(task_id)
         elif provider == "linear":
             self._linear_complete(task_id)
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             c.execute("UPDATE tasks SET done=1 WHERE id=?", (task_id,))
         return True
 
     def search(self, query: str) -> list[Task]:
         q = f"%{query.lower()}%"
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             rows = c.execute(
                 "SELECT * FROM tasks WHERE done=0 AND "
                 "(lower(title) LIKE ? OR lower(notes) LIKE ? "
@@ -325,7 +325,7 @@ class PrismTasks:
         return "local"
 
     def _store(self, task: Task) -> None:
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             c.execute("INSERT OR REPLACE INTO tasks VALUES(?,?,?,?,?,?,?,?,?,?)",
                       (task.task_id, task.title, task.notes, task.due_date,
                        task.priority, int(task.done), task.project,
@@ -337,7 +337,7 @@ class PrismTasks:
                     json.loads(row[7]),row[8],row[9])
 
     def _init_db(self) -> None:
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             c.execute("""CREATE TABLE IF NOT EXISTS tasks(
                 id TEXT PRIMARY KEY, title TEXT, notes TEXT,
                 due_date TEXT, priority INTEGER, done INTEGER,

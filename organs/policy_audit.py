@@ -32,7 +32,7 @@ def execute(intent: str, message: str, ctx: dict):
     audit_db = Path("~/.prism/policy_audit.db").expanduser()
     if audit_db.exists():
         try:
-            with sqlite3.connect(audit_db) as con:
+            with sqlite3.connect(audit_db, timeout=30.0) as con:
                 rows = con.execute(
                     "SELECT ts, logic, note FROM audit_log ORDER BY ts DESC LIMIT ?",
                     (n,),
@@ -52,7 +52,7 @@ def execute(intent: str, message: str, ctx: dict):
     policy_db = Path("~/.prism/policy.db").expanduser()
     if policy_db.exists():
         try:
-            with sqlite3.connect(policy_db) as con:
+            with sqlite3.connect(policy_db, timeout=30.0) as con:
                 # spend_log may not exist in all installs
                 tables = {r[0] for r in con.execute(
                     "SELECT name FROM sqlite_master WHERE type='table'"
@@ -80,7 +80,7 @@ def execute(intent: str, message: str, ctx: dict):
     # ── Section 3: summary stats ──────────────────────────────────────────────
     if audit_db.exists():
         try:
-            with sqlite3.connect(audit_db) as con:
+            with sqlite3.connect(audit_db, timeout=30.0) as con:
                 total, blocked = con.execute(
                     "SELECT COUNT(*), SUM(CASE WHEN lower(note) LIKE '%blocked%' THEN 1 ELSE 0 END) "
                     "FROM audit_log"

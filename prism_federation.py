@@ -515,7 +515,7 @@ class FederationManager:
         if not horizon_db.exists():
             return []
         try:
-            with sqlite3.connect(horizon_db) as conn:
+            with sqlite3.connect(horizon_db, timeout=30.0) as conn:
                 rows = conn.execute(
                     "SELECT goal_id, intent, status, created_at FROM horizon_goals"
                     " ORDER BY created_at DESC LIMIT 50"

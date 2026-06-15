@@ -55,7 +55,7 @@ class PrismMemory:
         entry_id  = hashlib.sha256(
             f"{content[:100]}{time.time()}".encode()).hexdigest()[:12]
         embedding = self._embed(content[:2000])
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             c.execute(
                 "INSERT OR REPLACE INTO memory VALUES(?,?,?,?,?,?,?)",
                 (entry_id, content, source, title or content[:60],
@@ -71,7 +71,7 @@ class PrismMemory:
         Uses embedding cosine similarity when available, BM25 otherwise.
         """
         query_emb = self._embed(query)
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             sql  = "SELECT * FROM memory"
             args = []
             if source_filter:
@@ -164,7 +164,7 @@ class PrismMemory:
         return content[start:start+max_len].strip()
 
     def _init_db(self) -> None:
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             c.execute("""CREATE TABLE IF NOT EXISTS memory(
                 id TEXT PRIMARY KEY, content TEXT, source TEXT,
                 title TEXT, tags_json TEXT, embedding_json TEXT,

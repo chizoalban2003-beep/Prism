@@ -190,7 +190,7 @@ class LoRARegistry:
         try:
             db = _DB_PATH.expanduser()
             db.parent.mkdir(parents=True, exist_ok=True)
-            with sqlite3.connect(db) as conn:
+            with sqlite3.connect(db, timeout=30.0) as conn:
                 conn.execute(
                     "CREATE TABLE IF NOT EXISTS adapters "
                     "(adapter_id TEXT PRIMARY KEY, name TEXT, path TEXT, "
@@ -221,7 +221,7 @@ class LoRARegistry:
             db = _DB_PATH.expanduser()
             if not db.exists():
                 return
-            with sqlite3.connect(db) as conn:
+            with sqlite3.connect(db, timeout=30.0) as conn:
                 rows = conn.execute(
                     "SELECT adapter_id, path, task_type, base_model FROM adapters"
                 ).fetchall()

@@ -115,7 +115,7 @@ class ToolRegistry:
         self._init_db()
 
     def _init_db(self) -> None:
-        with sqlite3.connect(self.db_path) as connection:
+        with sqlite3.connect(self.db_path, timeout=30.0) as connection:
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS executors(
@@ -134,7 +134,7 @@ class ToolRegistry:
             )
 
     def _db_records(self) -> list[ExecutorRecord]:
-        with sqlite3.connect(self.db_path) as connection:
+        with sqlite3.connect(self.db_path, timeout=30.0) as connection:
             rows = connection.execute(
                 """
                 SELECT
@@ -182,7 +182,7 @@ class ToolRegistry:
     def register(self, record: ExecutorRecord) -> None:
         record.last_used = time.time()
         self._records[record.executor_id] = record
-        with sqlite3.connect(self.db_path) as connection:
+        with sqlite3.connect(self.db_path, timeout=30.0) as connection:
             connection.execute(
                 """
                 INSERT OR REPLACE INTO executors VALUES(?,?,?,?,?,?,?,?,?,?)
@@ -538,7 +538,7 @@ class PrismExecutorAgent:
         return str(path)
 
     def _init_log_db(self) -> None:
-        with sqlite3.connect(self.db_path) as connection:
+        with sqlite3.connect(self.db_path, timeout=30.0) as connection:
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS log(
@@ -555,7 +555,7 @@ class PrismExecutorAgent:
             )
 
     def _log(self, plan: ExecutionPlan, result: ExecutionResult) -> None:
-        with sqlite3.connect(self.db_path) as connection:
+        with sqlite3.connect(self.db_path, timeout=30.0) as connection:
             connection.execute(
                 """
                 INSERT INTO log VALUES(?,?,?,?,?,?,?,?)

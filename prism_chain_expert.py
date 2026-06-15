@@ -387,7 +387,7 @@ class PrismChainExpert:
 
     def _init_db(self):
         import sqlite3
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             c.execute("""CREATE TABLE IF NOT EXISTS expert_chains(
                 chain_id TEXT PRIMARY KEY, original TEXT,
                 n_steps INTEGER, n_llm_calls INTEGER,
@@ -399,7 +399,7 @@ class PrismChainExpert:
         scores = [t.score for t in state.traces
                   if t.score is not None]
         avg_score = sum(scores)/len(scores) if scores else 0.0
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             c.execute("INSERT OR REPLACE INTO expert_chains VALUES(?,?,?,?,?,?,?,?)", (
                 state.chain_id, state.original,
                 len(state.steps), len(state.traces),

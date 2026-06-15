@@ -131,7 +131,7 @@ class TaskQueue:
         return False
 
     def get(self, task_id: str) -> Optional[TaskProgress]:
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             row = c.execute(
                 "SELECT data_json FROM tasks WHERE id=?", (task_id,)
             ).fetchone()
@@ -142,7 +142,7 @@ class TaskQueue:
                                if k in TaskProgress.__dataclass_fields__})
 
     def list_recent(self, n: int = 10) -> list[TaskProgress]:
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             # started_at is stored inside data_json, not a real column; rowid
             # auto-increments on INSERT/REPLACE so highest rowid = most recent.
             rows = c.execute(
@@ -162,13 +162,13 @@ class TaskQueue:
         serializable = {k for k in TaskProgress.__dataclass_fields__}
         data = {k: (v.value if isinstance(v, TaskStatus) else v)
                 for k, v in p.__dict__.items() if k in serializable}
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             c.execute("INSERT OR REPLACE INTO tasks VALUES(?,?,?)",
                       (p.task_id, p.status.value if hasattr(p.status,'value')
                        else p.status, json.dumps(data)))
 
     def _init_db(self) -> None:
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             c.execute("CREATE TABLE IF NOT EXISTS tasks("
                       "id TEXT PRIMARY KEY, status TEXT, data_json TEXT)")
             self._migrate(c)

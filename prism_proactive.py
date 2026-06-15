@@ -87,7 +87,7 @@ class PrismProactive:
 
     def pending_events(self, n: int = 5) -> list[ProactiveEvent]:
         """Return undelivered events for polling by the UI."""
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             rows = c.execute(
                 "SELECT trigger_id,message,timestamp FROM events "
                 "WHERE delivered=0 ORDER BY timestamp DESC LIMIT ?",
@@ -95,7 +95,7 @@ class PrismProactive:
         return [ProactiveEvent(r[0],r[1],r[2]) for r in rows]
 
     def mark_delivered(self, trigger_id: str) -> None:
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             c.execute("UPDATE events SET delivered=1 WHERE trigger_id=?",
                       (trigger_id,))
 
@@ -149,13 +149,13 @@ class PrismProactive:
                         self._push.alert(st.message)
 
     def _store(self, event: ProactiveEvent) -> None:
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             c.execute("INSERT INTO events VALUES(?,?,?,?)",
                       (event.trigger_id, event.message,
                        event.timestamp, int(event.delivered)))
 
     def _init_db(self) -> None:
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             c.execute("""CREATE TABLE IF NOT EXISTS events(
                 trigger_id TEXT, message TEXT,
                 timestamp REAL, delivered INTEGER)""")

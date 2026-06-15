@@ -63,7 +63,7 @@ class PrismPersona:
         delta: int = 1,
     ) -> None:
         now = time.time()
-        with sqlite3.connect(self._db) as con:
+        with sqlite3.connect(self._db, timeout=30.0) as con:
             row = con.execute(
                 "SELECT confidence, observation_count FROM traits WHERE name=?", (name,)
             ).fetchone()
@@ -85,12 +85,12 @@ class PrismPersona:
                 )
 
     def get_trait(self, name: str) -> PersonaTrait | None:
-        with sqlite3.connect(self._db) as con:
+        with sqlite3.connect(self._db, timeout=30.0) as con:
             row = con.execute("SELECT * FROM traits WHERE name=?", (name,)).fetchone()
         return self._trait_from_row(row) if row else None
 
     def list_traits(self) -> list[PersonaTrait]:
-        with sqlite3.connect(self._db) as con:
+        with sqlite3.connect(self._db, timeout=30.0) as con:
             rows = con.execute(
                 "SELECT * FROM traits ORDER BY confidence DESC"
             ).fetchall()
@@ -102,7 +102,7 @@ class PrismPersona:
         pid = str(uuid.uuid4())[:8]
         now = time.time()
         examples_json = json.dumps([example] if example else [])
-        with sqlite3.connect(self._db) as con:
+        with sqlite3.connect(self._db, timeout=30.0) as con:
             con.execute(
                 "INSERT INTO patterns VALUES (?,?,?,?,?,?)",
                 (pid, description, 1, now, now, examples_json),
@@ -112,7 +112,7 @@ class PrismPersona:
     def bump_pattern(self, description: str, example: str = "") -> None:
         """Find a pattern by description similarity and increment its frequency."""
         desc_lower = description.lower()
-        with sqlite3.connect(self._db) as con:
+        with sqlite3.connect(self._db, timeout=30.0) as con:
             rows = con.execute(
                 "SELECT pattern_id, description, frequency, examples FROM patterns"
             ).fetchall()
@@ -144,7 +144,7 @@ class PrismPersona:
 
     def record_active_hour(self, hour: int) -> None:
         """Record an interaction occurring at `hour` (0–23)."""
-        with sqlite3.connect(self._db) as con:
+        with sqlite3.connect(self._db, timeout=30.0) as con:
             row = con.execute(
                 "SELECT count FROM active_hours WHERE hour=?", (hour,)
             ).fetchone()
@@ -158,7 +158,7 @@ class PrismPersona:
 
     def peak_hours(self) -> list[int]:
         """Return the 3 most active hours."""
-        with sqlite3.connect(self._db) as con:
+        with sqlite3.connect(self._db, timeout=30.0) as con:
             rows = con.execute(
                 "SELECT hour FROM active_hours ORDER BY count DESC LIMIT 3"
             ).fetchall()
@@ -242,7 +242,7 @@ class PrismPersona:
 
     def growth_since(self, days: int = 7) -> dict:
         cutoff = time.time() - days * 86400
-        with sqlite3.connect(self._db) as con:
+        with sqlite3.connect(self._db, timeout=30.0) as con:
             new_traits = con.execute(
                 "SELECT COUNT(*) FROM traits WHERE last_updated >= ?", (cutoff,)
             ).fetchone()[0]
@@ -263,7 +263,7 @@ class PrismPersona:
     # ── Internal ──────────────────────────────────────────────────────────────
 
     def _top_patterns(self, n: int = 5) -> list[BehaviorPattern]:
-        with sqlite3.connect(self._db) as con:
+        with sqlite3.connect(self._db, timeout=30.0) as con:
             rows = con.execute(
                 "SELECT * FROM patterns ORDER BY frequency DESC LIMIT ?", (n,)
             ).fetchall()
@@ -292,7 +292,7 @@ class PrismPersona:
         )
 
     def _init_db(self) -> None:
-        with sqlite3.connect(self._db) as con:
+        with sqlite3.connect(self._db, timeout=30.0) as con:
             con.execute("""
                 CREATE TABLE IF NOT EXISTS traits (
                     name              TEXT PRIMARY KEY,

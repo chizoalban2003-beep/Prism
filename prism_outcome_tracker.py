@@ -120,7 +120,7 @@ class OutcomeTracker:
             correction  = correction[:400],
             context_id  = context_id,
         )
-        with sqlite3.connect(self._db) as con:
+        with sqlite3.connect(self._db, timeout=30.0) as con:
             con.execute(
                 "INSERT INTO outcomes VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 (rec.record_id, rec.chain_id, rec.goal, rec.outcome,
@@ -150,7 +150,7 @@ class OutcomeTracker:
 
     def recent(self, n: int = 20, context_id: Optional[str] = None) -> list[OutcomeRecord]:
         """Return the n most recent records, optionally filtered by context."""
-        with sqlite3.connect(self._db) as con:
+        with sqlite3.connect(self._db, timeout=30.0) as con:
             if context_id:
                 rows = con.execute(
                     "SELECT * FROM outcomes WHERE context_id=? ORDER BY timestamp DESC LIMIT ?",
@@ -165,7 +165,7 @@ class OutcomeTracker:
     def stats(self, days: int = 30) -> dict:
         """Aggregate stats over the last `days` days."""
         since = time.time() - days * 86400
-        with sqlite3.connect(self._db) as con:
+        with sqlite3.connect(self._db, timeout=30.0) as con:
             total, done, abandoned, corrected, avg_steps, avg_flags = con.execute(
                 """
                 SELECT
@@ -195,7 +195,7 @@ class OutcomeTracker:
         """Stats for chains whose goal contains `keyword`."""
         since = time.time() - days * 86400
         kw = f"%{keyword.lower()}%"
-        with sqlite3.connect(self._db) as con:
+        with sqlite3.connect(self._db, timeout=30.0) as con:
             rows = con.execute(
                 "SELECT outcome FROM outcomes WHERE lower(goal) LIKE ? AND timestamp >= ?",
                 (kw, since),
@@ -254,7 +254,7 @@ class OutcomeTracker:
         error: Optional[str] = None,
     ) -> None:
         """Persist one MLAssembler result for nightly Grid Search review."""
-        with sqlite3.connect(self._db) as con:
+        with sqlite3.connect(self._db, timeout=30.0) as con:
             con.execute(
                 "INSERT OR IGNORE INTO ml_results VALUES (?,?,?,?,?,?,?)",
                 (result_id, task[:400], algorithm, confidence,
@@ -265,7 +265,7 @@ class OutcomeTracker:
         """Return ML results whose confidence is below (1 - min_error), for nightly sweep."""
         since = time.time() - days * 86400
         threshold = 1.0 - min_error
-        with sqlite3.connect(self._db) as con:
+        with sqlite3.connect(self._db, timeout=30.0) as con:
             rows = con.execute(
                 "SELECT result_id, task, algorithm, confidence, duration_ms, error, timestamp "
                 "FROM ml_results WHERE confidence < ? AND timestamp >= ? ORDER BY timestamp DESC",
@@ -417,7 +417,7 @@ class OutcomeTracker:
             con.execute("PRAGMA user_version = 2")
 
     def _init_db(self) -> None:
-        with sqlite3.connect(self._db) as con:
+        with sqlite3.connect(self._db, timeout=30.0) as con:
             con.execute("""
                 CREATE TABLE IF NOT EXISTS outcomes (
                     record_id    TEXT PRIMARY KEY,

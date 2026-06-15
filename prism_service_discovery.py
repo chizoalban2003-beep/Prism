@@ -74,7 +74,7 @@ class PrismServiceDiscovery:
 
     def is_known(self, service_name: str) -> bool:
         """Check if PRISM already has an integration for this service."""
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             row = c.execute(
                 "SELECT id FROM services WHERE "
                 "lower(name) LIKE lower(?)",
@@ -83,7 +83,7 @@ class PrismServiceDiscovery:
 
     def get(self, service_name: str) -> Optional[DiscoveredService]:
         """Retrieve a previously discovered service."""
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             row = c.execute(
                 "SELECT * FROM services WHERE lower(name) LIKE lower(?)",
                 (f"%{service_name}%",)).fetchone()
@@ -326,7 +326,7 @@ class PrismServiceDiscovery:
         return str(path)
 
     def _store(self, service: DiscoveredService) -> None:
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             c.execute(
                 "INSERT OR REPLACE INTO services VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                 (service.service_id, service.name, service.description,
@@ -337,7 +337,7 @@ class PrismServiceDiscovery:
                  service.created_at, service.last_used))
 
     def list_all(self) -> list[DiscoveredService]:
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             rows = c.execute("SELECT * FROM services ORDER BY last_used DESC").fetchall()
         return [DiscoveredService(
             service_id=r[0],name=r[1],description=r[2],category=r[3],
@@ -347,7 +347,7 @@ class PrismServiceDiscovery:
             created_at=r[9],last_used=r[10]) for r in rows]
 
     def _init_db(self) -> None:
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             c.execute("""CREATE TABLE IF NOT EXISTS services(
                 id TEXT PRIMARY KEY, name TEXT, description TEXT,
                 category TEXT, access_method TEXT, setup_steps_json TEXT,

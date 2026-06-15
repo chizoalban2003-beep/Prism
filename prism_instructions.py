@@ -54,20 +54,20 @@ class PrismInstructions:
         instr_id = hashlib.sha256(text.encode()).hexdigest()[:10]
         instr = Instruction(instr_id=instr_id, text=text,
                              trigger=trigger)
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             c.execute("INSERT OR REPLACE INTO instructions VALUES(?,?,?,?,?,?)",
                       (instr_id, text, trigger, 1,
                        time.time(), 0))
         return instr
 
     def remove(self, instr_id: str) -> bool:
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             n = c.execute("DELETE FROM instructions WHERE id=?",
                           (instr_id,)).rowcount
         return n > 0
 
     def all_active(self) -> list[Instruction]:
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             rows = c.execute(
                 "SELECT id,text,trigger,active,created_at,use_count "
                 "FROM instructions WHERE active=1 "
@@ -103,7 +103,7 @@ class PrismInstructions:
         rules = "\n".join(f"- {i.text}" for i in relevant)
         # Increment use count
         ids = [i.instr_id for i in relevant]
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             for iid in ids:
                 c.execute("UPDATE instructions SET use_count=use_count+1 "
                           "WHERE id=?", (iid,))
@@ -137,7 +137,7 @@ class PrismInstructions:
         return self.add(msg, trigger)
 
     def _init_db(self) -> None:
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             c.execute("""CREATE TABLE IF NOT EXISTS instructions(
                 id TEXT PRIMARY KEY, text TEXT, trigger TEXT,
                 active INTEGER, created_at REAL, use_count INTEGER)""")

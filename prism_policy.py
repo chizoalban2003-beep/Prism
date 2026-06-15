@@ -60,7 +60,7 @@ class PolicyEngine:
         self._init_db()
 
     def _init_db(self) -> None:
-        with sqlite3.connect(self.db_path) as connection:
+        with sqlite3.connect(self.db_path, timeout=30.0) as connection:
             connection.execute(
                 """
                 CREATE TABLE IF NOT EXISTS policies(
@@ -91,7 +91,7 @@ class PolicyEngine:
         self._save(user, policy)
 
     def get_policy(self, user: str) -> PolicySet:
-        with sqlite3.connect(self.db_path) as connection:
+        with sqlite3.connect(self.db_path, timeout=30.0) as connection:
             row = connection.execute(
                 "SELECT policy_json FROM policies WHERE user=?",
                 (user,),
@@ -120,7 +120,7 @@ class PolicyEngine:
             "created_at": policy.created_at,
             "version": policy.version,
         }
-        with sqlite3.connect(self.db_path) as connection:
+        with sqlite3.connect(self.db_path, timeout=30.0) as connection:
             connection.execute(
                 "INSERT OR REPLACE INTO policies VALUES(?,?,?)",
                 (user, json.dumps(data), time.time()),
@@ -224,7 +224,7 @@ class PolicyEngine:
 
     def _monthly_spend(self, user: str, category: str) -> float:
         cutoff = time.time() - (30 * 86400)
-        with sqlite3.connect(self.db_path) as connection:
+        with sqlite3.connect(self.db_path, timeout=30.0) as connection:
             row = connection.execute(
                 """
                 SELECT COALESCE(SUM(amount), 0)
@@ -237,7 +237,7 @@ class PolicyEngine:
 
     def spend_summary(self, user: str, category: str, days: int = 30) -> dict:
         cutoff = time.time() - (max(days, 1) * 86400)
-        with sqlite3.connect(self.db_path) as connection:
+        with sqlite3.connect(self.db_path, timeout=30.0) as connection:
             row = connection.execute(
                 """
                 SELECT COALESCE(SUM(amount), 0), COUNT(*)
@@ -266,7 +266,7 @@ class PolicyEngine:
     ) -> None:
         import uuid
 
-        with sqlite3.connect(self.db_path) as connection:
+        with sqlite3.connect(self.db_path, timeout=30.0) as connection:
             connection.execute(
                 "INSERT INTO spend_log VALUES(?,?,?,?,?,?,?)",
                 (
@@ -304,7 +304,7 @@ class PolicyEngine:
 
     def reset_all(self, user: str) -> None:
         """Clear all policy allocations. Returns to safe defaults."""
-        with sqlite3.connect(self.db_path) as c:
+        with sqlite3.connect(self.db_path, timeout=30.0) as c:
             c.execute("DELETE FROM policies WHERE user=?", (user,))
 
     def parse_policy_update(self, message: str, user: str) -> Optional[str]:

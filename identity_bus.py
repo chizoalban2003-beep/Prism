@@ -57,11 +57,11 @@ class IdentityBus:
         )
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
         self._subs: dict[str, list[Callable[[IdentitySignal], None]]] = {}
-        with sqlite3.connect(self.db_path) as conn:
+        with sqlite3.connect(self.db_path, timeout=30.0) as conn:
             conn.executescript(self.SCHEMA)
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.db_path)
+        conn = sqlite3.connect(self.db_path, timeout=30.0)
         conn.row_factory = sqlite3.Row
         return conn
 

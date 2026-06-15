@@ -46,7 +46,7 @@ async def chain_expert_recent(n: int = 5):
         db = agent._chain_expert._db
 
         def _query():
-            with sqlite3.connect(db) as c:
+            with sqlite3.connect(db, timeout=30.0) as c:
                 return c.execute(
                     "SELECT chain_id,original,n_steps,n_llm_calls,"
                     "done,final_answer,avg_eval_score,created_at "

@@ -1149,7 +1149,7 @@ Rules:
         try:
             db = Path(self._AUDIT_DB).expanduser()
             db.parent.mkdir(parents=True, exist_ok=True)
-            with sqlite3.connect(db) as con:
+            with sqlite3.connect(db, timeout=30.0) as con:
                 con.execute(
                     "CREATE TABLE IF NOT EXISTS audit_log("
                     "id INTEGER PRIMARY KEY AUTOINCREMENT, "
@@ -1197,7 +1197,7 @@ Rules:
 
     def _init_db(self):
         import sqlite3
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             c.execute("""CREATE TABLE IF NOT EXISTS chains(
                 chain_id TEXT PRIMARY KEY,
                 original TEXT, goal TEXT,
@@ -1210,7 +1210,7 @@ Rules:
         import sqlite3
         avg_score = (sum(state.eval_scores) / len(state.eval_scores)
                      if state.eval_scores else None)
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             c.execute("""INSERT OR REPLACE INTO chains VALUES(
                 ?,?,?,?,?,?,?,?,?,?)""", (
                 state.chain_id, state.original, state.goal,
@@ -1222,7 +1222,7 @@ Rules:
 
     def recent_chains(self, n: int = 5) -> list[dict]:
         import sqlite3
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             rows = c.execute(
                 "SELECT chain_id,original,n_steps,done,final_answer,"
                 "avg_eval_score,updated_at "

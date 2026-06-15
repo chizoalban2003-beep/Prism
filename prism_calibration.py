@@ -120,7 +120,7 @@ class PrismCalibration:
 
     def history(self, domain: Optional[str] = None,
                  n: int = 20) -> list[CalibrationEvent]:
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             if domain:
                 rows = c.execute(
                     "SELECT * FROM calibration WHERE domain=? "
@@ -143,14 +143,14 @@ class PrismCalibration:
                 + ", ".join(f"{v} {k}" for k, v in counts.most_common()))
 
     def _store(self, event: CalibrationEvent) -> None:
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             c.execute("INSERT INTO calibration VALUES(?,?,?,?,?,?,?)",
                       (event.event_id, event.domain, event.message,
                        event.direction, event.factor_id,
                        event.adjustment, event.timestamp))
 
     def _init_db(self) -> None:
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             c.execute("""CREATE TABLE IF NOT EXISTS calibration(
                 id TEXT PRIMARY KEY, domain TEXT, message TEXT,
                 direction TEXT, factor_id TEXT,

@@ -118,7 +118,7 @@ class LLMLedger:
     # ------------------------------------------------------------------
 
     def _connect(self) -> sqlite3.Connection:
-        return sqlite3.connect(str(self._db))
+        return sqlite3.connect(str(self._db), timeout=30.0)
 
     def _init_db(self) -> None:
         with self._lock:

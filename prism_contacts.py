@@ -56,7 +56,7 @@ class PrismContacts:
             import hashlib
             contact.contact_id = hashlib.sha256(
                 contact.name.encode()).hexdigest()[:10]
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             c.execute("""INSERT OR REPLACE INTO contacts
                 VALUES(?,?,?,?,?,?,?,?,?,?)""", (
                 contact.contact_id, contact.name,
@@ -69,7 +69,7 @@ class PrismContacts:
 
     def search(self, query: str) -> list[Contact]:
         q = f"%{query.lower()}%"
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             rows = c.execute("""
                 SELECT * FROM contacts
                 WHERE lower(name) LIKE ?
@@ -85,13 +85,13 @@ class PrismContacts:
         return results[0] if results else None
 
     def all_contacts(self) -> list[Contact]:
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             rows = c.execute(
                 "SELECT * FROM contacts ORDER BY name").fetchall()
         return [self._row_to_contact(r) for r in rows]
 
     def update_last_contacted(self, contact_id: str) -> None:
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             c.execute("UPDATE contacts SET last_contacted=? WHERE id=?",
                       (time.strftime("%Y-%m-%d"), contact_id))
 
@@ -173,7 +173,7 @@ class PrismContacts:
             last_contacted= row[8], source=row[9])
 
     def _init_db(self) -> None:
-        with sqlite3.connect(self._db) as c:
+        with sqlite3.connect(self._db, timeout=30.0) as c:
             c.execute("""CREATE TABLE IF NOT EXISTS contacts(
                 id TEXT PRIMARY KEY, name TEXT, emails_json TEXT,
                 phones_json TEXT, organisation TEXT, role TEXT,

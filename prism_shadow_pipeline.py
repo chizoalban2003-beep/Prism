@@ -225,7 +225,7 @@ class PrismShadowPipeline:
             if not db_path.exists():
                 return
             try:
-                with sqlite3.connect(db_path) as con:
+                with sqlite3.connect(db_path, timeout=30.0) as con:
                     for sql, params in stmts:
                         con.execute(sql, params)
                 con.execute("VACUUM")

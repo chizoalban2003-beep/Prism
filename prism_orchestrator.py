@@ -957,7 +957,7 @@ class ChainOrchestrator:
     def _persist(self, graph: TaskGraph) -> None:
         d = graph.to_dict()
         completed_at = time.time() if graph.status in ("completed", "failed") else None
-        with sqlite3.connect(self._db) as con:
+        with sqlite3.connect(self._db, timeout=30.0) as con:
             con.execute(
                 """INSERT OR REPLACE INTO task_graphs VALUES (?,?,?,?,?,?,?,?,?,?)""",
                 (
@@ -971,7 +971,7 @@ class ChainOrchestrator:
 
     def _load_paused(self) -> list[TaskGraph]:
         try:
-            with sqlite3.connect(self._db) as con:
+            with sqlite3.connect(self._db, timeout=30.0) as con:
                 rows = con.execute(
                     "SELECT * FROM task_graphs WHERE status='paused'"
                 ).fetchall()
@@ -993,7 +993,7 @@ class ChainOrchestrator:
             return []
 
     def _init_db(self) -> None:
-        with sqlite3.connect(self._db) as con:
+        with sqlite3.connect(self._db, timeout=30.0) as con:
             con.execute("""
                 CREATE TABLE IF NOT EXISTS task_graphs (
                     graph_id             TEXT PRIMARY KEY,
