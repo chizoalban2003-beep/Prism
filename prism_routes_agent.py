@@ -63,7 +63,24 @@ async def agent_status():
         return ok, model
 
     ollama_ok, ollama_model = await _check_ollama()
-    status = agent.status()
+    if hasattr(agent, "status"):
+        status = agent.status()
+    else:
+        chain = getattr(agent, "_chain", None)
+        phase_engine = None
+        try:
+            import prism_phase as _pp
+            phase_engine = _pp.get_engine()
+        except Exception:
+            pass
+        status = {
+            "agent": type(agent).__name__,
+            "chain_ready": chain is not None,
+            "soul_seeded": bool(
+                getattr(getattr(agent, "_soul", None), "has_seed", lambda: False)()
+            ),
+            "phase": str(getattr(phase_engine, "current_phase", "UNKNOWN")) if phase_engine else "UNKNOWN",
+        }
     status["ollama"]       = ollama_ok
     status["ollama_model"] = ollama_model
     return status
