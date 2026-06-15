@@ -86,7 +86,7 @@ def _bus_flush_worker(agent, interval: int = 60):
                 if records:
                     logger.debug("OrganBus: flushed %d batched signal(s)", len(records))
             except Exception as exc:
-                logger.debug("OrganBus flush error: %s", exc)
+                logger.warning("OrganBus flush error: %s", exc, exc_info=True)
 
 
 def _horizon_worker(agent, interval: int = 300):
@@ -109,7 +109,7 @@ def _horizon_worker(agent, interval: int = 300):
             if triggered:
                 logger.info("HorizonPlanner: %d goal(s) triggered in background", len(triggered))
         except Exception as exc:
-            logger.debug("HorizonPlanner check error: %s", exc)
+            logger.warning("HorizonPlanner check error: %s", exc, exc_info=True)
 
 
 def _reflection_worker(agent, interval: int = 604800):
@@ -127,7 +127,7 @@ def _reflection_worker(agent, interval: int = 604800):
                 len(report.unresolved_goals),
             )
         except Exception as exc:
-            logger.debug("Reflection error: %s", exc)
+            logger.warning("Reflection error: %s", exc, exc_info=True)
 
 
 def _outcome_feed_worker(agent, interval: int = 3600):
@@ -146,7 +146,7 @@ def _outcome_feed_worker(agent, interval: int = 3600):
             if horizon:
                 tracker.feed_horizon(horizon)
         except Exception as exc:
-            logger.debug("OutcomeTracker feed error: %s", exc)
+            logger.warning("OutcomeTracker feed error: %s", exc, exc_info=True)
 
 
 def _surprise_reflection_worker(agent, interval: int = 3600):
@@ -177,7 +177,7 @@ def _surprise_reflection_worker(agent, interval: int = 3600):
                     )
                     reflection.run()
         except Exception as exc:
-            logger.debug("Surprise reflection error: %s", exc)
+            logger.warning("Surprise reflection error: %s", exc, exc_info=True)
 
 
 def _crystalliser_worker(agent, interval: int = 3600):
@@ -191,7 +191,7 @@ def _crystalliser_worker(agent, interval: int = 3600):
             if n > 0:
                 logger.info("[crystalliser] Updated %d persona signals", n)
         except Exception as exc:
-            logger.debug("[crystalliser] Error: %s", exc)
+            logger.warning("[crystalliser] Error: %s", exc, exc_info=True)
 
 
 def _narrative_worker(agent, interval: int = 604800):
@@ -204,7 +204,7 @@ def _narrative_worker(agent, interval: int = 604800):
             _ = narrative.weekly()
             logger.info("[narrative] Weekly narrative generated")
         except Exception as exc:
-            logger.debug("[narrative] Error: %s", exc)
+            logger.warning("[narrative] Error: %s", exc, exc_info=True)
 
 
 def _phase_ticker_worker(agent, interval: int = 10):
