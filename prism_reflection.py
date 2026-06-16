@@ -110,13 +110,26 @@ class PrismReflection:
         self._router    = llm_router
         self._auto      = auto_apply
         self._days      = days
+        # Reflection is a weekly meta-loop but the endpoint may be polled.
+        # Cache the last report for an hour so probes don't trigger a fresh
+        # LLM pass each time.
+        self._cache_ttl: float = 3600.0
+        self._cached:    Optional[ReflectionReport] = None
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    def run(self) -> ReflectionReport:
-        """Run the weekly reflection and return a ReflectionReport."""
+    def run(self, force: bool = False) -> ReflectionReport:
+        """Run the weekly reflection and return a ReflectionReport.
+
+        Returns the cached report if one was generated within `_cache_ttl`
+        seconds. Pass `force=True` to skip the cache (e.g. nightly cron).
+        """
+        if not force and self._cached is not None:
+            if time.time() - self._cached.ran_at < self._cache_ttl:
+                return self._cached
+
         report = ReflectionReport()
 
         # 1. Outcome stats
@@ -139,6 +152,7 @@ class PrismReflection:
             )
             report.patterns = self._heuristic_patterns(stats, goals)
             logger.info("[reflection] completed (no LLM)")
+            self._cached = report
             return report
 
         # 5. LLM reflection
@@ -152,6 +166,7 @@ class PrismReflection:
         if self._auto and self._soul and report.belief_proposals:
             report.applied = self._apply_proposals(report.belief_proposals)
 
+        self._cached = report
         return report
 
     def summarise_for_chat(self) -> str:

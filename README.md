@@ -60,6 +60,23 @@ PRISM is a local personal AI assistant that decides, plans, and acts for any use
 
 **A continuous learning identity** that crystallises from your actual decisions over time — becoming more accurate for you specifically, not for a population average. Feedback is as simple as "that was too aggressive" or "good call".
 
+### What it does today (v0.1.3)
+
+Concrete capabilities exposed today, not roadmap:
+
+- **Plan / decide** — daily plan, match prediction, squad injury risk, transfer valuation, moment analysis, medical triage, financial portfolio, legal strategy, climate/supply/HR domains.
+- **Execute on your machine** — read/write files inside user-data roots, scan and search code, open apps, install whitelisted PyPI packages, run git commands, capture and analyse screen.
+- **Reach out** — bearer-token HTTP+WS on `127.0.0.1:8742`, email read/send, calendar read/write, push notifications, contacts lookup, web search and browse, Wikipedia lookup, smart-home control via Home Assistant.
+- **Know you** — soul beliefs, persona traits, identity crystallisation across domains (`/identity/dashboard`), weekly reflection (`/reflection`, cached 1h), narrative and growth reports.
+- **Coordinate across devices** — federated mesh sync with Lamport vector clock and HMAC replay protection, identity export, mobile sync, multi-user profiles.
+- **Acquire missing capabilities** — when no organ matches, the autonomous loop synthesises one through `PrismCollaborator`, gated by AST safety check, SSRF guard, and an explicit PyPI allow-list.
+
+### What stays on your machine
+
+- Decision history, soul beliefs, identity domains, artifacts, and outcome records live in a local SQLite store.
+- The daemon binds to `127.0.0.1` only (asserted in `prism_asgi.serve`); federation is opt-in and HMAC-signed.
+- Any synthesised code runs through `prism_ssrf.is_safe_external_url` and the AST safety visitor before persistence and execution; `eval`/`exec`/`__import__`/`open` and sandbox-escape attributes are blocked as bare names too.
+
 ---
 
 ## Architecture

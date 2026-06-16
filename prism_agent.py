@@ -1042,7 +1042,7 @@ class PrismAgent:
         for pattern, intent in self.INTENTS:
             if re.search(pattern, lowered):
                 return intent
-        return self._llm_classify(message) or "help"
+        return self._llm_classify(message) or "general_chat"
 
     def _llm_classify(self, message: str) -> Optional[str]:
         try:
@@ -1230,6 +1230,19 @@ class PrismAgent:
                 "identity profile · developer tasks (scan files, search code).",
                 "PRISM — What I can do",
             )
+        if intent == "general_chat":
+            router = getattr(self, "_router", None)
+            if router is None:
+                return text_card(
+                    "I don't have a local LLM connected yet, so I can't free-chat. "
+                    "Add an Ollama model or a Claude API key to prism_config.toml.",
+                    "Chat unavailable",
+                )
+            try:
+                raw, _ = router.call(message, min_capability=1, max_tokens=400)
+                return text_card(raw.strip() or "(no response)", "Chat")
+            except Exception as exc:
+                return text_card(f"LLM call failed: {exc}", "Chat")
         if intent == "status":
             return text_card(
                 f"Connected. KDE: {'active' if self._kde else 'offline'}. "
