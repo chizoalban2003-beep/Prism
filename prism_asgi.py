@@ -90,6 +90,8 @@ if _FASTAPI_AVAILABLE:
     # reveals only {"ok": True, "server": "prism-asgi"} — no internal state.
     _AUTH_EXEMPT_PATHS = frozenset({"/_health"})
 
+    _AUTH_COOKIE = "prism_auth"
+
     class BearerAuthMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request: Request, call_next):
             token = _get_auth_token()
@@ -100,19 +102,40 @@ if _FASTAPI_AVAILABLE:
                 return await call_next(request)
             if request.url.path in _AUTH_EXEMPT_PATHS:
                 return await call_next(request)
+
             header = request.headers.get("authorization", "")
             scheme, _, supplied = header.partition(" ")
             if scheme.lower() == "bearer" and supplied:
                 if hmac.compare_digest(supplied.strip(), token):
                     return await call_next(request)
+
+            # Cookie path: once a successful `?token=` exchange has set the
+            # prism_auth cookie, the browser auto-attaches it on subsequent
+            # fetches and EventSource connections (which can't set headers).
+            cookie_token = request.cookies.get(_AUTH_COOKIE, "")
+            if cookie_token and hmac.compare_digest(cookie_token.strip(), token):
+                return await call_next(request)
+
             # Browser fallback: `?token=<token>` query parameter. Mirrors the
             # WebSocket auth path. Trades a small log-leak risk (query strings
             # appear in access logs and Referer headers) for the ability to
             # poke at the daemon from a tab without a header-injecting
-            # extension.
+            # extension. On success, set the cookie so the rest of the session
+            # works without keeping the token in the URL.
             query_token = request.query_params.get("token", "")
             if query_token and hmac.compare_digest(query_token.strip(), token):
-                return await call_next(request)
+                response = await call_next(request)
+                response.set_cookie(
+                    key      = _AUTH_COOKIE,
+                    value    = token,
+                    max_age  = 86400,
+                    httponly = True,
+                    samesite = "strict",
+                    secure   = request.url.scheme == "https",
+                    path     = "/",
+                )
+                return response
+
             return JSONResponse(
                 {"error": "unauthorized"},
                 status_code=401,
