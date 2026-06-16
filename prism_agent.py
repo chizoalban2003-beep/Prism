@@ -295,11 +295,20 @@ class PrismAgent:
                 pass
         self._user = self._config.get("user", {}).get("name", "default")
 
-        # Build LLMRouter from local prism_config.toml [llm] section
-        _llm_cfg = dict(self._config.get("llm", {}))
+        # Build LLMRouter from local prism_config.toml [llm] section.
+        # Populate all expected keys with defaults so the router config
+        # has a consistent shape even when no [llm] section is present.
+        _llm_cfg = {
+            "preferred":      "",
+            "fallback":       [],
+            "ollama_host":    "http://localhost:11434",
+            "claude_api_key": "",
+            "openai_api_key": "",
+        }
+        _llm_cfg.update(self._config.get("llm", {}))
         if self._claude_key:
             _llm_cfg["claude_api_key"] = self._claude_key
-        # Env vars override config keys
+        # Env vars override config keys when those are empty
         if not _llm_cfg.get("claude_api_key"):
             _llm_cfg["claude_api_key"] = os.environ.get("ANTHROPIC_API_KEY", "")
         if not _llm_cfg.get("openai_api_key"):
