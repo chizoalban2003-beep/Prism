@@ -15,13 +15,29 @@ ORGAN_POLICY = {
 
 
 def execute(intent: str, message: str, ctx: dict):
-    from prism_responses import text_card
+    from prism_responses import text_card, setup_required_card
 
     calendar = ctx.get("calendar")
     if calendar is None or not getattr(calendar, "configured", False):
-        return text_card(
-            "Calendar not configured. Add [calendar] settings to prism_config.toml.",
-            "Calendar",
+        return setup_required_card(
+            service        = "Calendar",
+            why            = "PRISM needs read access to your calendar to schedule events, find free slots, or surface today's agenda. Pick one provider below — iCal URL is the simplest.",
+            config_section = "calendar",
+            snippet        = (
+                'provider = "ical_url"          # or "google" or "caldav"\n'
+                'ical_url = "webcal://..."      # paste your private iCal feed URL\n'
+                '# google_token = ""            # OAuth2 access token (provider="google")\n'
+                '# caldav_url   = ""            # CalDAV server URL    (provider="caldav")\n'
+                '# username     = ""\n'
+                '# password     = ""'
+            ),
+            steps = [
+                "Google Calendar → Settings → 'Integrate calendar' → copy the Secret iCal address",
+                "Paste that URL above as ical_url",
+                "Restart PRISM: pkill -f prism_daemon && python3 -m prism_daemon &",
+                "Ask 'what is on my calendar today?' again",
+            ],
+            docs_url = "https://support.google.com/calendar/answer/37648",
         )
 
     router = ctx.get("router")

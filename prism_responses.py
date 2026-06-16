@@ -46,6 +46,76 @@ def text_card(body: str, title: str = "") -> PrismCard:
     return PrismCard(CardType.TEXT, title, body, {})
 
 
+def setup_required_card(
+    service: str,
+    why: str,
+    config_section: str,
+    snippet: str = "",
+    steps: Optional[list[str]] = None,
+    docs_url: str = "",
+) -> PrismCard:
+    """
+    Returned when an organ can't run because its [section] in prism_config.toml
+    is missing or incomplete. Replaces the old dead-end "X not configured. Add
+    settings to prism_config.toml." with an actionable card: concrete TOML
+    snippet, ordered setup steps, optional docs link. The chat UI renders
+    body as HTML, so we ship a rich block instead of plain text.
+    """
+    def _esc(s: str) -> str:
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    steps_html = ""
+    if steps:
+        items = "".join(f"<li style='margin:3px 0'>{_esc(s)}</li>" for s in steps)
+        steps_html = (
+            "<ol style='margin:10px 0 0 18px;padding:0;"
+            "font-size:12px;line-height:1.5;color:var(--tx)'>"
+            f"{items}</ol>"
+        )
+
+    snippet_html = ""
+    if snippet:
+        snippet_html = (
+            "<pre style='margin:10px 0 0;padding:10px;border-radius:8px;"
+            "background:rgba(255,255,255,.04);border:1px solid var(--br);"
+            "font:11px/1.5 ui-monospace,Menlo,monospace;color:var(--tx);"
+            "overflow:auto;white-space:pre'>"
+            f"{_esc(snippet)}</pre>"
+        )
+
+    docs_html = ""
+    if docs_url:
+        docs_html = (
+            "<div style='margin-top:10px;font-size:11px'>"
+            f"<a href='{_esc(docs_url)}' target='_blank' rel='noopener' "
+            "style='color:var(--ac);text-decoration:none'>"
+            "Open setup docs ↗</a></div>"
+        )
+
+    body = (
+        f"<div style='font-size:13px;line-height:1.5'>{_esc(why)}</div>"
+        "<div style='margin-top:8px;font-size:11px;color:var(--mu)'>"
+        "Add to <code style='padding:1px 5px;border-radius:4px;"
+        "background:rgba(255,255,255,.06);font-size:10.5px'>"
+        "~/.prism/prism_config.toml</code> under "
+        f"<strong>[{_esc(config_section)}]</strong>:</div>"
+        f"{snippet_html}{steps_html}{docs_html}"
+    )
+
+    return PrismCard(
+        card_type = CardType.TEXT,
+        title     = f"{service} — setup required",
+        body      = body,
+        card_data = {
+            "service":        service,
+            "config_section": config_section,
+            "snippet":        snippet,
+            "steps":          steps or [],
+            "docs_url":       docs_url,
+        },
+    )
+
+
 def approval_card(task: str, reason: str, params: Optional[dict] = None) -> PrismCard:
     """
     Card shown when a device task requires user confirmation before executing.

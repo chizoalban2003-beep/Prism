@@ -33,12 +33,32 @@ def _resolve_contact_email(name_or_address: str, contacts) -> str:
 def execute(intent: str, message: str, ctx: dict):
     import json as _j
 
-    from prism_responses import text_card
+    from prism_responses import text_card, setup_required_card
 
     email = ctx.get("email")
     if email is None or not getattr(email, "configured", False):
-        return text_card(
-            "Email not configured. Add [email] settings to prism_config.toml.", "Email"
+        return setup_required_card(
+            service        = "Email",
+            why            = "PRISM needs IMAP credentials to read and send mail on your behalf. For Gmail you must use an App Password (NOT your normal password) — 2FA must already be on.",
+            config_section = "email",
+            snippet        = (
+                'provider  = "gmail"\n'
+                'address   = "you@gmail.com"\n'
+                'imap_host = "imap.gmail.com"\n'
+                'imap_port = 993\n'
+                'smtp_host = "smtp.gmail.com"\n'
+                'smtp_port = 587\n'
+                'password  = "xxxx xxxx xxxx xxxx"   # 16-char App Password\n'
+                'max_fetch = 20'
+            ),
+            steps = [
+                "Open https://myaccount.google.com/apppasswords (Google account, 2FA on)",
+                "Generate an App Password labeled 'PRISM' and copy the 16-char code",
+                "Paste it above as password (with or without spaces, both work)",
+                "Restart PRISM: pkill -f prism_daemon && python3 -m prism_daemon &",
+                "Ask 'check my emails' again",
+            ],
+            docs_url = "https://support.google.com/accounts/answer/185833",
         )
 
     router = ctx.get("router")

@@ -37,6 +37,7 @@ from prism_responses import (
     plan_card,
     prediction_card,
     risk_card,
+    setup_required_card,
     squad_card,
     text_card,
 )
@@ -104,7 +105,8 @@ class PrismAgent:
          r"find file|search (?:in|for)|read file|list files|"
          r"run (?:command|script)|execute|open (?:app|file)|"
          r"install (?:package|app)|git (?:commit|push|pull|status)|"
-         r"what(?:'s| is) (?:on|in) my(?! screen)|show me (?:my )?files", "device_task"),
+         r"what(?:'s| is) (?:on|in) my(?! screen| calendar| schedule| agenda| inbox| email| mailbox)|"
+         r"show me (?:my )?files", "device_task"),
         (r"show (?:my )?polic|what(?:'s| are) my (?:budget|polic|limit)|"
          r"current (?:polic|budget|limit)", "show_policies"),
         (r"set (?:my )?(\w+) (?:budget|limit)|auto.?approv|never use|"
@@ -942,6 +944,65 @@ class PrismAgent:
             msg_ln = len((message or "").split())
             msg_lw = (message or "").lower()
 
+            # Pre-tier short-circuit: if the user is clearly asking about a
+            # service whose [section] in prism_config.toml is empty, return
+            # the actionable setup card now. Skips four tiers of planning
+            # that would otherwise either fail at runtime or have the LLM
+            # apologise for missing access. Triggered only for unambiguous
+            # service references; anything else falls through normally.
+            if msg_lw and not getattr(self._calendar, "configured", False) and any(
+                k in msg_lw for k in (
+                    "my calendar", "my schedule", "my agenda",
+                    "calendar today", "calendar tomorrow",
+                    "schedule today", "agenda today",
+                    "my meetings", "my appointments", "my events today",
+                )):
+                card = setup_required_card(
+                    service        = "Calendar",
+                    why            = "PRISM can't fetch events or schedule anything until you connect a calendar. iCal URL is the simplest provider.",
+                    config_section = "calendar",
+                    snippet        = (
+                        'provider = "ical_url"          # or "google" or "caldav"\n'
+                        'ical_url = "webcal://..."      # paste your private iCal feed URL\n'
+                        '# google_token = ""            # OAuth2 token  (provider="google")\n'
+                        '# caldav_url   = ""            # CalDAV server (provider="caldav")'
+                    ),
+                    steps = [
+                        "Google Calendar → Settings → 'Integrate calendar' → copy the Secret iCal address",
+                        "Paste that URL above as ical_url",
+                        "Restart PRISM: pkill -f prism_daemon && python3 -m prism_daemon &",
+                        "Ask 'what is on my calendar today?' again",
+                    ],
+                    docs_url = "https://support.google.com/calendar/answer/37648",
+                )
+            if card is None and msg_lw and not getattr(self._email, "configured", False) and any(
+                k in msg_lw for k in (
+                    "my email", "my emails", "my inbox", "my mailbox",
+                    "check my mail", "check my inbox",
+                    "any new emails", "unread emails",
+                )):
+                card = setup_required_card(
+                    service        = "Email",
+                    why            = "PRISM needs IMAP credentials to read or send mail. For Gmail use an App Password (NOT your normal password) — 2FA must already be on.",
+                    config_section = "email",
+                    snippet        = (
+                        'provider  = "gmail"\n'
+                        'address   = "you@gmail.com"\n'
+                        'imap_host = "imap.gmail.com"\n'
+                        'imap_port = 993\n'
+                        'password  = "xxxx xxxx xxxx xxxx"   # 16-char App Password\n'
+                        'max_fetch = 20'
+                    ),
+                    steps = [
+                        "Open https://myaccount.google.com/apppasswords",
+                        "Generate an App Password labeled 'PRISM' and copy the 16-char code",
+                        "Paste it above as password",
+                        "Restart PRISM: pkill -f prism_daemon && python3 -m prism_daemon &",
+                        "Ask 'check my emails' again",
+                    ],
+                    docs_url = "https://support.google.com/accounts/answer/185833",
+                )
+
             def _bad_card(c) -> bool:
                 """True when a chain/orchestrator returned a raw dict or planner noise."""
                 if c is None:
@@ -1311,8 +1372,27 @@ class PrismAgent:
 
         if intent == "email_read":
             if not self._email.configured:
-                return text_card("Email not configured. "
-                                 "Add email settings to prism_config.toml.", "Email")
+                return setup_required_card(
+                    service        = "Email",
+                    why            = "PRISM needs IMAP credentials to read your inbox. For Gmail use an App Password (NOT your normal password) — 2FA must already be on.",
+                    config_section = "email",
+                    snippet        = (
+                        'provider  = "gmail"\n'
+                        'address   = "you@gmail.com"\n'
+                        'imap_host = "imap.gmail.com"\n'
+                        'imap_port = 993\n'
+                        'password  = "xxxx xxxx xxxx xxxx"   # 16-char App Password\n'
+                        'max_fetch = 20'
+                    ),
+                    steps = [
+                        "Open https://myaccount.google.com/apppasswords",
+                        "Generate an App Password labeled 'PRISM' and copy it",
+                        "Paste it above as password",
+                        "Restart PRISM: pkill -f prism_daemon && python3 -m prism_daemon &",
+                        "Try 'check my emails' again",
+                    ],
+                    docs_url = "https://support.google.com/accounts/answer/185833",
+                )
             messages = self._email.fetch_unread(n=10)
             summary  = self._email.summarise_inbox(
                 messages, llm_router=getattr(self, '_router', None))
@@ -1320,8 +1400,26 @@ class PrismAgent:
 
         if intent == "calendar_read":
             if not self._calendar.configured:
-                return text_card("Calendar not configured. "
-                                 "Add calendar settings to prism_config.toml.", "Calendar")
+                return setup_required_card(
+                    service        = "Calendar",
+                    why            = "PRISM needs read access to surface today's events, find free slots, or schedule new ones. iCal URL is the simplest provider.",
+                    config_section = "calendar",
+                    snippet        = (
+                        'provider = "ical_url"          # or "google" or "caldav"\n'
+                        'ical_url = "webcal://..."      # paste your private iCal feed URL\n'
+                        '# google_token = ""            # OAuth2 token  (provider="google")\n'
+                        '# caldav_url   = ""            # CalDAV server (provider="caldav")\n'
+                        '# username     = ""\n'
+                        '# password     = ""'
+                    ),
+                    steps = [
+                        "Google Calendar → Settings → 'Integrate calendar' → copy the Secret iCal address",
+                        "Paste that URL above as ical_url",
+                        "Restart PRISM: pkill -f prism_daemon && python3 -m prism_daemon &",
+                        "Ask 'what is on my calendar today?' again",
+                    ],
+                    docs_url = "https://support.google.com/calendar/answer/37648",
+                )
             today    = self._calendar.today()
             next_ev  = self._calendar.next_event()
             if not today:
@@ -2147,6 +2245,56 @@ class PrismAgent:
                 approval_needed  = assessment.get("needs_approval", False)
             except Exception:
                 pass
+
+        # Short-circuit: if the LLM-assessed capability (or the raw user
+        # message) clearly needs a service whose [section] in prism_config.toml
+        # is empty, return the actionable setup card instead of synthesising
+        # a tool that will fail at runtime. The synthesis path stays available
+        # for genuinely novel capabilities the user hasn't pre-configured for.
+        _combined = (message + " " + (capability_desc or "")).lower()
+        if (any(k in _combined for k in ("calendar", "schedule", "agenda", "appointment", "meeting"))
+                and not getattr(self._calendar, "configured", False)):
+            return setup_required_card(
+                service        = "Calendar",
+                why            = "PRISM can't fetch events or schedule anything until you connect a calendar. iCal URL is the simplest provider.",
+                config_section = "calendar",
+                snippet        = (
+                    'provider = "ical_url"          # or "google" or "caldav"\n'
+                    'ical_url = "webcal://..."      # paste your private iCal feed URL\n'
+                    '# google_token = ""            # OAuth2 token  (provider="google")\n'
+                    '# caldav_url   = ""            # CalDAV server (provider="caldav")'
+                ),
+                steps = [
+                    "Google Calendar → Settings → 'Integrate calendar' → copy the Secret iCal address",
+                    "Paste that URL above as ical_url",
+                    "Restart PRISM: pkill -f prism_daemon && python3 -m prism_daemon &",
+                    "Ask 'what is on my calendar today?' again",
+                ],
+                docs_url = "https://support.google.com/calendar/answer/37648",
+            )
+        if (any(k in _combined for k in ("email", "inbox", "mailbox", "gmail"))
+                and not getattr(self._email, "configured", False)):
+            return setup_required_card(
+                service        = "Email",
+                why            = "PRISM needs IMAP credentials to read or send mail. For Gmail use an App Password (NOT your normal password) — 2FA must already be on.",
+                config_section = "email",
+                snippet        = (
+                    'provider  = "gmail"\n'
+                    'address   = "you@gmail.com"\n'
+                    'imap_host = "imap.gmail.com"\n'
+                    'imap_port = 993\n'
+                    'password  = "xxxx xxxx xxxx xxxx"   # 16-char App Password\n'
+                    'max_fetch = 20'
+                ),
+                steps = [
+                    "Open https://myaccount.google.com/apppasswords",
+                    "Generate an App Password labeled 'PRISM' and copy the 16-char code",
+                    "Paste it above as password",
+                    "Restart PRISM: pkill -f prism_daemon && python3 -m prism_daemon &",
+                    "Ask 'check my emails' again",
+                ],
+                docs_url = "https://support.google.com/accounts/answer/185833",
+            )
 
         # Gate destructive/external actions behind policy
         if approval_needed:
