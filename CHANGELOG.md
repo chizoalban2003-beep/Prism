@@ -8,6 +8,41 @@ version bumps.
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-06-16
+
+Patch release. After v0.1.1 a full pytest run took 7h06m and 9 tests
+failed once Ollama was installed on the dev box: `LLMRouter.discover()`
+found tinyllama and used it, but tinyllama responses take >30 s — past
+the `pytest-timeout` default. Two root causes, addressed separately.
+
+### Fixed
+- `test_vision_chain.py::test_images_none_is_default` (and its sister)
+  tried to disable discovery via `_options=[]; _discovered=True` but
+  forgot `_last_scan`. `discover()`'s cache check is
+  `time.time() - _last_scan < 60`, and the sentinel `0.0` always
+  evaluates false → re-discovery ran and hit Ollama anyway. Fix: also
+  set `_last_scan = time.time()`.
+- `test_llm_router.py::test_call_tuple` and
+  `test_llm_router_history.py::test_call_accepts_history` were
+  checking router return *shape* (tuple of two strings) with no
+  mocking. They passed pre-Ollama only because connection-refused
+  returned in 2 s and fell through to stdlib. Same `_last_scan` fix
+  applied — they now assert the shape deterministically without a
+  real LLM in the loop.
+
+### Changed
+- `pyproject.toml` adds `addopts = "-m 'not slow'"` under
+  `[tool.pytest.ini_options]` and registers the `slow` marker. Six
+  genuine integration tests of `PrismCollaborator`, `PrismAgent.chat`,
+  and the nucleus topology that *do* exercise the LLM call path
+  end-to-end are now marked `@pytest.mark.slow` and excluded from the
+  default run. Opt in with `pytest -m slow` when an LLM is up and
+  you have patience.
+
+### Result
+- Full suite: **2822 passed, 2 skipped, 6 deselected in 3m09s**
+  (was 9 failed, 2819 passed, 2 skipped in 7h06m).
+
 ## [0.1.1] — 2026-06-16
 
 Patch release. End-to-end smoke test on a fresh host (boot → HTTP →
@@ -78,6 +113,7 @@ actual decisions.
 - `prism_device_agent.open_app` / `install_package` validate input
   against a strict shape and reject path-traversal / scheme tricks.
 
-[Unreleased]: https://github.com/chizoalban2003-beep/Prism/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/chizoalban2003-beep/Prism/compare/v0.1.2...HEAD
+[0.1.2]: https://github.com/chizoalban2003-beep/Prism/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/chizoalban2003-beep/Prism/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/chizoalban2003-beep/Prism/releases/tag/v0.1.0
