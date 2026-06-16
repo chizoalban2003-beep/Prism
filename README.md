@@ -25,6 +25,12 @@
 
 ---
 
+> **New here?** The [15-minute quickstart](docs/QUICKSTART.md) gets you
+> from `git clone` to your first real conversation without any of the
+> reference material below. Come back for this page once it's running.
+
+---
+
 ## The Personification Moat
 
 Every other AI stores memory. Prism builds a **model of you** — from your actual decisions, not self-reported preferences.
