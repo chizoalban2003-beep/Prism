@@ -5,7 +5,6 @@ FastAPI router for agent-level endpoints.
 
 Routes:
   GET  /status
-  GET  /plan
   POST /plan
   GET  /context
   GET  /outcomes/stats
@@ -19,7 +18,6 @@ exposed at `GET /sessions/{id}/history`.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import asdict as _asdict
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -86,19 +84,6 @@ async def agent_status():
 # ---------------------------------------------------------------------------
 # /plan
 # ---------------------------------------------------------------------------
-
-@router.get("/plan")
-async def plan_get():
-    agent = _get_agent()
-    if agent is None:
-        return JSONResponse({"error": "agent not ready", "status": 503}, status_code=503)
-    brief = agent.morning_briefing()
-    try:
-        data = _asdict(brief)
-    except TypeError:
-        data = str(brief)
-    return data
-
 
 @router.post("/plan")
 async def plan_post(request: Request):

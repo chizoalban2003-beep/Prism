@@ -4,12 +4,7 @@ prism_routes_core.py
 FastAPI router for core agent interaction endpoints.
 
 Routes:
-  POST /ask
   POST /chat
-  POST /rate
-  POST /session
-  GET  /devices
-  POST /device/sync
   GET  /device/capabilities
   POST /device/approve
   POST /device/execute
@@ -18,7 +13,6 @@ Routes:
 from __future__ import annotations
 
 import asyncio
-from dataclasses import asdict as _asdict
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -67,98 +61,6 @@ async def chat(request: Request):
             pass
 
     return card.to_json()
-
-
-# ---------------------------------------------------------------------------
-# POST /rate
-# ---------------------------------------------------------------------------
-
-@router.post("/rate")
-async def rate(request: Request):
-    body: dict[str, Any] = {}
-    try:
-        body = await request.json()
-    except Exception:
-        pass
-
-    agent = _get_agent()
-    if agent is None:
-        return JSONResponse({"error": "agent not ready", "status": 503}, status_code=503)
-
-    date_str = body.get("date", "")
-    rating   = float(body.get("rating", 0))
-    notes    = body.get("notes", "")
-    if not date_str:
-        from datetime import date
-        date_str = date.today().isoformat()
-    agent._assistant.rate_day(agent._profile.name, date_str, rating, notes)
-    return {"ok": True, "date": date_str, "rating": rating}
-
-
-# ---------------------------------------------------------------------------
-# POST /session
-# ---------------------------------------------------------------------------
-
-@router.post("/session")
-async def session(request: Request):
-    body: dict[str, Any] = {}
-    try:
-        body = await request.json()
-    except Exception:
-        pass
-
-    agent = _get_agent()
-    if agent is None:
-        return JSONResponse({"error": "agent not ready", "status": 503}, status_code=503)
-
-    rpe          = int(body.get("rpe", 5))
-    session_type = body.get("session_type", "training")
-    notes        = body.get("notes", "")
-    video_folder = body.get("video_folder")
-    gps_file     = body.get("gps_file")
-
-    log = agent.log_session(
-        rpe          = rpe,
-        session_type = session_type,
-        notes        = notes,
-        video_folder = video_folder,
-        gps_file     = gps_file,
-    )
-    return _asdict(log)
-
-
-# ---------------------------------------------------------------------------
-# GET /devices
-# ---------------------------------------------------------------------------
-
-@router.get("/devices")
-async def devices():
-    agent = _get_agent()
-    if agent is None:
-        return JSONResponse({"error": "agent not ready", "status": 503}, status_code=503)
-    devices_list = [
-        {
-            "name":        d.name,
-            "device_type": d.device_type.value,
-            "enabled":     d.enabled,
-            "last_sync":   d.last_sync,
-        }
-        for d in agent._hub.list_devices()
-    ]
-    return {"devices": devices_list}
-
-
-# ---------------------------------------------------------------------------
-# POST /device/sync
-# ---------------------------------------------------------------------------
-
-@router.post("/device/sync")
-async def device_sync():
-    agent = _get_agent()
-    if agent is None:
-        return JSONResponse({"error": "agent not ready", "status": 503}, status_code=503)
-    result = agent.sync_devices()
-    return {"synced": result}
 
 
 # ---------------------------------------------------------------------------

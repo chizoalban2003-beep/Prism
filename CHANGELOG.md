@@ -8,6 +8,44 @@ version bumps.
 
 ## [Unreleased]
 
+## [0.1.3] — 2026-06-16
+
+Patch release. A second smoke-test on the v0.1.2 daemon (boot → probe
+every endpoint with a real bearer token, not a `MagicMock`) surfaced
+five more orphan routes the v0.1.1 audit had missed. Same root cause:
+the test fixture pre-populates every attribute the route handler
+might touch (`agent._hub`, `agent._assistant`, `agent._profile`,
+`agent.morning_briefing`, …), so the tests pass even though the
+attributes don't exist on real `PrismAgent`. `curl` finds the bug in
+under a second.
+
+### Removed
+- `GET /plan` in `prism_routes_agent.py` — called missing
+  `agent.morning_briefing()`. `POST /plan` is the working alternative
+  (it uses `PrismPlanner` directly, not an agent method) and remains.
+- `POST /rate` in `prism_routes_core.py` — called missing
+  `agent._assistant.rate_day(agent._profile.name, …)`. Neither
+  `_assistant` nor `_profile` exists on `PrismAgent`.
+- `POST /session` in `prism_routes_core.py` — called missing
+  `agent.log_session()`.
+- `GET /devices` in `prism_routes_core.py` — called missing
+  `agent._hub.list_devices()`. `device_hub.py` exists as a module but
+  is not wired into `PrismAgent.__init__`.
+- `POST /device/sync` in `prism_routes_core.py` — called missing
+  `agent.sync_devices()`.
+
+### Notes
+- Pattern is the same `MagicMock`-hides-bug failure as v0.1.1; the
+  fix is the same (delete the orphan route). Restoring the features
+  would require also wiring `DeviceHub`, an `_assistant` object, and
+  user `_profile` into `PrismAgent.__init__` — out of scope for a
+  patch.
+- Smoke-test discipline: after the v0.1.1 audit I shipped v0.1.2
+  (test-suite fix only) without re-running the daemon-probe step,
+  reasoning the functional code hadn't changed. Five 500s later, the
+  lesson lands: *every* release gets a real-client smoke test, not
+  just feature ones.
+
 ## [0.1.2] — 2026-06-16
 
 Patch release. After v0.1.1 a full pytest run took 7h06m and 9 tests
@@ -113,7 +151,8 @@ actual decisions.
 - `prism_device_agent.open_app` / `install_package` validate input
   against a strict shape and reject path-traversal / scheme tricks.
 
-[Unreleased]: https://github.com/chizoalban2003-beep/Prism/compare/v0.1.2...HEAD
+[Unreleased]: https://github.com/chizoalban2003-beep/Prism/compare/v0.1.3...HEAD
+[0.1.3]: https://github.com/chizoalban2003-beep/Prism/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/chizoalban2003-beep/Prism/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/chizoalban2003-beep/Prism/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/chizoalban2003-beep/Prism/releases/tag/v0.1.0

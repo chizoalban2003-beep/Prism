@@ -165,9 +165,3 @@ def test_unknown_route_returns_404(client):
     assert r.status_code == 404
 
 
-def test_devices_endpoint(client):
-    r = client.get("/devices")
-    assert r.status_code == 200
-    assert "devices" in r.json()
-
-
