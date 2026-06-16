@@ -160,6 +160,7 @@ async def reflection():
             "unresolved_goals": report.unresolved_goals,
             "applied":          report.applied,
             "ran_at":           report.ran_at,
+            "error":            report.error,
         }
     except Exception as exc:
         return {"available": True, "error": str(exc)}

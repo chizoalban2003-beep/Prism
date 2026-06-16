@@ -241,6 +241,23 @@ class PrismReflection:
         self, report: ReflectionReport, stats: dict, goals: list[str], beliefs: list[str]
     ) -> ReflectionReport:
         import json as _json
+
+        # Guard: if no model meets the capability bar, skip the LLM cycle
+        # entirely instead of letting router fall back to a too-small model
+        # that will time out (~4 min on the multi-section reflection prompt).
+        # Phase overrides in `best()` can return a capability-1 model even when
+        # min_capability=2 is requested — check the returned option's capability.
+        if hasattr(self._router, "best"):
+            try:
+                best = self._router.best(min_capability=2)
+                cap  = getattr(best, "capability", 0)
+                if best is None or (isinstance(cap, int) and cap < 2):
+                    report.summary  = "Skipped LLM reflection: no capability-2 model available."
+                    report.patterns = self._heuristic_patterns(stats, goals)
+                    return report
+            except Exception:
+                pass  # Mocked routers, etc. — fall through to normal call
+
         stats_str   = _json.dumps(stats, indent=2)
         goals_str   = "\n".join(goals) or "(none)"
         beliefs_str = "\n".join(beliefs) or "(none)"

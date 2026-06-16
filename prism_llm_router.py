@@ -88,7 +88,7 @@ MODEL_CAPABILITY: dict[str, int] = {
     "deepseek-r1": 3, "deepseek-v3": 2,
     "llama3": 2, "llama3.1": 2, "llama3.2": 2,
     "mistral": 2, "mixtral": 2,
-    "qwen": 1, "phi": 1, "gemma": 1, "tinyllama": 2,
+    "qwen": 1, "phi": 1, "gemma": 1, "tinyllama": 1,
     "stdlib": 0,
 }
 
