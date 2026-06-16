@@ -298,7 +298,7 @@ class PrismAgent:
         # Build LLMRouter from local prism_config.toml [llm] section.
         # Populate all expected keys with defaults so the router config
         # has a consistent shape even when no [llm] section is present.
-        _llm_cfg = {
+        _llm_cfg: dict[str, Any] = {
             "preferred":      "",
             "fallback":       [],
             "ollama_host":    "http://localhost:11434",
