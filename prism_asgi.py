@@ -102,19 +102,22 @@ if _FASTAPI_AVAILABLE:
                 return await call_next(request)
             header = request.headers.get("authorization", "")
             scheme, _, supplied = header.partition(" ")
-            if scheme.lower() != "bearer" or not supplied:
-                return JSONResponse(
-                    {"error": "unauthorized"},
-                    status_code=401,
-                    headers={"WWW-Authenticate": 'Bearer realm="prism"'},
-                )
-            if not hmac.compare_digest(supplied.strip(), token):
-                return JSONResponse(
-                    {"error": "unauthorized"},
-                    status_code=401,
-                    headers={"WWW-Authenticate": 'Bearer realm="prism"'},
-                )
-            return await call_next(request)
+            if scheme.lower() == "bearer" and supplied:
+                if hmac.compare_digest(supplied.strip(), token):
+                    return await call_next(request)
+            # Browser fallback: `?token=<token>` query parameter. Mirrors the
+            # WebSocket auth path. Trades a small log-leak risk (query strings
+            # appear in access logs and Referer headers) for the ability to
+            # poke at the daemon from a tab without a header-injecting
+            # extension.
+            query_token = request.query_params.get("token", "")
+            if query_token and hmac.compare_digest(query_token.strip(), token):
+                return await call_next(request)
+            return JSONResponse(
+                {"error": "unauthorized"},
+                status_code=401,
+                headers={"WWW-Authenticate": 'Bearer realm="prism"'},
+            )
 
     app.add_middleware(BearerAuthMiddleware)
 
