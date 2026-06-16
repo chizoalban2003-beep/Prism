@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import time
+
 from prism_llm_router import LLMRouter
 
 
 def test_call_accepts_history():
+    # Force the stdlib fallback — this test only checks the call signature
+    # accepts `conversation_history=`, not that a real LLM responds.
     router = LLMRouter()
+    router._options = []
+    router._discovered = True
+    router._last_scan = time.time()
     # Should not raise whether history is empty list or None
     result = router.call("ping", conversation_history=[])
     assert isinstance(result, tuple)

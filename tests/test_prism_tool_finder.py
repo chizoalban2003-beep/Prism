@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from prism_collaborator import PrismCollaborator
 from prism_tool_finder import ToolFinder
 
@@ -20,6 +22,8 @@ def test_always_has_app():
     assert any(option.execution_type == "app_install" for option in result.options)
 
 
+@pytest.mark.slow
+@pytest.mark.timeout(120)
 def test_urgent_prefers_fast():
     finder = ToolFinder(collaborator=PrismCollaborator())
 
@@ -35,6 +39,8 @@ def test_urgent_prefers_fast():
     assert result.recommended.execution_type in {"aggregator", "phone"}
 
 
+@pytest.mark.slow
+@pytest.mark.timeout(120)
 def test_no_budget_prefers_free():
     finder = ToolFinder(collaborator=PrismCollaborator())
 
@@ -49,6 +55,8 @@ def test_no_budget_prefers_free():
     assert result.recommended.execution_type == "manual"
 
 
+@pytest.mark.slow
+@pytest.mark.timeout(120)
 def test_discover_returns_list():
     finder = ToolFinder(collaborator=PrismCollaborator())
 

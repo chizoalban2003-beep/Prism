@@ -53,19 +53,26 @@ def _make_agent_with_router(router=None):
 class TestLLMRouterCallImagesClaudeParam:
     def test_images_param_accepted_by_call_signature(self):
         """call() must accept images= without raising TypeError."""
+        import time as _time
         router = _make_router()
-        # Patch discover so no real HTTP is made
+        # Patch discover so no real HTTP is made. _last_scan must also be
+        # bumped — discover() re-runs whenever (now - _last_scan) >= 60s,
+        # so the default 0.0 sentinel would force re-discovery and hit a
+        # local Ollama if one happens to be running.
         router._options = []
         router._discovered = True
+        router._last_scan = _time.time()
         result = router.call("hello", images=["fakeb64"])
         # Falls through to "none" because no providers configured
         assert result == ("", "none")
 
     def test_images_none_is_default(self):
         """images=None is the default — existing callers unaffected."""
+        import time as _time
         router = _make_router()
         router._options = []
         router._discovered = True
+        router._last_scan = _time.time()
         text, model = router.call("hello")
         assert model == "none"
 

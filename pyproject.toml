@@ -197,8 +197,13 @@ py-modules = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Exclude `slow` (real-LLM) tests by default — they require Ollama or Claude
+# to be reachable and serialize on a single GPU/CPU, so the default test run
+# stays fast and deterministic. Opt in with `pytest -m slow`.
+addopts = "-m 'not slow'"
 markers = [
     "requires_hardware: tests that require physical hardware (Apple Watch, GoPro, etc.) — skipped in CI",
+    "slow: tests that hit the real LLM stack (Ollama/Claude) — excluded by default; run with `pytest -m slow`",
 ]
 
 [tool.ruff]

@@ -347,6 +347,8 @@ class TestAgentTopologyIntegration:
         assert ("capability" in body or "synthesize" in body or
                 "ollama" in body or "llm" in body or "not found" in body)
 
+    @pytest.mark.slow
+    @pytest.mark.timeout(120)
     def test_synthesis_limit_respected(self):
         """When session synthesis limit reached, skip synthesis attempt."""
         agent = self._make_agent()
@@ -385,6 +387,8 @@ class TestAgentTopologyIntegration:
             agent._bud_mgr.decommission(h)
             assert "_bud_id" not in h.scoped_ctx
 
+    @pytest.mark.slow
+    @pytest.mark.timeout(120)
     def test_multiple_tasks_end_to_end(self):
         """Smoke-test 10 diverse tasks — all return a PrismCard, never raise."""
         from prism_responses import PrismCard
