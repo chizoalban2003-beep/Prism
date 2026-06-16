@@ -484,6 +484,14 @@ class PrismExecutorAgent:
                 executor_used="synthesis_failed", error=code,
             )
 
+        try:
+            saved_path = self._save_code(code, spec.task_name)
+        except RuntimeError as exc:
+            elapsed_ms = (time.perf_counter() - started) * 1000.0
+            return ExecutionResult(
+                False, {}, "synthesis_unsafe", elapsed_ms, str(exc),
+                executor_used="synthesis_unsafe", error=str(exc),
+            )
         record = ExecutorRecord(
             executor_id=str(uuid.uuid4()),
             task_description=plan.task,
@@ -491,7 +499,7 @@ class PrismExecutorAgent:
             description=plan.task,
             safety_class=spec.safety_class,
             source="learned",
-            code_path=self._save_code(code, spec.task_name),
+            code_path=saved_path,
             tags=sorted(set(plan.task.lower().replace("_", " ").split())),
         )
         self.registry.register(record)
@@ -532,6 +540,17 @@ class PrismExecutorAgent:
         return ExecutionResult(True, {"result": result}, "executed", elapsed_ms, executor_used=executor_used)
 
     def _save_code(self, code: str, name: str) -> str:
+        """Persist a synthesised learned-tool executor to disk.
+
+        Raises ``RuntimeError`` if the code fails the same AST safety check
+        used by the autonomous tool synthesiser — learned executors are
+        re-spawned later as ``python3 <path> <ctx>``, so unsafe code reaching
+        this point would run unsandboxed at execution time.
+        """
+        from prism_autonomous import _is_safe_code
+        safe, reason = _is_safe_code(code)
+        if not safe:
+            raise RuntimeError(f"Refusing to persist unsafe executor {name!r}: {reason}")
         path = self.db_path.parent / "learned_tools" / f"{name}.py"
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(code, encoding="utf-8")

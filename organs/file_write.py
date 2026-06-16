@@ -2,7 +2,7 @@
 ORGAN_META = {
     "intent":      "file_write",
     "description": "write or overwrite content to a file at a given path",
-    "version":     "1.0",
+    "version":     "1.1",
     "capabilities": ["filesystem_write"],
 }
 
@@ -13,16 +13,31 @@ ORGAN_POLICY = {
     "max_per_session":   None,
 }
 
-_FORBIDDEN_PATHS = (
-    "/etc/", "/usr/", "/bin/", "/sbin/", "/boot/", "/sys/", "/proc/",
-    "/dev/", "/lib/", "/lib64/", "/root/", "/home/",
-)
+# Allow-list rather than deny-list: refuse anything that doesn't resolve into
+# a well-known user-data root. Older versions used a deny-list which let
+# /tmp/, /var/tmp/, the daemon cwd, and ~/.ssh through.
+def _allowed_roots():
+    from pathlib import Path
+    return [
+        Path.home() / "Documents",
+        Path.home() / "Downloads",
+        Path.home() / "Desktop",
+        Path("/tmp/prism"),
+    ]
+
+# Names that must never be written even inside an allowed root — most are
+# dotfiles whose presence in ~/Documents would still be wrong.
+_FORBIDDEN_NAMES = frozenset({
+    ".bashrc", ".bash_profile", ".profile", ".zshrc", ".zprofile",
+    "authorized_keys", "known_hosts", "id_rsa", "id_ed25519",
+    ".netrc", ".env", "credentials", "config",
+})
+_FORBIDDEN_SUFFIXES = (".service", ".desktop", ".sh", ".bashrc")
 
 
 def _parse_message(message: str):
     """Return (path_str, content) extracted from message."""
     import re
-    # Pattern: write "content" to /path/to/file  OR  write to /path: content
     m = re.search(
         r'(?:write|save|create|output)\s+(?:to\s+)?'
         r'(["\']?)(.+?)\1\s+(?:to|at|into)\s+([^\s:]+)',
@@ -31,7 +46,6 @@ def _parse_message(message: str):
     if m:
         return m.group(3).strip(), m.group(2).strip()
 
-    # Pattern: path: content  or  /path/file\ncontent
     m = re.search(
         r'(?:file|path)[:\s]+([^\n]+)\n(.*)',
         message, re.IGNORECASE | re.DOTALL,
@@ -39,7 +53,6 @@ def _parse_message(message: str):
     if m:
         return m.group(1).strip(), m.group(2).strip()
 
-    # Look for any path-like token
     m = re.search(r'(/[\w./~-]+\.\w+)', message)
     if m:
         path = m.group(1)
@@ -47,6 +60,27 @@ def _parse_message(message: str):
         return path, content
 
     return None, None
+
+
+def _is_path_allowed(target):
+    """Return True if *target* resolves under an allowed root and isn't a
+    forbidden filename."""
+    name = target.name.lower()
+    if name in _FORBIDDEN_NAMES:
+        return False
+    if any(name.endswith(s) for s in _FORBIDDEN_SUFFIXES):
+        return False
+    try:
+        resolved = target.resolve()
+    except (OSError, RuntimeError):
+        return False
+    for root in _allowed_roots():
+        try:
+            resolved.relative_to(root.resolve())
+            return True
+        except ValueError:
+            continue
+    return False
 
 
 def execute(intent: str, message: str, ctx: dict):
@@ -58,21 +92,17 @@ def execute(intent: str, message: str, ctx: dict):
     if not path_str:
         return text_card(
             "Could not determine file path from message.\n"
-            "Example: 'write Hello World to /tmp/hello.txt'",
+            "Example: 'write Hello World to ~/Documents/hello.txt'",
             "File Write",
         )
 
-    # Expand ~ and always resolve symlinks before checking
     target = Path(path_str).expanduser()
-    abs_str = str(target.resolve())
-
-    # Safety: block writes to system and home paths
-    for forbidden in _FORBIDDEN_PATHS:
-        if abs_str.startswith(forbidden):
-            return text_card(
-                f"Writing to {forbidden}* is not permitted for safety reasons.",
-                "File Write",
-            )
+    if not _is_path_allowed(target):
+        roots = ", ".join(str(r) for r in _allowed_roots())
+        return text_card(
+            f"Refusing to write {target}: writes are only permitted under {roots}.",
+            "File Write",
+        )
 
     try:
         target.parent.mkdir(parents=True, exist_ok=True)

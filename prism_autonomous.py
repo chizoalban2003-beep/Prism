@@ -5,6 +5,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -342,15 +343,47 @@ except Exception as e:
 
     # ── Requirement installation ──────────────────────────────────────────────
 
+    # Packages an LLM-synthesised tool may pull from PyPI. Anything outside
+    # this set is refused — the LLM does not get to pick package names, since
+    # a typo-squatted or attacker-named package is one `pip install` away from
+    # arbitrary code execution at install time. Extend deliberately, not
+    # reflexively. Keep names lowercase to match the comparison below.
+    _ALLOWED_PYPI = frozenset({
+        "requests", "httpx", "urllib3",
+        "pyyaml", "tomli",
+        "pillow",
+        "beautifulsoup4", "lxml", "feedparser",
+        "python-dateutil", "pytz",
+        "markdown",
+    })
+    # Stdlib modules the LLM commonly lists in `requirements` even though
+    # they are not pip-installable. Skipped silently.
+    _STDLIB_NAMES = frozenset({
+        "json", "re", "os", "sys", "time", "datetime", "pathlib", "urllib",
+        "sqlite3", "hashlib", "uuid", "threading", "logging", "collections",
+        "itertools", "functools", "typing", "dataclasses", "io", "math",
+        "base64", "html", "random",
+    })
+
     def _install_requirements(self, reqs: list[str]) -> bool:
-        stdlib = {"json","re","os","sys","time","datetime","pathlib",
-                  "urllib","sqlite3","hashlib","uuid","threading","logging",
-                  "collections","itertools","functools","typing","dataclasses"}
-        to_install = [r for r in reqs if r.lower() not in stdlib]
+        # Normalise + drop stdlib; reject anything not on the explicit allow-list.
+        to_install: list[str] = []
+        for raw in reqs:
+            name = raw.strip().lower()
+            if not name or name in self._STDLIB_NAMES:
+                continue
+            # Strip extras / version pins for the membership check.
+            bare = re.split(r"[<>=!\[]", name, maxsplit=1)[0].strip()
+            if bare not in self._ALLOWED_PYPI:
+                logger.warning(
+                    "[autonomous] refusing pip install %r: not on PyPI allow-list", raw,
+                )
+                return False
+            to_install.append(name)
         if not to_install:
             return True
         try:
-            subprocess.run(  # nosec B603 — pip install, no shell; packages validated against stdlib allowlist above
+            subprocess.run(  # nosec B603 — pip install, no shell; packages restricted to _ALLOWED_PYPI
                 [sys.executable, "-m", "pip", "install", "--quiet"] + to_install,
                 check=True, timeout=60,
                 capture_output=True)

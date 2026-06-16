@@ -1,50 +1,24 @@
 from __future__ import annotations
 
-import ipaddress
 import json
 import logging
 import time
 from dataclasses import dataclass
 from typing import Optional
-from urllib.parse import urlparse
+
+from prism_ssrf import is_safe_external_url
 
 logger = logging.getLogger(__name__)
 
 
-# SSRF guard. The browser agent receives URLs chosen by the LLM in response
-# to prompts that may contain attacker-controlled text, so any local/internal
-# target must be refused before page.goto runs.
 def _is_safe_url(url: str) -> bool:
-    if not isinstance(url, str) or not url:
-        return False
-    try:
-        parsed = urlparse(url.strip())
-    except Exception:
-        return False
-    if parsed.scheme not in ("http", "https"):
-        return False
-    host = (parsed.hostname or "").lower()
-    if not host:
-        return False
-    # Block well-known hostnames that resolve to loopback or cloud metadata.
-    if host in {
-        "localhost", "ip6-localhost", "ip6-loopback",
-        "metadata.google.internal", "metadata", "instance-data",
-    }:
-        return False
-    # Block by literal IP if the host is an address.
-    try:
-        addr = ipaddress.ip_address(host)
-    except ValueError:
-        return True  # not an IP literal — accept (DNS rebinding is out of scope)
-    return not (
-        addr.is_loopback
-        or addr.is_private
-        or addr.is_link_local
-        or addr.is_multicast
-        or addr.is_reserved
-        or addr.is_unspecified
-    )
+    """SSRF guard for LLM-chosen URLs — delegated to the shared predicate.
+
+    The browser agent fetches URLs picked by the LLM from user goals, so the
+    policy is stricter than federation: LAN/private addresses are refused
+    too. There is no legitimate reason for the LLM to scrape 192.168.x.x.
+    """
+    return is_safe_external_url(url, allow_private=False)
 
 
 @dataclass

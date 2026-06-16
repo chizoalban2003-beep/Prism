@@ -199,6 +199,16 @@ Return ONLY the Python class code, no explanation."""
         if not code or "class " not in code:
             return False, f"Generation failed: {code[:200]}"
 
+        # AST safety check BEFORE running the sandbox: the synthesised tool
+        # could otherwise smuggle os.system / eval into _sandbox_test itself,
+        # since the runner concatenates the LLM output verbatim with a
+        # `__main__` block that calls cls.sandbox_test().
+        from prism_autonomous import _is_safe_code
+        safe, reason = _is_safe_code(code)
+        if not safe:
+            logger.warning("Synthesised tool failed AST safety: %s", reason)
+            return False, f"Unsafe code: {reason}"
+
         if test_before_store:
             ok, err = self._sandbox_test(code, spec)
             if not ok:

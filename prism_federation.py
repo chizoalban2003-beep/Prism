@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os as _os
 import sqlite3
 import threading
 import time
@@ -191,7 +192,22 @@ class FederationManager:
     # ------------------------------------------------------------------
 
     def add_peer(self, peer_id: str, name: str, url: str) -> FederationPeer:
-        """Register or update a remote peer. Returns the peer record."""
+        """Register or update a remote peer. Returns the peer record.
+
+        Raises ``ValueError`` if *url* fails the SSRF guard — peers stored
+        in SQLite are later fetched by ``push_pending`` with the daemon's
+        own identity headers, so an attacker-supplied internal URL would
+        become a live SSRF gadget.
+        """
+        from prism_ssrf import is_safe_external_url
+        allow_loopback = _os.environ.get(
+            "PRISM_FEDERATION_ALLOW_LOOPBACK", ""
+        ).lower() in ("1", "true", "yes")
+        if not is_safe_external_url(url, allow_loopback=allow_loopback):
+            raise ValueError(
+                f"Refused peer URL {url!r}: fails SSRF check. "
+                "Set PRISM_FEDERATION_ALLOW_LOOPBACK=1 to permit loopback peers."
+            )
         peer = FederationPeer(
             peer_id=peer_id,
             name=name,
@@ -389,9 +405,19 @@ class FederationManager:
                     failed += 1
                     continue
                 peer_url = row[0].rstrip("/")
+                # Re-validate even though add_peer already gated: SQLite rows
+                # may predate the SSRF check, and the env flag could have
+                # tightened since the row was written.
+                from prism_ssrf import is_safe_external_url
+                _allow_loop = _os.environ.get(
+                    "PRISM_FEDERATION_ALLOW_LOOPBACK", ""
+                ).lower() in ("1", "true", "yes")
+                if not is_safe_external_url(peer_url, allow_loopback=_allow_loop):
+                    failed += 1
+                    logger.warning("FederationManager: refusing push to unsafe URL %s", peer_url)
+                    continue
                 import hashlib as _hashlib
                 import hmac as _hmac
-                import os as _os
                 _hdrs: dict[str, str] = {"Content-Type": "application/json"}
                 _tok = _os.environ.get("PRISM_FEDERATION_TOKEN", "")
                 if _tok:

@@ -147,12 +147,17 @@ async def federation_announce(request: Request):
 
     node_id = fm.announce(url)
 
-    # If a remote name/url pair is supplied, record them as a peer too
+    # If a remote name/url pair is supplied, record them as a peer too.
+    # add_peer validates the URL with the SSRF guard and raises ValueError
+    # on a refused address — translate that to a 400 instead of a 500.
     if name and url:
-        # The peer_id defaults to the remote node_id if provided, else a
-        # placeholder derived from the URL.
         remote_peer_id: str = body.get("peer_id") or url
-        fm.add_peer(remote_peer_id, name, url)
+        try:
+            fm.add_peer(remote_peer_id, name, url)
+        except ValueError as exc:
+            return JSONResponse(
+                {"error": str(exc), "status": 400}, status_code=400
+            )
 
     peers = [
         {

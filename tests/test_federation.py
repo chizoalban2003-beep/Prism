@@ -375,11 +375,13 @@ class TestFederationSyncEndpoints:
         assert "version" in data
         assert "vector" in data
 
-    def test_federation_sync_roundtrip(self, client, tmp_path):
+    def test_federation_sync_roundtrip(self, client, tmp_path, monkeypatch):
         """Full roundtrip: get payload from node A, post it to node B."""
         from prism_federation import FederationManager
 
-        # Node B — separate DB
+        # Node B — separate DB. SSRF guard blocks loopback peers by default;
+        # the test rig opts in so we can register the in-process node A URL.
+        monkeypatch.setenv("PRISM_FEDERATION_ALLOW_LOOPBACK", "1")
         fm_b = FederationManager(
             node_id="node-b", db_path=str(tmp_path / "fed_b.db")
         )

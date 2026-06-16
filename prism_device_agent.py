@@ -937,6 +937,18 @@ class PrismDeviceAgent:
             target = m.group(1) if m else params.get("target", "")
             if not target:
                 return _fail("No application specified.")
+            # The opener is xdg-open / open / start — all of which will
+            # happily follow file:// URLs into /etc/shadow or launch a
+            # .desktop payload. Restrict to a conservative app-name shape
+            # and refuse path-traversal / scheme tricks.
+            if (
+                _is_dangerous(target)
+                or "://" in target
+                or target.startswith(("/", "~"))
+                or ".." in target
+                or not re.fullmatch(r"[A-Za-z0-9_.\-]+", target)
+            ):
+                return _fail(f"Invalid application name: {target!r}")
             try:
                 result = subprocess.run(
                     [opener, target],
@@ -958,8 +970,19 @@ class PrismDeviceAgent:
             pkg = m.group(1) if m else params.get("package", "")
             if not pkg:
                 return _fail("No package name specified.")
-            # Validate package name: only alphanum, dash, underscore, dot, brackets
-            if not re.fullmatch(r"[\w.\-\[\]]+", pkg):
+            # Strict PEP 508-ish name + optional extras. The previous regex
+            # `[\w.\-\[\]]+` accepted `..`, single `.`, leading dashes and
+            # other shapes that pip happily interprets as local paths or
+            # version specifiers — all bad coming from an LLM channel.
+            if (
+                _is_dangerous(pkg)
+                or ".." in pkg
+                or pkg.startswith(("/", "-", "."))
+                or not re.fullmatch(
+                    r"[A-Za-z0-9_][A-Za-z0-9_.\-]*(?:\[[A-Za-z0-9_,\-]+\])?",
+                    pkg,
+                )
+            ):
                 return _fail(f"Invalid package name: {pkg!r}")
             try:
                 result = subprocess.run(
