@@ -624,6 +624,8 @@ class LLMRouter:
                      images: list[str] | None = None) -> str:
         api_key = (self._config.get("openai_api_key")
                    or os.environ.get("OPENAI_API_KEY",""))
+        model = (self._config.get("openai_model")
+                 or os.environ.get("OPENAI_MODEL", "gpt-4o-mini"))
         msgs: list[dict[str, Any]] = []
         if system:
             msgs.append({"role":"system","content":system})
@@ -638,7 +640,7 @@ class LLMRouter:
             msgs.append({"role": "user", "content": user_content})
         else:
             msgs.append({"role":"user","content":prompt})
-        body: dict = {"model":"gpt-4o-mini","max_tokens":max_tokens,"messages":msgs}
+        body: dict = {"model":model,"max_tokens":max_tokens,"messages":msgs}
         if json_mode:
             body["response_format"] = {"type":"json_object"}
         payload = json.dumps(body).encode()
@@ -777,12 +779,13 @@ class LLMRouter:
         history: list,
     ) -> str:
         api_key = self._config.get("openai_api_key") or os.environ.get("OPENAI_API_KEY", "")
+        model = self._config.get("openai_model") or os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
         msgs = []
         if system:
             msgs.append({"role": "system", "content": system})
         msgs.extend(history)
         msgs.append({"role": "user", "content": prompt})
-        body: dict = {"model": "gpt-4o-mini", "max_tokens": max_tokens, "messages": msgs}
+        body: dict = {"model": model, "max_tokens": max_tokens, "messages": msgs}
         if json_mode:
             body["response_format"] = {"type": "json_object"}
         async with _httpx.AsyncClient(timeout=120) as client:
@@ -909,12 +912,13 @@ class LLMRouter:
         system: str, history: list,
     ) -> AsyncIterator[str]:
         api_key = self._config.get("openai_api_key") or os.environ.get("OPENAI_API_KEY", "")
+        model = self._config.get("openai_model") or os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
         msgs = []
         if system:
             msgs.append({"role": "system", "content": system})
         msgs.extend(history)
         msgs.append({"role": "user", "content": prompt})
-        body: dict = {"model": "gpt-4o-mini", "max_tokens": max_tokens,
+        body: dict = {"model": model, "max_tokens": max_tokens,
                       "messages": msgs, "stream": True}
         async with _httpx.AsyncClient(timeout=120) as client:
             async with client.stream(
