@@ -1082,7 +1082,9 @@ Open **http://localhost:8742** for the chat UI. The async server handles concurr
 | GET | `/status` | Agent status, Ollama availability |
 | POST | `/chat` | `{"message":"..."}` → PrismCard JSON |
 | POST | `/plan` | `{"task":"...", "context":{}}` → plan card |
-| GET | `/reflect` | Learned state for current user |
+| GET | `/identity/dashboard` | Phase, soul, persona, growth, tensions |
+| GET | `/identity/onboard` | Web ceremony page (HTML) |
+| GET | `/reflection` | Per-trigger reflection snapshot |
 
 ### Sports & Prediction
 
@@ -1657,7 +1659,7 @@ All major capabilities are implemented and tested. The table below is the author
 | Organ library | `organs/` + `~/.prism/organs/` | **Working** — 35 bundled organs; user-creatable; LLM-synthesisable on demand |
 | Identity layer | `prism_soul.py` | Working — belief graph, user-defined lenses, stated vs observed delta, LLM context injection |
 | Identity ceremony | `prism_identity_ceremony.py` | Working — 7-question LLM-facilitated onboarding, heuristic fallback; web ceremony at `/identity/onboard` |
-| Identity dashboard | `prism_routes_identity.py` | Working — visual phase, traits, beliefs, growth, tensions at `/identity` |
+| Identity dashboard | `prism_routes_identity.py` | Working — visual phase, traits, beliefs, growth, tensions at `/identity/dashboard` (HTML at `/identity/ui`) |
 | Weekly "Your Prism" report | `prism_routes_identity.py` | Working — reflection run on demand; `POST /reports/weekly/generate` |
 | Cross-device identity continuity | `prism_routes_identity.py` + `prism_routes_federation.py` | Working — soul/persona export+merge; higher-confidence-wins belief merging |
 | Continuous daemon | `prism_daemon.py` | Working — systemd-compatible, OrganBus flush, horizon evaluation, --ceremony flag |

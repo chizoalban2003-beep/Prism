@@ -7,23 +7,20 @@ Routes:
   GET  /status
   GET  /plan
   POST /plan
-  GET  /reflect
-  GET  /history
-  GET  /artifacts
-  POST /artifacts/rate
-  GET  /identity
-  GET  /identity/domains
-  POST /identity/observe
-  POST /identity/reset
   GET  /context
   GET  /outcomes/stats
   GET  /reflection
+
+Identity endpoints live in `prism_routes_identity.py`
+(`/identity/dashboard`, `/identity/onboard`, `/identity/ui`, etc.).
+Conversation history is persisted by `prism_session_manager` and
+exposed at `GET /sessions/{id}/history`.
 """
 from __future__ import annotations
 
 import asyncio
 from dataclasses import asdict as _asdict
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -127,130 +124,6 @@ async def plan_post(request: Request):
         n_plans          = body.get("n_plans", 4),
     )
     return plan_of_action_card(plan).to_json()
-
-
-# ---------------------------------------------------------------------------
-# /reflect
-# ---------------------------------------------------------------------------
-
-@router.get("/reflect")
-async def reflect():
-    agent = _get_agent()
-    if agent is None:
-        return JSONResponse({"error": "agent not ready", "status": 503}, status_code=503)
-    return agent.reflect()
-
-
-# ---------------------------------------------------------------------------
-# /history
-# ---------------------------------------------------------------------------
-
-@router.get("/history")
-async def history(days: int = 14):
-    agent = _get_agent()
-    if agent is None:
-        return JSONResponse({"error": "agent not ready", "status": 503}, status_code=503)
-    hist = agent._assistant.history(agent._profile.name, days=days)
-    return {"history": hist}
-
-
-# ---------------------------------------------------------------------------
-# /artifacts
-# ---------------------------------------------------------------------------
-
-@router.get("/artifacts")
-async def artifacts(domain: Optional[str] = None, n: int = 10):
-    agent = _get_agent()
-    if agent is None:
-        return JSONResponse({"error": "agent not ready", "status": 503}, status_code=503)
-    return {"artifacts": agent.recent_artifacts(domain=domain, n=n)}
-
-
-@router.post("/artifacts/rate")
-async def artifacts_rate(request: Request):
-    body: dict[str, Any] = {}
-    try:
-        body = await request.json()
-    except Exception:
-        pass
-
-    agent = _get_agent()
-    if agent is None:
-        return JSONResponse({"error": "agent not ready", "status": 503}, status_code=503)
-
-    artifact_id = body.get("artifact_id")
-    if not artifact_id:
-        return JSONResponse(
-            {"error": "'artifact_id' field required", "status": 400}, status_code=400
-        )
-    rating = float(body.get("rating", 0.0))
-    return agent.rate_artifact(artifact_id, rating)
-
-
-# ---------------------------------------------------------------------------
-# /identity
-# ---------------------------------------------------------------------------
-
-@router.get("/identity")
-async def identity():
-    agent = _get_agent()
-    if agent is None:
-        return JSONResponse({"error": "agent not ready", "status": 503}, status_code=503)
-    return agent.identity()
-
-
-@router.get("/identity/domains")
-async def identity_domains():
-    agent = _get_agent()
-    if agent is None:
-        return JSONResponse({"error": "agent not ready", "status": 503}, status_code=503)
-    return {"domains": agent.identity_domains()}
-
-
-@router.post("/identity/observe")
-async def identity_observe(request: Request):
-    body: dict[str, Any] = {}
-    try:
-        body = await request.json()
-    except Exception:
-        pass
-
-    agent = _get_agent()
-    if agent is None:
-        return JSONResponse({"error": "agent not ready", "status": 503}, status_code=503)
-
-    domain = body.get("domain")
-    if not domain:
-        return JSONResponse(
-            {"error": "'domain' field required", "status": 400}, status_code=400
-        )
-    identity = agent.observe_identity(
-        domain  = domain,
-        fulcrum = float(body.get("fulcrum", 0.5)),
-        rating  = float(body.get("rating", 0.5)),
-        context = body.get("context") or {},
-    )
-    return identity
-
-
-@router.post("/identity/reset")
-async def identity_reset(request: Request):
-    body: dict[str, Any] = {}
-    try:
-        body = await request.json()
-    except Exception:
-        pass
-
-    agent = _get_agent()
-    if agent is None:
-        return JSONResponse({"error": "agent not ready", "status": 503}, status_code=503)
-
-    domain = body.get("domain")
-    if not domain:
-        return JSONResponse(
-            {"error": "'domain' field required", "status": 400}, status_code=400
-        )
-    return agent.reset_identity_domain(domain)
 
 
 # ---------------------------------------------------------------------------

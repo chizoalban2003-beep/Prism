@@ -162,24 +162,6 @@ def test_status(client):
     data = r.json()
     assert "phase" in data or "version" in data or "ollama" in data
 
-def test_reflect(client):
-    r = client.get("/reflect")
-    assert r.status_code == 200
-
-def test_identity(client):
-    r = client.get("/identity")
-    assert r.status_code == 200
-
-def test_identity_domains(client):
-    r = client.get("/identity/domains")
-    assert r.status_code == 200
-    assert "domains" in r.json()
-
-def test_artifacts(client):
-    r = client.get("/artifacts")
-    assert r.status_code == 200
-    assert "artifacts" in r.json()
-
 def test_context_no_context_manager(client):
     r = client.get("/context")
     assert r.status_code == 200
@@ -322,10 +304,6 @@ def test_smarthome_status_not_configured(client):
 def test_chat_post(client):
     r = client.post("/chat", json={"message": "hello"})
     assert r.status_code == 200
-
-def test_ask_missing_prompt(client):
-    r = client.post("/ask", json={})
-    assert r.status_code in (400, 422)
 
 def test_search_empty_query(client):
     r = client.get("/search?q=")

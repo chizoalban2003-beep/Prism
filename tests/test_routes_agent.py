@@ -1,6 +1,6 @@
 """
-Tests for prism_routes_agent — /status, /plan, /reflect, /history,
-/artifacts, /identity, /context, /outcomes/stats, /reflection.
+Tests for prism_routes_agent — /status, /plan, /context,
+/outcomes/stats, /reflection.
 """
 from __future__ import annotations
 
@@ -73,94 +73,6 @@ class TestAgentStatus:
         client, _ = _app_with_agent()
         data = client.get("/status").json()
         assert "ollama" in data
-
-
-# ---------------------------------------------------------------------------
-# /reflect
-# ---------------------------------------------------------------------------
-
-class TestAgentReflect:
-    def test_reflect_503_no_agent(self):
-        r = _app_no_agent().get("/reflect")
-        assert r.status_code == 503
-
-    def test_reflect_200_with_agent(self):
-        client, _ = _app_with_agent()
-        r = client.get("/reflect")
-        assert r.status_code == 200
-
-    def test_reflect_returns_dict(self):
-        client, _ = _app_with_agent()
-        data = client.get("/reflect").json()
-        assert isinstance(data, dict)
-
-
-# ---------------------------------------------------------------------------
-# /artifacts
-# ---------------------------------------------------------------------------
-
-class TestAgentArtifacts:
-    def test_artifacts_503_no_agent(self):
-        r = _app_no_agent().get("/artifacts")
-        assert r.status_code == 503
-
-    def test_artifacts_200(self):
-        client, _ = _app_with_agent()
-        r = client.get("/artifacts")
-        assert r.status_code == 200
-        assert "artifacts" in r.json()
-
-    def test_artifacts_rate_missing_id(self):
-        client, _ = _app_with_agent()
-        r = client.post("/artifacts/rate", json={"rating": 0.8})
-        assert r.status_code == 400
-
-    def test_artifacts_rate_ok(self):
-        client, agent = _app_with_agent()
-        agent.rate_artifact.return_value = {"rated": True}
-        r = client.post("/artifacts/rate", json={"artifact_id": "abc", "rating": 0.9})
-        assert r.status_code == 200
-
-
-# ---------------------------------------------------------------------------
-# /identity
-# ---------------------------------------------------------------------------
-
-class TestAgentIdentity:
-    def test_identity_503_no_agent(self):
-        r = _app_no_agent().get("/identity")
-        assert r.status_code == 503
-
-    def test_identity_200(self):
-        client, _ = _app_with_agent()
-        r = client.get("/identity")
-        assert r.status_code == 200
-
-    def test_identity_domains_200(self):
-        client, _ = _app_with_agent()
-        data = client.get("/identity/domains").json()
-        assert "domains" in data
-        assert isinstance(data["domains"], list)
-
-    def test_identity_observe_missing_domain(self):
-        client, _ = _app_with_agent()
-        r = client.post("/identity/observe", json={"fulcrum": 0.5})
-        assert r.status_code == 400
-
-    def test_identity_observe_ok(self):
-        client, _ = _app_with_agent()
-        r = client.post("/identity/observe", json={"domain": "sport", "rating": 0.7})
-        assert r.status_code == 200
-
-    def test_identity_reset_missing_domain(self):
-        client, _ = _app_with_agent()
-        r = client.post("/identity/reset", json={})
-        assert r.status_code == 400
-
-    def test_identity_reset_ok(self):
-        client, _ = _app_with_agent()
-        r = client.post("/identity/reset", json={"domain": "sport"})
-        assert r.status_code == 200
 
 
 # ---------------------------------------------------------------------------

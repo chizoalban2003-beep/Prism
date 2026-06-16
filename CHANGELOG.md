@@ -8,6 +8,32 @@ version bumps.
 
 ## [Unreleased]
 
+## [0.1.1] — 2026-06-16
+
+Patch release. End-to-end smoke test on a fresh host (boot → HTTP →
+auth → Ollama/tinyllama chat round-trip) surfaced a set of orphan
+routes whose target agent methods were never implemented; the unit
+tests passed because the test stub was a `MagicMock`. Removed so a
+first user with `curl` doesn't hit confusing 500s.
+
+### Removed
+- `GET /reflect`, `GET /history`, `GET /artifacts`, `POST /artifacts/rate`
+  in `prism_routes_agent.py` — all five called methods that don't exist
+  on `PrismAgent` (`reflect`, `_assistant`, `recent_artifacts`,
+  `rate_artifact`).
+- `GET /identity`, `GET /identity/domains`, `POST /identity/observe`,
+  `POST /identity/reset` in `prism_routes_agent.py` — same pattern.
+  The canonical identity snapshot lives at `GET /identity/dashboard`,
+  the HTML page at `GET /identity/ui`, the cross-device export at
+  `GET /federation/identity`.
+- `POST /ask` in `prism_routes_core.py` — called missing `agent.ask`.
+  Use `POST /chat` for the working conversational entry point.
+
+### Fixed
+- README API table and capability matrix referenced the removed `/reflect`
+  and `/identity` paths; updated to point at `/identity/dashboard`,
+  `/identity/ui`, `/identity/onboard`, and `/reflection`.
+
 ## [0.1.0] — 2026-06-16
 
 First public release. Local-first personal-AI daemon: physics-based
@@ -52,5 +78,6 @@ actual decisions.
 - `prism_device_agent.open_app` / `install_package` validate input
   against a strict shape and reject path-traversal / scheme tricks.
 
-[Unreleased]: https://github.com/chizoalban2003-beep/Prism/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/chizoalban2003-beep/Prism/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/chizoalban2003-beep/Prism/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/chizoalban2003-beep/Prism/releases/tag/v0.1.0

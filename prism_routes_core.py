@@ -32,38 +32,6 @@ router = APIRouter()
 
 
 # ---------------------------------------------------------------------------
-# POST /ask
-# ---------------------------------------------------------------------------
-
-@router.post("/ask")
-async def ask(request: Request):
-    body: dict[str, Any] = {}
-    try:
-        body = await request.json()
-    except Exception:
-        pass
-
-    agent = _get_agent()
-    if agent is None:
-        return JSONResponse({"error": "agent not ready", "status": 503}, status_code=503)
-
-    prompt = body.get("prompt", "")
-    if not prompt:
-        return JSONResponse(
-            {"error": "'prompt' field required", "status": 400}, status_code=400
-        )
-
-    result = await asyncio.to_thread(agent.ask, prompt)
-    return {
-        "task":       result.task,
-        "method":     result.method,
-        "success":    result.success,
-        "elapsed_ms": result.elapsed_ms,
-        "output":     result.output,
-    }
-
-
-# ---------------------------------------------------------------------------
 # POST /chat
 # ---------------------------------------------------------------------------
 

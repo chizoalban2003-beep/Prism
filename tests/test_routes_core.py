@@ -151,13 +151,6 @@ def test_predict_match_endpoint(client):
     assert "p_home_win" in r.json()
 
 
-def test_ask_endpoint_routes_task(client):
-    r = client.post("/ask", json={"prompt": "create a training plan for next week"})
-    assert r.status_code == 200
-    data = r.json()
-    assert "task" in data or "output" in data
-
-
 def test_server_localhost_only():
     """ASGI server must always bind to 127.0.0.1."""
     import pytest as _pt
@@ -172,36 +165,9 @@ def test_unknown_route_returns_404(client):
     assert r.status_code == 404
 
 
-def test_history_endpoint(client):
-    r = client.get("/history?days=7")
-    assert r.status_code == 200
-    assert "history" in r.json()
-
-
 def test_devices_endpoint(client):
     r = client.get("/devices")
     assert r.status_code == 200
     assert "devices" in r.json()
 
 
-def test_identity_endpoint_returns_json(client):
-    r = client.get("/identity")
-    assert r.status_code == 200
-    data = r.json()
-    assert "domains" in data
-    assert "insight" in data
-
-
-def test_identity_observe_endpoint_updates_identity(client):
-    r = client.post("/identity/observe",
-                    json={"domain": "sport", "fulcrum": 0.6, "rating": 0.8})
-    assert r.status_code == 200
-    assert "n_decisions" in r.json()
-
-
-def test_artifacts_endpoint_returns_json(client):
-    r = client.get("/artifacts?domain=sport&n=5")
-    assert r.status_code == 200
-    data = r.json()
-    assert "artifacts" in data
-    assert isinstance(data["artifacts"], list)
