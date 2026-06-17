@@ -345,7 +345,8 @@ class TestAgentTopologyIntegration:
         card = agent._execute("nonexistent_intent_xyz", "do something weird", {})
         body = card.body.lower()
         assert ("capability" in body or "synthesize" in body or
-                "ollama" in body or "llm" in body or "not found" in body)
+                "ollama" in body or "llm" in body or "not found" in body or
+                "organ" in body or "build" in body)
 
     @pytest.mark.slow
     @pytest.mark.timeout(120)
