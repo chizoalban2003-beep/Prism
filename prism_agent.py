@@ -39,6 +39,7 @@ from prism_responses import (
     risk_card,
     setup_required_card,
     squad_card,
+    synthesis_approval_card,
     text_card,
 )
 from prism_search import PrismSearch
@@ -2065,43 +2066,10 @@ class PrismAgent:
             except Exception as exc:
                 return text_card(f"Organ '{intent}' failed: {exc}", intent)
 
-        # Unknown intent — attempt synthesis before falling back to autonomous
-        if intent not in {"autonomous", "approve_pending"}:
-            # Check L1 synthesis limit
-            synthesis_ok = (
-                self._bud_mgr is None or self._bud_mgr.synthesis_allowed()
-            )
-            if synthesis_ok:
-                logger.info("[agent] Unknown intent '%s' — attempting organ synthesis", intent)
-                if self._organ_loader.synthesize(intent, message):
-                    organ_fn = self._organ_loader.get(intent)
-                    if organ_fn is not None:
-                        if self._bud_mgr is not None:
-                            self._bud_mgr.record_synthesis()
-                        try:
-                            caps = self._organ_loader.get_organ_capabilities(intent)
-                            if self._bud_mgr is not None:
-                                handle = self._bud_mgr.spawn(intent, message, ctx, caps)
-                                return self._bud_mgr.execute(handle, organ_fn)
-                            return organ_fn(intent, message, ctx)
-                        except Exception as exc:
-                            return text_card(
-                                f"Synthesized organ '{intent}' failed: {exc}", intent)
-                else:
-                    # Synthesis failed — explain what PRISM would need
-                    router = getattr(self, '_router', None)
-                    if router is None:
-                        return text_card(
-                            f"I don't have a built-in handler for '{intent}'.\n\n"
-                            "To build this capability automatically, connect an LLM "
-                            "(Ollama or Claude API key in prism_config.toml). "
-                            "PRISM will synthesize a new organ, validate it, and "
-                            "register it permanently for future sessions.",
-                            f"Capability not found — {intent}",
-                        )
-            else:
-                logger.warning("[agent] Synthesis limit reached for this session")
-
+        # Unknown intent — defer to _handle_unknown, which gates organ
+        # synthesis behind a synthesis_approval_card. Approval round-trips
+        # through /device/approve into handle_synthesis_approval(); that path
+        # is the only one allowed to call OrganLoader.synthesize() now.
         return self._handle_unknown(intent, message, ctx)
 
     def _handle_voice(self, message: str, ctx: dict) -> PrismCard:
@@ -2296,33 +2264,89 @@ class PrismAgent:
                 docs_url = "https://support.google.com/accounts/answer/185833",
             )
 
-        # Gate destructive/external actions behind policy
-        if approval_needed:
-            # Store pending and ask
-            self._pending_approval = {
-                "task":    message,
-                "reason":  f"This requires: {capability_desc}. Approve autonomous execution?",
-                "expires": time.time() + 300,   # 5-minute window
-            }
+        # Self-extension: PRISM is about to synthesise a new organ for this
+        # request. Instead of doing it silently, surface a synthesis approval
+        # card disclosing what will be built, where it lands on disk, and
+        # offering a free-text instructions slot so the user can shape the
+        # synthesis prompt. On approval, /device/approve dispatches back to
+        # handle_synthesis_approval() below. The legacy `approval_needed`
+        # text-card path used to wait for a typed 'yes' — replaced because
+        # synthesis_approval_card already carries the same disclosure plus
+        # a structured Approve/Deny button pair and an optional instructions
+        # field, so a single gate covers both 'risky external action' and
+        # 'novel capability' cases from the user's POV.
+        intent_slug = intent if intent and intent != "general_chat" and re.match(r"^[a-z_][a-z0-9_]*$", intent) else self._slugify_intent(message)
+        risk_hint = (
+            f"This may affect external systems via {capability_desc}. " if approval_needed and capability_desc else ""
+        ) + "Writes a Python file to ~/.prism/organs/ and may pip-install dependencies. AST-validated against unsafe operations before running."
+        return synthesis_approval_card(
+            intent     = intent_slug,
+            message    = message,
+            capability = capability_desc,
+            risk_hint  = risk_hint,
+        )
+
+    def _slugify_intent(self, message: str) -> str:
+        """
+        Turn a free-text request into a Python-safe intent identifier suitable
+        for use as an organ file name. 'What is on my calendar today?' →
+        'synth_what_is_on_my_calendar_today'.
+        """
+        base = re.sub(r"[^a-z0-9_]+", "_", (message or "").lower()).strip("_")
+        base = re.sub(r"_+", "_", base)[:40] or "new_intent"
+        return f"synth_{base}"
+
+    def handle_synthesis_approval(self, params: dict, instructions: str = "") -> PrismCard:
+        """
+        Called by /device/approve when the user approves synthesising a new
+        organ. Augments the synthesis prompt with the user's optional
+        instructions, drives OrganLoader.synthesize() through its safety
+        pipeline, and runs the freshly registered organ inline. Falls back
+        to PrismAutonomous.execute_async for capabilities the organ_loader
+        can't satisfy (those needing pip installs, async work, etc.).
+        """
+        intent     = (params or {}).get("intent", "")
+        message    = (params or {}).get("message", "")
+        capability = (params or {}).get("capability", "")
+
+        if not intent or not message:
             return text_card(
-                f"I can do this, but it involves **{capability_desc}** which may "
-                f"affect external systems.\n\n"
-                f"Say **'yes, go ahead'** to authorise, or **'cancel'** to stop.\n\n"
-                f"Task: {message}",
-                "Approval needed before I proceed")
+                "Synthesis approval was missing intent or message.",
+                "Synthesis failed")
 
-        # Safe to proceed autonomously
-        task_id = self._autonomous.execute_async(message, ctx)
+        refined = message
+        if instructions and instructions.strip():
+            refined = (f"{message}\n\n"
+                       f"User instructions for the implementation:\n"
+                       f"{instructions.strip()}")
 
-        notify_suffix = ""
-        if self._push and self._push.configured:
-            notify_suffix = "\nYou'll get a push notification when it's done."
+        # First try the OrganLoader pipeline (sandboxed, AST-checked, persistent).
+        try:
+            if self._organ_loader and self._organ_loader.synthesize(intent, refined):
+                organ_fn = self._organ_loader.get(intent)
+                if organ_fn:
+                    try:
+                        return organ_fn(intent, message, {})
+                    except Exception as exc:
+                        logger.warning("Synthesised organ '%s' failed at execution: %s",
+                                       intent, exc)
+                        return text_card(
+                            f"Built `{intent}` but it failed when run: {exc}",
+                            intent)
+        except Exception as exc:
+            logger.warning("OrganLoader.synthesize failed for '%s': %s", intent, exc)
 
-        capability_line = f"\nAcquiring capability: **{capability_desc}**" if capability_desc else ""
+        # Fallback: the autonomous engine handles capabilities that need
+        # external packages or async execution.
+        if self._autonomous:
+            task_id = self._autonomous.execute_async(refined, {})
+            cap_line = f"\nCapability: **{capability}**" if capability else ""
+            return text_card(
+                f"Approved — building and running the tool now.{cap_line}\n"
+                f"Task ID: `{task_id}`\n\n"
+                f"I'll notify you when it finishes.",
+                "Synthesising in background")
 
         return text_card(
-            f"On it — handling this autonomously in the background.{capability_line}\n"
-            f"Task ID: `{task_id}`{notify_suffix}\n\n"
-            f"I'll synthesise the tool, install any dependencies, execute, "
-            f"and report back.",
-            "Autonomous execution started")
+            "Couldn't synthesise a tool — no organ_loader and no autonomous engine.",
+            "Synthesis failed")

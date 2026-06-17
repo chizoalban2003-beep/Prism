@@ -116,6 +116,68 @@ def setup_required_card(
     )
 
 
+def synthesis_approval_card(
+    intent:     str,
+    message:    str,
+    capability: str = "",
+    risk_hint:  str = "",
+) -> PrismCard:
+    """
+    Shown before PRISM synthesises a new organ for an unknown capability.
+    Discloses what will be built (intent name, target capability, where
+    code lands on disk) and offers an optional free-text instructions
+    field so the user can shape the synthesis prompt before approving.
+
+    On approval, /device/approve dispatches to PrismAgent.handle_synthesis_approval
+    with the params from card_data plus the optional instructions string.
+    The chat UI renders the instructions textarea only when card_data.kind
+    == "synthesis", so this card stays distinct from regular organ approval.
+    """
+    import uuid as _uuid
+    task_id = str(_uuid.uuid4())[:8]
+
+    def _esc(s: str) -> str:
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    cap_line = capability.strip() or f"a tool for: '{message[:80]}'"
+    body = (
+        "<div style='font-size:13px;line-height:1.5'>"
+        "I don't have an organ for this yet. With your approval I'll "
+        "<strong>write one now</strong>, AST-validate it against unsafe "
+        "operations, persist it to "
+        f"<code style='padding:1px 5px;border-radius:4px;"
+        f"background:rgba(255,255,255,.06);font-size:10.5px'>"
+        f"~/.prism/organs/{_esc(intent)}.py</code>, "
+        "register it into my logic registry, and run it."
+        "</div>"
+        "<div style='margin-top:10px;font-size:12px;color:var(--mu)'>"
+        f"<strong style='color:var(--tx)'>What I'll build:</strong> {_esc(cap_line)}"
+        "</div>"
+    )
+    if risk_hint:
+        body += (
+            "<div style='margin-top:8px;font-size:11px;color:var(--ye)'>"
+            f"⚠ {_esc(risk_hint)}</div>"
+        )
+
+    return PrismCard(
+        card_type = CardType.APPROVAL,
+        title     = "Build new organ?",
+        body      = body,
+        card_data = {
+            "task_id": task_id,
+            "task":    "_synthesize_organ",
+            "kind":    "synthesis",
+            "params": {
+                "intent":     intent,
+                "message":    message,
+                "capability": capability,
+            },
+        },
+        actions = ["Approve", "Deny"],
+    )
+
+
 def approval_card(task: str, reason: str, params: Optional[dict] = None) -> PrismCard:
     """
     Card shown when a device task requires user confirmation before executing.

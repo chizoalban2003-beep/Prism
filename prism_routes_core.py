@@ -95,16 +95,39 @@ async def device_approve(request: Request):
     except Exception:
         pass
 
-    approved = body.get("approved", False)
-    task     = body.get("task", "")
-    params   = body.get("params", {})
+    approved     = body.get("approved", False)
+    task         = body.get("task", "")
+    params       = body.get("params", {})
+    instructions = body.get("instructions", "")
 
     if not approved:
         try:
             from prism_responses import text_card
+            if task == "_synthesize_organ":
+                return text_card(
+                    "Cancelled. I won't build that organ. "
+                    "Rephrase or add more context if you'd like a different approach.",
+                    "Synthesis cancelled").to_json()
             return text_card("Action cancelled.").to_json()
         except ImportError:
             return {"message": "Action cancelled."}
+
+    # Synthesis approval — route to the agent's synthesis handler so the
+    # new organ is generated, AST-validated, persisted, and executed with
+    # the user's optional refinement instructions folded into the prompt.
+    if task == "_synthesize_organ":
+        agent = _get_agent()
+        if agent and hasattr(agent, "handle_synthesis_approval"):
+            try:
+                card = agent.handle_synthesis_approval(params, instructions)
+                return card.to_json()
+            except Exception as exc:
+                return JSONResponse(
+                    {"error": f"Synthesis handler failed: {exc}", "status": 500},
+                    status_code=500)
+        return JSONResponse(
+            {"error": "Agent not available for synthesis approval", "status": 503},
+            status_code=503)
 
     try:
         from prism_device_agent import PrismDeviceAgent
