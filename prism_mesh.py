@@ -23,6 +23,81 @@ from typing import Optional
 
 _DEFAULT_TIMEOUT = 8.0
 
+# Hop limit for chained forwards. Each forward bumps `_hop` in params/body;
+# at MAX_HOPS the local mesh refuses to forward again. Prevents A→B→C→…
+# loops from a misbehaving organ or a compromised peer. Two hops is enough
+# for legitimate "ask laptop, laptop asks desk" patterns and stops longer
+# chains cold.
+MAX_HOPS = 2
+
+# Capability hints: keyword → predicate(peer_capabilities_dict) -> bool.
+# The router scores each peer by counting satisfied predicates whose
+# keyword appears in the task description / params. Predicates are tiny
+# and read against the dict returned by /device/capabilities, so the
+# shape is exactly what `Peer.capabilities` already stores.
+def _has_browser(caps: dict) -> bool:
+    return bool(caps.get("has_browser"))
+
+def _has_cat(category: str):
+    def pred(caps: dict) -> bool:
+        cats = caps.get("categories") or caps.get("cli_tools") or {}
+        return bool(cats.get(category))
+    return pred
+
+def _has_pkg(pkg: str):
+    def pred(caps: dict) -> bool:
+        return pkg in (caps.get("py_packages") or [])
+    return pred
+
+CAPABILITY_HINTS: dict[str, list] = {
+    "browser":      [_has_browser],
+    "url":          [_has_browser],
+    "screenshot":   [_has_browser],
+    "scrape":       [_has_browser],
+    "git":          [_has_cat("git")],
+    "search":       [_has_cat("search")],
+    "find":         [_has_cat("find_file")],
+    "image":        [_has_cat("image_resize"), _has_cat("image_compress"), _has_pkg("PIL")],
+    "video":        [_has_cat("video")],
+    "ffmpeg":       [_has_cat("video")],
+    "compress":     [_has_cat("compress_zip"), _has_cat("compress_tar")],
+    "zip":          [_has_cat("compress_zip")],
+    "tar":          [_has_cat("compress_tar")],
+    "install":      [_has_cat("package_manager")],
+    "package":      [_has_cat("package_manager")],
+}
+
+
+def _task_keywords(task: str, params: Optional[dict]) -> list[str]:
+    """Lowercase keywords drawn from the task slug + str-valued params."""
+    bag: list[str] = []
+    if task:
+        bag.append(task.lower())
+    for v in (params or {}).values():
+        if isinstance(v, str):
+            bag.append(v.lower())
+    return bag
+
+
+def score_peer_for_task(peer_caps: dict, task: str, params: Optional[dict] = None) -> int:
+    """How well does this peer match the task? Higher = better.
+
+    Score = number of satisfied capability predicates whose keyword
+    appears in the task or string-valued params. Returns 0 when nothing
+    matches — the caller decides whether to fall back to "any peer" or
+    refuse to auto-route.
+    """
+    bag = " ".join(_task_keywords(task, params))
+    if not bag:
+        return 0
+    score = 0
+    for keyword, preds in CAPABILITY_HINTS.items():
+        if keyword not in bag:
+            continue
+        if any(p(peer_caps) for p in preds):
+            score += 1
+    return score
+
 
 @dataclass
 class Peer:
@@ -92,6 +167,36 @@ class PrismMesh:
                 return p
         return None
 
+    def find_capable_peer(
+        self, task: str, params: Optional[dict] = None
+    ) -> tuple[Optional[Peer], list[Peer]]:
+        """Auto-route by capability match.
+
+        Scores every registered peer with ``score_peer_for_task`` and
+        returns ``(best, candidates)`` where:
+
+        * ``best`` is the single highest-scoring peer when it strictly beats
+          every other peer (no ties at the top, score > 0).
+        * ``candidates`` is the list of peers tied at the maximum score so
+          the caller can show "pick one" UX when auto-routing is ambiguous.
+
+        Returns ``(None, [])`` when no peers are registered. Returns
+        ``(None, candidates)`` when the best is ambiguous or the score is
+        zero — caller chooses fallback policy.
+        """
+        peers = list(self._peers.values())
+        if not peers:
+            return None, []
+        scored = [(score_peer_for_task(p.capabilities or {}, task, params), p) for p in peers]
+        scored.sort(key=lambda t: t[0], reverse=True)
+        top_score = scored[0][0]
+        if top_score <= 0:
+            return None, peers  # no capability signal — caller picks
+        top = [p for s, p in scored if s == top_score]
+        if len(top) == 1:
+            return top[0], top
+        return None, top
+
     # ------------------------------------------------------------------ #
     # Outbound calls
     # ------------------------------------------------------------------ #
@@ -112,7 +217,15 @@ class PrismMesh:
         peer = self._peers.get(peer_id)
         if peer is None:
             return {"success": False, "error": f"Unknown peer: {peer_id}"}
-        body = {"task": task, "params": params or {}, "dry_run": dry_run}
+        out_params = dict(params or {})
+        hop = int(out_params.get("_hop") or 0)
+        if hop >= MAX_HOPS:
+            return {
+                "success": False,
+                "error": f"Hop limit reached ({hop}/{MAX_HOPS}); refusing to forward further.",
+            }
+        out_params["_hop"] = hop + 1
+        body = {"task": task, "params": out_params, "dry_run": dry_run}
         data = self._http_json("POST", peer, "/device/execute", body)
         if isinstance(data, dict):
             peer.last_seen = time.time()
@@ -120,11 +233,16 @@ class PrismMesh:
             return data
         return {"success": False, "error": "Peer returned no JSON"}
 
-    def forward_chat(self, peer_id: str, message: str) -> dict:
+    def forward_chat(self, peer_id: str, message: str, hop: int = 0) -> dict:
         peer = self._peers.get(peer_id)
         if peer is None:
             return {"error": f"Unknown peer: {peer_id}"}
-        data = self._http_json("POST", peer, "/chat", {"message": message})
+        if hop >= MAX_HOPS:
+            return {
+                "error": f"Hop limit reached ({hop}/{MAX_HOPS}); refusing to forward further.",
+            }
+        data = self._http_json("POST", peer, "/chat",
+                               {"message": message, "_hop": hop + 1})
         if isinstance(data, dict):
             peer.last_seen = time.time()
             self._save()

@@ -31,6 +31,7 @@ def execute(intent: str, message: str, ctx: dict):
         if m:
             peer_name = m.group(1)
 
+    auto_routed = False
     if not peer_name:
         peers = mesh.list_peers()
         if not peers:
@@ -39,26 +40,42 @@ def execute(intent: str, message: str, ctx: dict):
                 "'register laptop at 192.168.1.42:8742 token <tok>'.",
                 "No peers",
             )
-        names = ", ".join(p.name for p in peers)
-        return text_card(
-            f"Which device should I forward to? Registered peers: {names}.",
-            "Pick a peer",
-        )
-
-    peer = mesh.find_peer_by_name(peer_name)
-    if peer is None:
-        return text_card(
-            f"No peer named '{peer_name}'. Register one first.",
-            "Unknown peer",
-        )
+        # Try capability-aware auto-routing on the (task or message) intent.
+        route_intent = task or fwd_msg or message or ""
+        best, candidates = mesh.find_capable_peer(route_intent, params.get("task_params"))
+        if best is not None:
+            peer = best
+            peer_name = peer.name
+            auto_routed = True
+        elif candidates and len(candidates) > 1:
+            names = ", ".join(p.name for p in candidates)
+            return text_card(
+                f"Multiple peers can handle this: {names}. Which one? "
+                "Say 'on <name>' to pick.",
+                "Pick a peer",
+            )
+        else:
+            names = ", ".join(p.name for p in peers)
+            return text_card(
+                f"Which device should I forward to? Registered peers: {names}.",
+                "Pick a peer",
+            )
+    else:
+        peer = mesh.find_peer_by_name(peer_name)
+        if peer is None:
+            return text_card(
+                f"No peer named '{peer_name}'. Register one first.",
+                "Unknown peer",
+            )
 
     # Default: forward the original chat message to the peer's /chat
     payload = fwd_msg or message or ""
+    auto_note = " (auto-routed by capability match)" if auto_routed else ""
     if task:
         result = mesh.forward_task(peer.peer_id, task, params.get("task_params") or {})
         ok = bool(result.get("success"))
         body = result.get("output") or result.get("error") or ""
-        title = f"{peer.name}: {task}"
+        title = f"{peer.name}: {task}{auto_note}"
         return text_card(
             f"{'✓' if ok else '✗'} {body[:1500]}",
             title,
@@ -66,7 +83,7 @@ def execute(intent: str, message: str, ctx: dict):
 
     result = mesh.forward_chat(peer.peer_id, payload)
     # Result is the peer's PrismCard.to_json() — surface the body inline
-    title = result.get("title") or f"From {peer.name}"
+    title = result.get("title") or f"From {peer.name}{auto_note}"
     body = result.get("body") or ""
     if not body and result.get("error"):
         body = f"Forwarding failed: {result['error']}"
