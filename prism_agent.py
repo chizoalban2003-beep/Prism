@@ -1311,6 +1311,8 @@ class PrismAgent:
                 except Exception:
                     DailyPlan = MatchPrediction = InjuryRiskPrediction = None
                 if DailyPlan and isinstance(output, DailyPlan):
+                    self._last_plan = output
+                    self._last_plan_request = message
                     return plan_card(output)
                 if MatchPrediction and isinstance(output, MatchPrediction):
                     return prediction_card(output)
@@ -2108,6 +2110,15 @@ class PrismAgent:
                         if caps:
                             why_parts.append("Uses capability: " + ", ".join(sorted(caps)))
                         why_parts.append(f"Organ '{intent}' is policy-gated")
+                        prior = []
+                        try:
+                            if self._instructions is not None:
+                                prior = self._instructions.prior_denials_for(intent)
+                        except Exception:
+                            prior = []
+                        if prior:
+                            last = prior[0].text[:200]
+                            why_parts.append(f"You denied this before: \"{last}\"")
                         return approval_card(
                             task       = intent,
                             reason     = f"Run <strong>{intent}</strong> for: {action_desc}",
@@ -2343,6 +2354,15 @@ class PrismAgent:
             f"This may affect external systems via {capability_desc}. " if approval_needed and capability_desc else ""
         ) + "Writes a Python file to ~/.prism/organs/ and may pip-install dependencies. AST-validated against unsafe operations before running."
         risk_level = "high" if approval_needed else "medium"
+        try:
+            prior_synth = self._instructions.prior_denials_for("_synthesize_organ") if self._instructions else []
+            prior_intent = self._instructions.prior_denials_for(intent_slug) if self._instructions else []
+            prior = (prior_intent or []) + (prior_synth or [])
+        except Exception:
+            prior = []
+        if prior:
+            last = prior[0].text[:200]
+            risk_hint = (risk_hint + " ").strip() + f" You denied this before: \"{last}\""
         return synthesis_approval_card(
             intent     = intent_slug,
             message    = message,
@@ -2375,6 +2395,52 @@ class PrismAgent:
                     pass
         except Exception as exc:
             logger.debug("record_denial best-effort failed: %s", exc)
+
+    def replan(self, instructions: str = "", tasks: list | None = None) -> PrismCard:
+        """
+        Re-run plan generation with user refinement instructions and an
+        optional edited task list. The instructions are folded into the KDE
+        ask message so the planner can honour pins/removals/timing changes
+        without the user needing to re-state the whole request.
+        """
+        base = getattr(self, "_last_plan_request", "") or "plan my day"
+        pinned = ""
+        if tasks:
+            try:
+                rows = []
+                for t in tasks[:24]:
+                    if not isinstance(t, dict):
+                        continue
+                    title = str(t.get("title", "") or "").strip()[:120]
+                    when = str(t.get("time", "") or "").strip()[:32]
+                    if title:
+                        rows.append(f"- {when} {title}".strip())
+                if rows:
+                    pinned = "Keep these slots from the current plan:\n" + "\n".join(rows)
+            except Exception:
+                pinned = ""
+        refine = (instructions or "").strip()
+        parts = [base, "Re-plan with these refinements:"]
+        if refine:
+            parts.append(refine)
+        if pinned:
+            parts.append(pinned)
+        message = "\n\n".join(parts)
+        if not self._kde:
+            return text_card("Re-planning requires the KDE module, which isn't available.", "Re-plan unavailable")
+        try:
+            result = self._kde.ask(message)
+            output = getattr(result, "output", result)
+            from sports_pro import DailyPlan
+            if isinstance(output, DailyPlan):
+                self._last_plan = output
+                self._last_plan_request = base
+                return plan_card(output)
+            if isinstance(output, str):
+                return text_card(output, "Re-plan")
+            return text_card(str(output), "Re-plan")
+        except Exception as exc:
+            return text_card(f"Re-plan failed: {exc}", "Re-plan error")
 
     def apply_settings_change(self, section: str) -> dict:
         """

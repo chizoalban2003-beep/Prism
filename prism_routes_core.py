@@ -311,6 +311,30 @@ async def narrative_proactive():
 
 
 # ---------------------------------------------------------------------------
+# POST /plan/replan
+# ---------------------------------------------------------------------------
+
+@router.post("/plan/replan")
+async def plan_replan(request: Request):
+    """Re-run plan generation with user refinement instructions and optional
+    edited task pins. Returns a fresh plan card."""
+    body: dict[str, Any] = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+
+    agent = _get_agent()
+    if agent is None or not hasattr(agent, "replan"):
+        return JSONResponse({"error": "Re-plan unavailable", "status": 503}, status_code=503)
+
+    instructions = (body.get("instructions") or "").strip()
+    tasks = body.get("tasks") or []
+    card = await asyncio.to_thread(agent.replan, instructions, tasks)
+    return card.to_json()
+
+
+# ---------------------------------------------------------------------------
 # GET /search
 # ---------------------------------------------------------------------------
 

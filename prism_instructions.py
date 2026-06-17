@@ -77,7 +77,9 @@ class PrismInstructions:
     def relevant_for(self, request: str) -> list[Instruction]:
         """
         Return instructions relevant to this specific request.
-        Matches by trigger category keyword overlap.
+        Matches by trigger category keyword overlap, or by trigger task-slug
+        words appearing in the request (so denial notes stored with
+        trigger=task_slug like "send_email" still surface).
         Always returns "always" trigger instructions.
         """
         req_lower  = request.lower()
@@ -88,9 +90,32 @@ class PrismInstructions:
                 relevant.append(instr)
                 continue
             keywords = self.TRIGGER_MAP.get(instr.trigger, [])
-            if any(kw in req_lower for kw in keywords):
+            if keywords and any(kw in req_lower for kw in keywords):
+                relevant.append(instr)
+                continue
+            # Fallback: trigger is a task slug (e.g. "send_email") —
+            # match if any non-trivial slug token appears in the request.
+            slug_tokens = [t for t in instr.trigger.replace("-", "_").split("_") if len(t) > 2]
+            if slug_tokens and any(t in req_lower for t in slug_tokens):
                 relevant.append(instr)
         return relevant
+
+    def prior_denials_for(self, task: str) -> list[Instruction]:
+        """
+        Return all active denial-derived instructions tagged with this task
+        slug. Used by the approval-card builders to surface a "you denied
+        this before" banner so the user (and the LLM classifier) doesn't
+        re-ask without context.
+        """
+        if not task:
+            return []
+        slug = task[:80]
+        with sqlite3.connect(self._db, timeout=30.0) as c:
+            rows = c.execute(
+                "SELECT id,text,trigger,active,created_at,use_count "
+                "FROM instructions WHERE active=1 AND trigger=? "
+                "ORDER BY created_at DESC", (slug,)).fetchall()
+        return [Instruction(*r) for r in rows]
 
     def to_context_string(self, request: str) -> str:
         """
