@@ -95,26 +95,94 @@ class PrismLoraTrainer:
     # ------------------------------------------------------------------
 
     def _collect_dpo_pairs(self) -> list[dict]:
-        """Pull DPO pairs from OutcomeRecord.correction field.
-        Each pair: {"prompt": str, "chosen": str, "rejected": str}
+        """Aggregate DPO preference pairs from two sources:
+
+        1. ``OutcomeRecord.correction`` — chains where the user supplied
+           a corrected answer. ``rejected`` = the model's original output.
+        2. ``PrismInstructions`` denial-derived rules (M12c) — both
+           task-scoped one-shot denials and broad standing rules become
+           preference pairs so the user's "no" or "never" actively trains
+           the personalised LoRA, not just guards the runtime gate.
+
+        Each pair: ``{"prompt": str, "chosen": str, "rejected": str}``.
+        Both sources are best-effort; missing DBs are silent.
         """
         pairs: list[dict] = []
+
+        # 1. Outcome corrections
         try:
             from prism_outcome_tracker import OutcomeTracker
             tracker_path = Path("~/.prism/outcomes.db").expanduser()
-            if not tracker_path.exists():
-                return []
-            tracker = OutcomeTracker(db_path=str(tracker_path))
-            for r in tracker.recent(limit=500):
-                if getattr(r, "correction", None) and getattr(r, "final_answer", None):
-                    pairs.append({
-                        "prompt":   getattr(r, "goal", ""),
-                        "chosen":   r.correction,
-                        "rejected": r.final_answer,
-                    })
+            if tracker_path.exists():
+                tracker = OutcomeTracker(db_path=str(tracker_path))
+                for r in tracker.recent(n=500):
+                    if getattr(r, "correction", None) and getattr(r, "final_answer", None):
+                        pairs.append({
+                            "prompt":   getattr(r, "goal", ""),
+                            "chosen":   r.correction,
+                            "rejected": r.final_answer,
+                        })
         except Exception as exc:
             logger.debug("[lora] Could not load outcome records: %s", exc)
+
+        # 2. Denial-derived standing / task-scoped rules
+        try:
+            from prism_instructions import PrismInstructions
+            instr_path = Path("~/.prism/instructions.db").expanduser()
+            if instr_path.exists():
+                instr = PrismInstructions(db_path=str(instr_path))
+                pairs.extend(self._pairs_from_instructions(instr))
+        except Exception as exc:
+            logger.debug("[lora] Could not load denial instructions: %s", exc)
+
         return pairs
+
+    def _pairs_from_instructions(self, instr) -> list[dict]:
+        """Translate every active stored rule into a DPO preference pair."""
+        out: list[dict] = []
+        try:
+            rules = instr.all_active()
+        except Exception:
+            return out
+        for rule in rules:
+            pair = self._denial_to_dpo_pair(rule)
+            if pair is not None:
+                out.append(pair)
+        return out
+
+    @staticmethod
+    def _denial_to_dpo_pair(rule) -> Optional[dict]:
+        """Translate one stored ``Instruction`` into a DPO pair.
+
+        Three flavours, distinguished by ``rule.trigger``:
+
+        * Standing rule on a TRIGGER_MAP category (email / calendar / …)
+          → prompt asks for the user's rule for that category.
+        * Task-slug trigger → prompt phrases the original request and asks
+          whether to proceed, so the rule trains "decline this kind."
+        * ``"always"`` trigger → prompt asks for the universal rule.
+
+        Returns ``None`` for empty / whitespace-only text. ``rejected`` is
+        a generic permissive completion the LoRA must learn to dispreference
+        in favour of the user's explicit rule.
+        """
+        from prism_instructions import PrismInstructions
+        text = (getattr(rule, "text", "") or "").strip()
+        if not text:
+            return None
+        trig = getattr(rule, "trigger", "") or ""
+        if trig == "always":
+            prompt   = "What rule should I always follow when assisting this user?"
+            rejected = "No specific universal rule applies — I'll act on the request as stated."
+        elif trig in PrismInstructions.TRIGGER_MAP:
+            prompt   = f"What is the user's standing rule for {trig} requests?"
+            rejected = f"I don't have a specific rule for {trig} — I'll act on the request as stated."
+        else:
+            # Task-slug trigger: a one-shot denial guard.
+            human = trig.replace("_", " ").replace("-", " ").strip() or "this task"
+            prompt   = f"The user asks me to {human}. Should I proceed?"
+            rejected = "Yes, proceeding with the task."
+        return {"prompt": prompt, "chosen": text, "rejected": rejected}
 
     def _run_training(self, job: TrainingJob, pairs: list[dict]) -> None:
         """Background thread: write pairs → train → Ollama register."""
