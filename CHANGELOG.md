@@ -8,6 +8,58 @@ version bumps.
 
 ## [Unreleased]
 
+### M12 — SIAM-aligned learning + routing wave (2026-06-17)
+
+Four directions that close feedback loops PRISM was missing: plan
+execution telemetry feeds the horizon planner, user denials now both
+guard the runtime gate AND train the personalised LoRA, and the device
+mesh routes by capability instead of by explicit peer name. The wave is
+deliberately aligned with the SIAM blueprint pillars (Semantic Manifest,
+Guardrails, Semantic Daemon).
+
+#### Added
+- **M12a — mesh capability-aware auto-routing.** `prism_mesh.py` grows
+  `score_peer_for_task` and `find_capable_peer`. The `mesh_orchestrate`
+  organ now auto-routes when the user omits a peer name and one peer
+  uniquely matches the task's capability hints (browser, ffmpeg, git,
+  image, compress, package_manager…); ties surface a "pick a peer"
+  prompt instead of silently guessing. Forwards also enforce `MAX_HOPS
+  = 2` via a `_hop` counter, so chained A→B→C→… loops self-terminate.
+- **M12b — denial → standing-rule extraction.** `PrismInstructions.
+  classify_denial` detects "never/always/from now on/whenever/…"
+  markers in the textarea reason on an approval card. `PrismAgent.
+  record_denial` now dual-writes: the existing task-scoped retry guard
+  plus a broad-trigger standing rule keyed by TRIGGER_MAP category. The
+  `/device/approve` confirmation note adapts — "Saved as a rule for all
+  email requests" instead of the generic "Noted: I'll remember this."
+- **M12c — LoRA denial → DPO pair ingestion.** `PrismLoraTrainer.
+  _collect_dpo_pairs` now reads both `OutcomeRecord.correction` and the
+  PrismInstructions DB. Standing rules, task-scoped denials, and
+  `always` rules each get a tailored prompt/chosen/rejected shape so
+  the user's "no" actively trains the LoRA, not just gates the runtime.
+- **M12d — plan execution telemetry.** New `prism_plan_telemetry.py`
+  module persists every `DailyPlan` (request, primary focus, rationale,
+  step list) to `~/.prism/plan_telemetry.db` with per-step status and
+  outcome record cross-links. `PrismAgent.replan` reads the previous
+  plan's telemetry summary, prepends it to the KDE prompt, and marks
+  the prior plan as superseded by the new one. New routes: `GET
+  /plan/latest`, `GET /plan/{plan_id}`, `POST /plan/{plan_id}/step/
+  {step_index}`.
+
+#### Fixed
+- `PrismLoraTrainer._collect_dpo_pairs` called `tracker.recent(limit=
+  500)` against an `n`-keyworded signature — silently emitted zero
+  pairs from outcome corrections. Now passes `n=500`.
+
+#### Notes
+- Wave is covered by 36 new tests (15 mesh, 8 instructions/denial,
+  4 agent-level replan wiring, 8 LoRA DPO, 5 routes). CI green on
+  3.11 + 3.12.
+- The SIAM↔PRISM alignment report from the previous turn is the
+  rationale behind the d → b → c → a sequence. Escrow ledger card,
+  which the report flagged as a missing pillar, is deferred to a
+  later milestone.
+
 ## [0.1.3] — 2026-06-16
 
 Patch release. A second smoke-test on the v0.1.2 daemon (boot → probe
