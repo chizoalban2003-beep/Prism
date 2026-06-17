@@ -39,69 +39,104 @@ logger = logging.getLogger(__name__)
 SETTINGS_SCHEMA: dict[str, dict] = {
     "email": {
         "label": "Email (IMAP/SMTP)",
-        "why": "PRISM needs IMAP/SMTP credentials to read and send mail on your behalf. For Gmail, generate an App Password — your normal password will NOT work and 2FA must be on.",
+        "why": (
+            "PRISM needs IMAP/SMTP credentials to read and send mail on your behalf. "
+            "For Gmail, generate an App Password — your normal password will NOT work "
+            "and 2FA must be on."
+        ),
         "docs_url": "https://support.google.com/accounts/answer/185833",
         "fields": [
-            {"name": "provider",  "label": "Provider",       "kind": "select", "choices": ["gmail", "imap"], "default": "gmail", "required": True},
-            {"name": "address",   "label": "Email address",  "kind": "text",     "placeholder": "you@gmail.com", "required": True},
-            {"name": "password",  "label": "App password",   "kind": "password", "placeholder": "16-char App Password", "required": True, "secret": True},
-            {"name": "imap_host", "label": "IMAP host",      "kind": "text",     "default": "imap.gmail.com"},
-            {"name": "imap_port", "label": "IMAP port",      "kind": "number",   "default": 993},
-            {"name": "smtp_host", "label": "SMTP host",      "kind": "text",     "default": "smtp.gmail.com"},
-            {"name": "smtp_port", "label": "SMTP port",      "kind": "number",   "default": 587},
+            {"name": "provider",  "label": "Provider", "kind": "select",
+             "choices": ["gmail", "imap"], "default": "gmail", "required": True},
+            {"name": "address",   "label": "Email address", "kind": "text",
+             "placeholder": "you@gmail.com", "required": True},
+            {"name": "password",  "label": "App password", "kind": "password",
+             "placeholder": "16-char App Password", "required": True, "secret": True},
+            {"name": "imap_host", "label": "IMAP host", "kind": "text",  "default": "imap.gmail.com"},
+            {"name": "imap_port", "label": "IMAP port", "kind": "number", "default": 993},
+            {"name": "smtp_host", "label": "SMTP host", "kind": "text",  "default": "smtp.gmail.com"},
+            {"name": "smtp_port", "label": "SMTP port", "kind": "number", "default": 587},
             {"name": "max_fetch", "label": "Inbox preview size", "kind": "number", "default": 20},
         ],
     },
     "calendar": {
         "label": "Calendar",
-        "why": "PRISM reads your calendar to plan around real commitments. Easiest path: paste an iCal feed URL from your calendar provider (Apple/Google support a private webcal:// link).",
+        "why": (
+            "PRISM reads your calendar to plan around real commitments. Easiest path: "
+            "paste an iCal feed URL from your calendar provider (Apple/Google support a "
+            "private webcal:// link)."
+        ),
         "docs_url": "",
         "fields": [
-            {"name": "provider",   "label": "Provider",  "kind": "select", "choices": ["", "ical_url", "caldav", "google"], "default": "ical_url", "required": True},
-            {"name": "ical_url",   "label": "iCal URL",  "kind": "url",   "placeholder": "webcal://… or https://….ics"},
-            {"name": "caldav_url", "label": "CalDAV URL","kind": "url",   "placeholder": "https://server/dav"},
-            {"name": "username",   "label": "Username",  "kind": "text"},
-            {"name": "password",   "label": "Password",  "kind": "password", "secret": True},
-            {"name": "google_token", "label": "Google OAuth2 token", "kind": "password", "secret": True},
+            {"name": "provider",   "label": "Provider", "kind": "select",
+             "choices": ["", "ical_url", "caldav", "google"], "default": "ical_url", "required": True},
+            {"name": "ical_url",   "label": "iCal URL",   "kind": "url",
+             "placeholder": "webcal://… or https://….ics"},
+            {"name": "caldav_url", "label": "CalDAV URL", "kind": "url",
+             "placeholder": "https://server/dav"},
+            {"name": "username",   "label": "Username",   "kind": "text"},
+            {"name": "password",   "label": "Password",   "kind": "password", "secret": True},
+            {"name": "google_token", "label": "Google OAuth2 token",
+             "kind": "password", "secret": True},
         ],
     },
     "smarthome": {
         "label": "Smart home (Home Assistant)",
-        "why": "PRISM uses a Home Assistant long-lived access token to turn lights/devices on/off on your behalf.",
+        "why": (
+            "PRISM uses a Home Assistant long-lived access token to turn lights/devices "
+            "on/off on your behalf."
+        ),
         "docs_url": "https://www.home-assistant.io/docs/authentication/#your-account-profile",
         "fields": [
-            {"name": "ha_url",   "label": "Home Assistant URL", "kind": "url", "placeholder": "http://homeassistant.local:8123", "required": True},
-            {"name": "ha_token", "label": "Long-lived token",   "kind": "password", "required": True, "secret": True},
+            {"name": "ha_url",   "label": "Home Assistant URL", "kind": "url",
+             "placeholder": "http://homeassistant.local:8123", "required": True},
+            {"name": "ha_token", "label": "Long-lived token",
+             "kind": "password", "required": True, "secret": True},
         ],
     },
     "search": {
         "label": "Web search",
-        "why": "PRISM uses a search backend (Brave or SerpAPI) for live web lookups. Without a key, web_search falls back to scraped DuckDuckGo, which is unreliable.",
+        "why": (
+            "PRISM uses a search backend (Brave or SerpAPI) for live web lookups. "
+            "Without a key, web_search falls back to scraped DuckDuckGo, which is unreliable."
+        ),
         "docs_url": "https://brave.com/search/api/",
         "fields": [
-            {"name": "provider",      "label": "Provider",       "kind": "select", "choices": ["auto", "brave", "serpapi"], "default": "auto"},
-            {"name": "brave_api_key", "label": "Brave API key",  "kind": "password", "secret": True},
-            {"name": "serp_api_key",  "label": "SerpAPI key",    "kind": "password", "secret": True},
+            {"name": "provider",      "label": "Provider", "kind": "select",
+             "choices": ["auto", "brave", "serpapi"], "default": "auto"},
+            {"name": "brave_api_key", "label": "Brave API key", "kind": "password", "secret": True},
+            {"name": "serp_api_key",  "label": "SerpAPI key",   "kind": "password", "secret": True},
         ],
     },
     "push": {
         "label": "Push notifications (ntfy)",
-        "why": "PRISM uses an ntfy topic to push alerts to your phone. Free at ntfy.sh — pick any topic name, subscribe to it from the ntfy app, and paste the topic here.",
+        "why": (
+            "PRISM uses an ntfy topic to push alerts to your phone. Free at ntfy.sh — "
+            "pick any topic name, subscribe to it from the ntfy app, and paste the topic here."
+        ),
         "docs_url": "https://docs.ntfy.sh/subscribe/phone/",
         "fields": [
-            {"name": "topic",    "label": "ntfy topic",  "kind": "text", "placeholder": "prism-yourname-7421", "required": True},
+            {"name": "topic",    "label": "ntfy topic",  "kind": "text",
+             "placeholder": "prism-yourname-7421", "required": True},
             {"name": "server",   "label": "ntfy server", "kind": "url",  "default": "https://ntfy.sh"},
-            {"name": "priority", "label": "Priority",    "kind": "select", "choices": ["default", "low", "high", "max"], "default": "default"},
+            {"name": "priority", "label": "Priority",    "kind": "select",
+             "choices": ["default", "low", "high", "max"], "default": "default"},
         ],
     },
     "twilio": {
         "label": "Phone & SMS (Twilio)",
-        "why": "PRISM uses Twilio to place phone calls and send SMS on your behalf. Get credentials at console.twilio.com.",
+        "why": (
+            "PRISM uses Twilio to place phone calls and send SMS on your behalf. "
+            "Get credentials at console.twilio.com."
+        ),
         "docs_url": "https://www.twilio.com/console",
         "fields": [
-            {"name": "account_sid", "label": "Account SID", "kind": "text",     "placeholder": "ACxxxxxxxxxxxxxxxx", "required": True},
-            {"name": "auth_token",  "label": "Auth token",  "kind": "password", "required": True, "secret": True},
-            {"name": "from_number", "label": "From number", "kind": "text",     "placeholder": "+14155552671", "required": True},
+            {"name": "account_sid", "label": "Account SID", "kind": "text",
+             "placeholder": "ACxxxxxxxxxxxxxxxx", "required": True},
+            {"name": "auth_token",  "label": "Auth token",  "kind": "password",
+             "required": True, "secret": True},
+            {"name": "from_number", "label": "From number", "kind": "text",
+             "placeholder": "+14155552671", "required": True},
         ],
     },
     "tasks": {
@@ -109,10 +144,12 @@ SETTINGS_SCHEMA: dict[str, dict] = {
         "why": "Optional integrations for task tracking. Leave blank to use PRISM's local task DB only.",
         "docs_url": "",
         "fields": [
-            {"name": "provider",       "label": "Default provider", "kind": "select", "choices": ["auto", "local", "todoist", "github", "linear"], "default": "auto"},
+            {"name": "provider",       "label": "Default provider", "kind": "select",
+             "choices": ["auto", "local", "todoist", "github", "linear"], "default": "auto"},
             {"name": "todoist_token",  "label": "Todoist token",    "kind": "password", "secret": True},
             {"name": "github_token",   "label": "GitHub token",     "kind": "password", "secret": True},
-            {"name": "github_repo",    "label": "GitHub repo",      "kind": "text", "placeholder": "owner/repo"},
+            {"name": "github_repo",    "label": "GitHub repo",      "kind": "text",
+             "placeholder": "owner/repo"},
             {"name": "linear_api_key", "label": "Linear API key",   "kind": "password", "secret": True},
         ],
     },

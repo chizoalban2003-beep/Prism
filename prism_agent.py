@@ -980,7 +980,10 @@ class PrismAgent:
                 )):
                 card = setup_required_card(
                     service        = "Calendar",
-                    why            = "PRISM can't fetch events or schedule anything until you connect a calendar. iCal URL is the simplest provider.",
+                    why            = (
+                        "PRISM can't fetch events or schedule anything until you connect "
+                        "a calendar. iCal URL is the simplest provider."
+                    ),
                     config_section = "calendar",
                     snippet        = (
                         'provider = "ical_url"          # or "google" or "caldav"\n'
@@ -1004,7 +1007,10 @@ class PrismAgent:
                 )):
                 card = setup_required_card(
                     service        = "Email",
-                    why            = "PRISM needs IMAP credentials to read or send mail. For Gmail use an App Password (NOT your normal password) — 2FA must already be on.",
+                    why            = (
+                        "PRISM needs IMAP credentials to read or send mail. For Gmail use "
+                        "an App Password (NOT your normal password) — 2FA must already be on."
+                    ),
                     config_section = "email",
                     snippet        = (
                         'provider  = "gmail"\n'
@@ -1147,7 +1153,7 @@ class PrismAgent:
         wired yet during agent bootstrap.
         """
         labels = [intent for _, intent in self.INTENTS]
-        labels_with_synth = labels + ["novel_capability", "chat"]
+        labels + ["novel_capability", "chat"]
         prompt = (
             "You are a routing classifier. Pick ONE label that best fits the user's message.\n\n"
             "Labels:\n"
@@ -1431,7 +1437,10 @@ class PrismAgent:
             if not self._email.configured:
                 return setup_required_card(
                     service        = "Email",
-                    why            = "PRISM needs IMAP credentials to read your inbox. For Gmail use an App Password (NOT your normal password) — 2FA must already be on.",
+                    why            = (
+                        "PRISM needs IMAP credentials to read your inbox. For Gmail use "
+                        "an App Password (NOT your normal password) — 2FA must already be on."
+                    ),
                     config_section = "email",
                     snippet        = (
                         'provider  = "gmail"\n'
@@ -1459,7 +1468,10 @@ class PrismAgent:
             if not self._calendar.configured:
                 return setup_required_card(
                     service        = "Calendar",
-                    why            = "PRISM needs read access to surface today's events, find free slots, or schedule new ones. iCal URL is the simplest provider.",
+                    why            = (
+                        "PRISM needs read access to surface today's events, find free "
+                        "slots, or schedule new ones. iCal URL is the simplest provider."
+                    ),
                     config_section = "calendar",
                     snippet        = (
                         'provider = "ical_url"          # or "google" or "caldav"\n'
@@ -2298,7 +2310,10 @@ class PrismAgent:
                 and not getattr(self._calendar, "configured", False)):
             return setup_required_card(
                 service        = "Calendar",
-                why            = "PRISM can't fetch events or schedule anything until you connect a calendar. iCal URL is the simplest provider.",
+                why            = (
+                    "PRISM can't fetch events or schedule anything until you connect "
+                    "a calendar. iCal URL is the simplest provider."
+                ),
                 config_section = "calendar",
                 snippet        = (
                     'provider = "ical_url"          # or "google" or "caldav"\n'
@@ -2318,7 +2333,10 @@ class PrismAgent:
                 and not getattr(self._email, "configured", False)):
             return setup_required_card(
                 service        = "Email",
-                why            = "PRISM needs IMAP credentials to read or send mail. For Gmail use an App Password (NOT your normal password) — 2FA must already be on.",
+                why            = (
+                    "PRISM needs IMAP credentials to read or send mail. For Gmail use "
+                    "an App Password (NOT your normal password) — 2FA must already be on."
+                ),
                 config_section = "email",
                 snippet        = (
                     'provider  = "gmail"\n'
@@ -2349,10 +2367,21 @@ class PrismAgent:
         # a structured Approve/Deny button pair and an optional instructions
         # field, so a single gate covers both 'risky external action' and
         # 'novel capability' cases from the user's POV.
-        intent_slug = intent if intent and intent != "general_chat" and re.match(r"^[a-z_][a-z0-9_]*$", intent) else self._slugify_intent(message)
+        intent_slug = (
+            intent
+            if intent
+            and intent != "general_chat"
+            and re.match(r"^[a-z_][a-z0-9_]*$", intent)
+            else self._slugify_intent(message)
+        )
         risk_hint = (
-            f"This may affect external systems via {capability_desc}. " if approval_needed and capability_desc else ""
-        ) + "Writes a Python file to ~/.prism/organs/ and may pip-install dependencies. AST-validated against unsafe operations before running."
+            f"This may affect external systems via {capability_desc}. "
+            if approval_needed and capability_desc
+            else ""
+        ) + (
+            "Writes a Python file to ~/.prism/organs/ and may pip-install "
+            "dependencies. AST-validated against unsafe operations before running."
+        )
         risk_level = "high" if approval_needed else "medium"
         try:
             prior_synth = self._instructions.prior_denials_for("_synthesize_organ") if self._instructions else []

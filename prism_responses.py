@@ -47,7 +47,11 @@ def text_card(body: str, title: str = "") -> PrismCard:
 
 
 def narrative_card(content: str, period: str = "weekly", generated_at: float = 0.0) -> PrismCard:
-    label = {"weekly": "Weekly reflection", "monthly": "Monthly reflection", "snapshot": "Where you are now"}.get(period, "PRISM reflection")
+    label = {
+        "weekly":   "Weekly reflection",
+        "monthly":  "Monthly reflection",
+        "snapshot": "Where you are now",
+    }.get(period, "PRISM reflection")
     title = f"{label} \u2014 PRISM has been listening"
     safe = (content or "").replace("<", "&lt;").replace(">", "&gt;")
     paras = [p.strip() for p in safe.split("\n\n") if p.strip()]

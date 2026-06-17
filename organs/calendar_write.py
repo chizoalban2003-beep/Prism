@@ -15,13 +15,17 @@ ORGAN_POLICY = {
 
 
 def execute(intent: str, message: str, ctx: dict):
-    from prism_responses import text_card, setup_required_card
+    from prism_responses import setup_required_card, text_card
 
     calendar = ctx.get("calendar")
     if calendar is None or not getattr(calendar, "configured", False):
         return setup_required_card(
             service        = "Calendar",
-            why            = "PRISM needs read access to your calendar to schedule events, find free slots, or surface today's agenda. Pick one provider below — iCal URL is the simplest.",
+            why            = (
+                "PRISM needs read access to your calendar to schedule events, "
+                "find free slots, or surface today's agenda. Pick one provider "
+                "below — iCal URL is the simplest."
+            ),
             config_section = "calendar",
             snippet        = (
                 'provider = "ical_url"          # or "google" or "caldav"\n'

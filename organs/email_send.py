@@ -33,13 +33,17 @@ def _resolve_contact_email(name_or_address: str, contacts) -> str:
 def execute(intent: str, message: str, ctx: dict):
     import json as _j
 
-    from prism_responses import text_card, setup_required_card
+    from prism_responses import setup_required_card, text_card
 
     email = ctx.get("email")
     if email is None or not getattr(email, "configured", False):
         return setup_required_card(
             service        = "Email",
-            why            = "PRISM needs IMAP credentials to read and send mail on your behalf. For Gmail you must use an App Password (NOT your normal password) — 2FA must already be on.",
+            why            = (
+                "PRISM needs IMAP credentials to read and send mail on your behalf. "
+                "For Gmail you must use an App Password (NOT your normal password) — "
+                "2FA must already be on."
+            ),
             config_section = "email",
             snippet        = (
                 'provider  = "gmail"\n'
