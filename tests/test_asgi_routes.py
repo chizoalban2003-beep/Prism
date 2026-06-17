@@ -384,6 +384,75 @@ def test_ui_icon(client):
 
 
 # ---------------------------------------------------------------------------
+# Plan telemetry routes (M12d)
+# ---------------------------------------------------------------------------
+
+def test_plan_latest_empty_returns_404(client, tmp_path, monkeypatch):
+    from prism_plan_telemetry import PlanTelemetry
+    fresh = PlanTelemetry(db_path=str(tmp_path / "pt.db"))
+    monkeypatch.setattr("prism_routes_core._telemetry", lambda: fresh)
+    r = client.get("/plan/latest")
+    assert r.status_code == 404
+
+
+def test_plan_latest_returns_recorded_plan(client, tmp_path, monkeypatch):
+    from prism_plan_telemetry import PlanTelemetry
+    from sports_pro import DailyPlan, DailyTask
+    fresh = PlanTelemetry(db_path=str(tmp_path / "pt.db"))
+    plan = DailyPlan(
+        primary_focus="Recovery", activation=0.3, fulcrum=0.5,
+        tasks=[DailyTask("08:00", 30, "rest", "Stretch", "")],
+    )
+    pid = fresh.record_plan(plan, request="plan my day")
+    monkeypatch.setattr("prism_routes_core._telemetry", lambda: fresh)
+    r = client.get("/plan/latest")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["plan_id"] == pid
+    assert len(body["steps"]) == 1
+    assert body["steps"][0]["title"] == "Stretch"
+
+
+def test_plan_step_mark_updates_status(client, tmp_path, monkeypatch):
+    from prism_plan_telemetry import PlanTelemetry
+    from sports_pro import DailyPlan, DailyTask
+    fresh = PlanTelemetry(db_path=str(tmp_path / "pt.db"))
+    pid = fresh.record_plan(
+        DailyPlan(primary_focus="x", activation=0.5, fulcrum=0.5,
+                  tasks=[DailyTask("09:00", 15, "warmup", "Run", "")])
+    )
+    monkeypatch.setattr("prism_routes_core._telemetry", lambda: fresh)
+    r = client.post(f"/plan/{pid}/step/0", json={"status": "done"})
+    assert r.status_code == 200
+    assert fresh.get_plan(pid)["steps"][0]["status"] == "done"
+
+
+def test_plan_step_mark_invalid_status_400(client, tmp_path, monkeypatch):
+    from prism_plan_telemetry import PlanTelemetry
+    from sports_pro import DailyPlan, DailyTask
+    fresh = PlanTelemetry(db_path=str(tmp_path / "pt.db"))
+    pid = fresh.record_plan(
+        DailyPlan(primary_focus="x", activation=0.5, fulcrum=0.5,
+                  tasks=[DailyTask("09:00", 15, "warmup", "Run", "")])
+    )
+    monkeypatch.setattr("prism_routes_core._telemetry", lambda: fresh)
+    r = client.post(f"/plan/{pid}/step/0", json={"status": "wat"})
+    assert r.status_code == 400
+
+
+def test_plan_step_mark_unknown_step_404(client, tmp_path, monkeypatch):
+    from prism_plan_telemetry import PlanTelemetry
+    from sports_pro import DailyPlan
+    fresh = PlanTelemetry(db_path=str(tmp_path / "pt.db"))
+    pid = fresh.record_plan(
+        DailyPlan(primary_focus="x", activation=0.5, fulcrum=0.5, tasks=[])
+    )
+    monkeypatch.setattr("prism_routes_core._telemetry", lambda: fresh)
+    r = client.post(f"/plan/{pid}/step/42", json={"status": "done"})
+    assert r.status_code == 404
+
+
+# ---------------------------------------------------------------------------
 # Unknown route → 404
 # ---------------------------------------------------------------------------
 

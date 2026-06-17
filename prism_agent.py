@@ -626,6 +626,17 @@ class PrismAgent:
             logger.warning("OutcomeTracker not available: %s", e)
             self._outcome_tracker = None
 
+        # PlanTelemetry — per-step status for DailyPlans, feeds re-plan signal
+        self._plan_telemetry: Optional[Any] = None
+        self._last_plan_id: Optional[str] = None
+        try:
+            from prism_plan_telemetry import get_plan_telemetry
+            self._plan_telemetry = get_plan_telemetry()
+            logger.info("PlanTelemetry ready")
+        except Exception as e:
+            logger.warning("PlanTelemetry not available: %s", e)
+            self._plan_telemetry = None
+
         # Wire living model dependencies now that outcome_tracker exists.
         # All cross-component back-patches are consolidated in _wire_backpatches()
         # and called again at the end of __init__ to ensure nothing is missed even
@@ -1319,6 +1330,11 @@ class PrismAgent:
                 if DailyPlan and isinstance(output, DailyPlan):
                     self._last_plan = output
                     self._last_plan_request = message
+                    if self._plan_telemetry is not None:
+                        try:
+                            self._last_plan_id = self._plan_telemetry.record_plan(output, message)
+                        except Exception as exc:
+                            logger.debug("plan_telemetry.record_plan failed: %s", exc)
                     return plan_card(output)
                 if MatchPrediction and isinstance(output, MatchPrediction):
                     return prediction_card(output)
@@ -2449,7 +2465,16 @@ class PrismAgent:
             except Exception:
                 pinned = ""
         refine = (instructions or "").strip()
+        prior_id = getattr(self, "_last_plan_id", None)
+        telemetry_line = ""
+        if prior_id and self._plan_telemetry is not None:
+            try:
+                telemetry_line = self._plan_telemetry.telemetry_summary(prior_id)
+            except Exception as exc:
+                logger.debug("plan_telemetry.summary failed: %s", exc)
         parts = [base, "Re-plan with these refinements:"]
+        if telemetry_line:
+            parts.append("Previous plan status: " + telemetry_line)
         if refine:
             parts.append(refine)
         if pinned:
@@ -2464,6 +2489,14 @@ class PrismAgent:
             if isinstance(output, DailyPlan):
                 self._last_plan = output
                 self._last_plan_request = base
+                if self._plan_telemetry is not None:
+                    try:
+                        new_id = self._plan_telemetry.record_plan(output, base)
+                        if prior_id:
+                            self._plan_telemetry.supersede(prior_id, new_id)
+                        self._last_plan_id = new_id
+                    except Exception as exc:
+                        logger.debug("plan_telemetry.record_plan (replan) failed: %s", exc)
                 return plan_card(output)
             if isinstance(output, str):
                 return text_card(output, "Re-plan")

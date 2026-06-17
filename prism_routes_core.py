@@ -335,6 +335,72 @@ async def plan_replan(request: Request):
 
 
 # ---------------------------------------------------------------------------
+# Plan telemetry — per-step status (M12d)
+# ---------------------------------------------------------------------------
+
+def _telemetry():
+    try:
+        from prism_plan_telemetry import get_plan_telemetry
+        return get_plan_telemetry()
+    except Exception:
+        return None
+
+
+@router.get("/plan/latest")
+async def plan_latest():
+    """Return the most recent plan + per-step status, or 404."""
+    pt = _telemetry()
+    if pt is None:
+        return JSONResponse({"error": "Plan telemetry unavailable", "status": 503}, status_code=503)
+    plan = await asyncio.to_thread(pt.latest_plan)
+    if plan is None:
+        return JSONResponse({"error": "No plan recorded", "status": 404}, status_code=404)
+    return plan
+
+
+@router.get("/plan/{plan_id}")
+async def plan_get(plan_id: str):
+    pt = _telemetry()
+    if pt is None:
+        return JSONResponse({"error": "Plan telemetry unavailable", "status": 503}, status_code=503)
+    plan = await asyncio.to_thread(pt.get_plan, plan_id)
+    if plan is None:
+        return JSONResponse({"error": "Plan not found", "status": 404}, status_code=404)
+    return plan
+
+
+@router.post("/plan/{plan_id}/step/{step_index}")
+async def plan_step_mark(plan_id: str, step_index: int, request: Request):
+    """Set a step's status. Body: {"status": "done|abandoned|skipped|in_progress|pending",
+    "outcome_record_id": "optional", "notes": "optional"}."""
+    pt = _telemetry()
+    if pt is None:
+        return JSONResponse({"error": "Plan telemetry unavailable", "status": 503}, status_code=503)
+    body: dict[str, Any] = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+    status = str(body.get("status", "") or "").strip()
+    if not status:
+        return JSONResponse({"error": "status field required", "status": 400}, status_code=400)
+    try:
+        ok = await asyncio.to_thread(
+            pt.mark_step,
+            plan_id,
+            int(step_index),
+            status,
+            str(body.get("outcome_record_id", "") or ""),
+            str(body.get("notes", "") or ""),
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc), "status": 400}, status_code=400)
+    if not ok:
+        return JSONResponse({"error": "step not found", "status": 404}, status_code=404)
+    return {"ok": True, "plan_id": plan_id, "step_index": step_index, "status": status}
+
+
+# ---------------------------------------------------------------------------
 # GET /search
 # ---------------------------------------------------------------------------
 
