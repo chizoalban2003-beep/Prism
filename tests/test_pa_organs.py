@@ -41,11 +41,11 @@ class TestEmailSend:
 
     def test_not_configured(self):
         card = self.organ.execute("email_send", "send email", {"email": self._email(configured=False)})
-        assert "not configured" in card.body.lower()
+        assert card.card_data.get("kind") == "setup_form" or "setup" in card.title.lower()
 
     def test_no_email_in_ctx(self):
         card = self.organ.execute("email_send", "send email", {})
-        assert "not configured" in card.body.lower()
+        assert card.card_data.get("kind") == "setup_form" or "setup" in card.title.lower()
 
     def test_no_router(self):
         card = self.organ.execute("email_send", "send email", {"email": self._email()})
@@ -90,11 +90,11 @@ class TestCalendarWrite:
 
     def test_not_configured(self):
         card = self.organ.execute("calendar_write", "schedule meeting", {"calendar": self._cal(False)})
-        assert "not configured" in card.body.lower()
+        assert card.card_data.get("kind") == "setup_form" or "setup" in card.title.lower()
 
     def test_no_calendar_in_ctx(self):
         card = self.organ.execute("calendar_write", "schedule meeting", {})
-        assert "not configured" in card.body.lower()
+        assert card.card_data.get("kind") == "setup_form" or "setup" in card.title.lower()
 
     def test_free_slot_found(self):
         from datetime import datetime
