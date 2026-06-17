@@ -43,6 +43,7 @@ class PrismNarrative:
         calibration: Optional[PrismCalibration] = None,
         soul: Optional[PrismSoul] = None,
         llm_router=None,
+        state_path: str = "~/.prism/narrative_state.json",
     ):
         self._persona = persona
         self._memory = memory
@@ -50,6 +51,91 @@ class PrismNarrative:
         self._calibration = calibration
         self._soul = soul
         self._router = llm_router
+
+        from pathlib import Path as _P
+        self._state_path = _P(state_path).expanduser()
+        self._state_path.parent.mkdir(parents=True, exist_ok=True)
+        self._last_generated: dict[str, float] = {}
+        self._last_shown_at: float = 0.0
+        self._last_generated_at: float = 0.0
+        self._last_period: str = ""
+        self._load_state()
+
+    # ── Proactive surfacing ───────────────────────────────────────────────────
+
+    def _load_state(self) -> None:
+        import json as _j
+        try:
+            if self._state_path.exists():
+                data = _j.loads(self._state_path.read_text() or "{}")
+                self._last_shown_at = float(data.get("last_shown_at") or 0.0)
+                self._last_generated_at = float(data.get("last_generated_at") or 0.0)
+                self._last_period = str(data.get("last_period") or "")
+        except Exception as exc:
+            logger.debug("[narrative] state load failed: %s", exc)
+
+    def _save_state(self) -> None:
+        import json as _j
+        try:
+            self._state_path.write_text(_j.dumps({
+                "last_shown_at": self._last_shown_at,
+                "last_generated_at": self._last_generated_at,
+                "last_period": self._last_period,
+            }))
+        except Exception as exc:
+            logger.debug("[narrative] state save failed: %s", exc)
+
+    def peek_fresh(self, min_age_seconds: float = 86400.0) -> Optional[NarrativeEntry]:
+        """
+        Return a fresh-unshown narrative if one was generated since last shown
+        AND enough time has passed since startup. Otherwise None.
+
+        Generates a snapshot on demand if no recent narrative is recorded —
+        cheap path so the first session also gets a proactive bubble.
+        """
+        if self._last_generated_at > self._last_shown_at:
+            # Fresh narrative already generated and not yet shown
+            try:
+                content = self._last_content_cache or self.snapshot()
+            except Exception:
+                content = self.snapshot()
+            return NarrativeEntry(
+                narrative_id=f"narr_{int(self._last_generated_at)}",
+                period=self._last_period or "snapshot",
+                content=content,
+                generated_at=self._last_generated_at,
+            )
+
+        # Fallback snapshot only if the user model has real signal AND
+        # enough time has passed since the last proactive surface.
+        if time.time() - self._last_shown_at < min_age_seconds:
+            return None
+        try:
+            growth = self._persona.growth_since(days=7)
+            traits = self._persona.list_traits()
+        except Exception:
+            return None
+        has_signal = (growth.get("new_traits", 0) + growth.get("new_patterns", 0)) > 0 or len(traits) > 0
+        if not has_signal:
+            return None
+        content = self.snapshot()
+        if not content or content == "No profile data yet.":
+            return None
+        self._last_generated_at = time.time()
+        self._last_period = "snapshot"
+        self._last_content_cache = content
+        return NarrativeEntry(
+            narrative_id=f"narr_{int(self._last_generated_at)}",
+            period="snapshot",
+            content=content,
+            generated_at=self._last_generated_at,
+        )
+
+    def mark_shown(self) -> None:
+        self._last_shown_at = time.time()
+        self._save_state()
+
+    _last_content_cache: Optional[str] = None
 
     # ── Public reports ────────────────────────────────────────────────────────
 
@@ -151,6 +237,11 @@ class PrismNarrative:
         data = self._gather_period_data(days)
         content = self._synthesise(data, days, label)
         self._store_to_memory(content, label)
+        # Record so peek_fresh() can surface it on next session start
+        self._last_generated_at = time.time()
+        self._last_period = label
+        self._last_content_cache = content
+        self._save_state()
         return content
 
     def _gather_period_data(self, days: int) -> dict:

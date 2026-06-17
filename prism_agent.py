@@ -67,6 +67,15 @@ class PrismAgent:
     """
 
     INTENTS = [
+        # Horizon goals — "when X" / "watch for" / "notify when" must precede every
+        # other intent because the trigger clause ("when bitcoin drops") would
+        # otherwise be consumed by topic keywords (bitcoin → web_search, etc).
+        (r"watch (?:for|out for)|monitor (?:for|when)|track (?:when|until)|"
+         r"(?:tell|alert|notify|remind|ping) me when|"
+         r"(?:wait|keep watching) (?:for|until)|"
+         r"(?:book|buy|do|send|run) (?:it |that )?when |"
+         r"horizon goal|long.?term goal|background goal",
+         "horizon_add"),
         # Live financial/crypto data — must precede plan ("today") and wikipedia ("what is")
         (r"stock (?:price|market|quote)|share price|market cap|"
          r"bitcoin|ethereum|crypto (?:price|market)|coin price|"
@@ -187,12 +196,11 @@ class PrismAgent:
          r"(?:transcribe|listen|record) (?:audio|voice|speech|this)",
          "voice"),
         (r"help|what\.can|commands|options", "help"),
-        # Horizon Planner — cross-session goal watching
-        (r"watch (?:for|out for)|monitor (?:for|when)|track (?:when|until)|"
-         r"(?:tell|alert|notify) me when|(?:wait|keep watching) (?:for|until)|"
-         r"(?:book|buy|do|send|run) (?:it |that )?when|"
-         r"horizon goal|long.?term goal|background goal",
-         "horizon_add"),
+        # Horizon Planner — cross-session goal watching.
+        # horizon_add itself is hoisted to the top of this list so trigger
+        # clauses like "notify me when bitcoin drops" win against topic
+        # keyword routes. list/abandon don't need hoisting because their
+        # phrasing doesn't collide with other intents.
         (r"(?:show|list|what are) (?:my )?(?:horizon|background|watching|monitored) goals?|"
          r"what (?:are you |is prism )?(?:watching|monitoring|tracking)|"
          r"horizon (?:status|goals?|list)",
@@ -297,6 +305,17 @@ class PrismAgent:
                     self._config = tomllib.load(f)
             except Exception:
                 pass
+
+        # Overlay user-edited settings.db on top of TOML so the chat-driven
+        # setup-form card can configure integrations without file edits.
+        try:
+            from prism_settings_store import get_settings_store
+            self._settings_store = get_settings_store()
+            self._config = self._settings_store.overlay_on_toml(self._config)
+        except Exception as exc:
+            logger.debug("settings overlay skipped: %s", exc)
+            self._settings_store = None
+
         self._user = self._config.get("user", {}).get("name", "default")
 
         # Build LLMRouter from local prism_config.toml [llm] section.
@@ -2356,6 +2375,70 @@ class PrismAgent:
                     pass
         except Exception as exc:
             logger.debug("record_denial best-effort failed: %s", exc)
+
+    def apply_settings_change(self, section: str) -> dict:
+        """
+        Re-overlay settings.db on top of TOML and hot-rebuild the affected
+        integration service. Lets the chat-driven setup-form card configure
+        email/calendar/smarthome/search/push without restarting the daemon.
+        Returns {"ok": bool, "configured": bool, "section": section}.
+        """
+        try:
+            if getattr(self, "_settings_store", None) is None:
+                from prism_settings_store import get_settings_store
+                self._settings_store = get_settings_store()
+            # Refresh the merged config so from_config sees new values
+            try:
+                import tomllib
+            except ImportError:
+                try:
+                    import tomli as tomllib  # type: ignore[no-redef]
+                except ImportError:
+                    tomllib = None  # type: ignore[assignment]
+            base: dict = {}
+            if tomllib is not None:
+                try:
+                    with open(Path(__file__).parent / "prism_config.toml", "rb") as f:
+                        base = tomllib.load(f)
+                except Exception:
+                    pass
+            self._config = self._settings_store.overlay_on_toml(base)
+
+            configured = False
+            if section == "email":
+                from prism_email import PrismEmail
+                self._email = PrismEmail.from_config(self._config)
+                configured = bool(getattr(self._email, "configured", False))
+            elif section == "calendar":
+                from prism_calendar import PrismCalendar
+                self._calendar = PrismCalendar.from_config(self._config)
+                configured = bool(getattr(self._calendar, "configured", False))
+            elif section == "smarthome":
+                from prism_smart_home import PrismSmartHome
+                self._smarthome = PrismSmartHome.from_config(self._config)
+                configured = bool(getattr(self._smarthome, "configured", False))
+            elif section == "search":
+                from prism_search import PrismSearch
+                self._search = PrismSearch.from_config(self._config)
+                configured = bool(getattr(self._search, "configured", False))
+            elif section == "push":
+                try:
+                    from prism_push import PrismPush
+                    self._push = PrismPush.from_config(self._config)
+                    configured = True
+                except Exception:
+                    configured = False
+            elif section == "contacts":
+                from prism_contacts import PrismContacts
+                self._contacts = PrismContacts.from_config(self._config)
+                configured = True
+            else:
+                # tasks/twilio: re-rebuild lazily on next use; just mark refreshed
+                configured = True
+            return {"ok": True, "section": section, "configured": configured}
+        except Exception as exc:
+            logger.warning("apply_settings_change(%s) failed: %s", section, exc)
+            return {"ok": False, "section": section, "error": str(exc)[:200]}
 
     def _slugify_intent(self, message: str) -> str:
         """

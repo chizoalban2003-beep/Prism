@@ -46,6 +46,47 @@ def text_card(body: str, title: str = "") -> PrismCard:
     return PrismCard(CardType.TEXT, title, body, {})
 
 
+def narrative_card(content: str, period: str = "weekly", generated_at: float = 0.0) -> PrismCard:
+    label = {"weekly": "Weekly reflection", "monthly": "Monthly reflection", "snapshot": "Where you are now"}.get(period, "PRISM reflection")
+    title = f"{label} \u2014 PRISM has been listening"
+    safe = (content or "").replace("<", "&lt;").replace(">", "&gt;")
+    paras = [p.strip() for p in safe.split("\n\n") if p.strip()]
+    body = "".join(f"<p style='margin:0 0 8px;line-height:1.55'>{p}</p>" for p in paras) or safe
+    return PrismCard(
+        CardType.TEXT,
+        title,
+        body,
+        {"kind": "narrative", "period": period, "generated_at": generated_at},
+    )
+
+
+def setup_form_card(
+    section: str,
+    schema: dict,
+    current_values: Optional[dict] = None,
+) -> PrismCard:
+    """
+    Render an inline integration setup form. The chat UI converts each
+    schema field into an HTML input bound to the data block; clicking Save
+    POSTs to /settings/save which writes ~/.prism/settings.db and hot-
+    rebuilds the affected service.
+    """
+    return PrismCard(
+        card_type = CardType.TEXT,
+        title     = f"Set up: {schema.get('label', section)}",
+        body      = "",
+        card_data = {
+            "kind":           "setup_form",
+            "section":        section,
+            "label":          schema.get("label", section),
+            "why":            schema.get("why", ""),
+            "docs_url":       schema.get("docs_url", ""),
+            "fields":         schema.get("fields", []),
+            "current_values": current_values or {},
+        },
+    )
+
+
 def setup_required_card(
     service: str,
     why: str,
@@ -55,12 +96,25 @@ def setup_required_card(
     docs_url: str = "",
 ) -> PrismCard:
     """
-    Returned when an organ can't run because its [section] in prism_config.toml
-    is missing or incomplete. Replaces the old dead-end "X not configured. Add
-    settings to prism_config.toml." with an actionable card: concrete TOML
-    snippet, ordered setup steps, optional docs link. The chat UI renders
-    body as HTML, so we ship a rich block instead of plain text.
+    Returned when an organ can't run because its [section] is missing or
+    incomplete. If a settings-store schema exists for the section, returns
+    a setup_form_card instead — the user can configure the integration
+    inline from chat without editing TOML.
     """
+    try:
+        from prism_settings_store import get_settings_store, schema_for
+        schema = schema_for(config_section)
+        if schema is not None:
+            # Augment schema with the caller's `why` if the store schema has none
+            if not schema.get("why") and why:
+                schema = {**schema, "why": why}
+            if not schema.get("docs_url") and docs_url:
+                schema = {**schema, "docs_url": docs_url}
+            current = get_settings_store().get_section(config_section)
+            return setup_form_card(config_section, schema, current_values=current)
+    except Exception:
+        pass
+
     def _esc(s: str) -> str:
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 

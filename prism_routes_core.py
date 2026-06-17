@@ -196,6 +196,121 @@ async def device_execute(request: Request):
 
 
 # ---------------------------------------------------------------------------
+# GET /settings/schema?section=email
+# ---------------------------------------------------------------------------
+
+@router.get("/settings/schema")
+async def settings_schema(section: str = ""):
+    """Return the setup-form schema for a section, with current DB values."""
+    from prism_settings_store import SETTINGS_SCHEMA, get_settings_store
+    if not section:
+        return {"sections": list(SETTINGS_SCHEMA.keys())}
+    schema = SETTINGS_SCHEMA.get(section)
+    if schema is None:
+        return JSONResponse({"error": f"unknown section: {section}", "status": 404}, status_code=404)
+    store = get_settings_store()
+    current = store.get_section(section)
+    # Strip secrets — never expose existing secret values back to the client
+    safe_current = {}
+    for f in schema["fields"]:
+        if not f.get("secret"):
+            safe_current[f["name"]] = current.get(f["name"], f.get("default", ""))
+        elif f["name"] in current:
+            safe_current[f["name"]] = "__set__"  # sentinel: client knows it's set
+    return {
+        "section":        section,
+        "label":          schema.get("label", section),
+        "why":            schema.get("why", ""),
+        "docs_url":       schema.get("docs_url", ""),
+        "fields":         schema["fields"],
+        "current_values": safe_current,
+    }
+
+
+# ---------------------------------------------------------------------------
+# POST /settings/save
+# ---------------------------------------------------------------------------
+
+@router.post("/settings/save")
+async def settings_save(request: Request):
+    """Persist setup-form values to settings.db and hot-rebuild the service."""
+    body: dict[str, Any] = {}
+    try:
+        body = await request.json()
+    except Exception:
+        pass
+
+    section = (body.get("section") or "").strip()
+    values = body.get("values") or {}
+    if not section:
+        return JSONResponse({"error": "'section' required", "status": 400}, status_code=400)
+
+    from prism_settings_store import get_settings_store, validate_values
+    ok, err, coerced = validate_values(section, values)
+    if not ok:
+        return JSONResponse({"error": err, "status": 400}, status_code=400)
+
+    # Don't overwrite a secret with the placeholder sentinel — preserve it.
+    store = get_settings_store()
+    existing = store.get_section(section)
+    final: dict[str, Any] = {}
+    for k, v in coerced.items():
+        if v == "__set__" and k in existing:
+            final[k] = existing[k]
+        else:
+            final[k] = v
+    store.set_section(section, final)
+
+    # Hot-rebuild the affected service if the agent is up
+    result = {"ok": True, "section": section, "configured": False}
+    try:
+        agent = _get_agent()
+        if agent and hasattr(agent, "apply_settings_change"):
+            r = await asyncio.to_thread(agent.apply_settings_change, section)
+            result.update(r)
+    except Exception as exc:
+        result["warning"] = f"saved but reload failed: {exc}"
+
+    try:
+        from prism_responses import text_card
+        msg = "Configured." if result.get("configured") else "Saved. Try again to verify the connection."
+        return {
+            "ok":         result.get("ok", True),
+            "section":    section,
+            "configured": result.get("configured", False),
+            "card":       text_card(msg, f"{section.capitalize()} saved").to_json(),
+        }
+    except ImportError:
+        return result
+
+
+# ---------------------------------------------------------------------------
+# GET /narrative/proactive
+# ---------------------------------------------------------------------------
+
+@router.get("/narrative/proactive")
+async def narrative_proactive():
+    """Return a fresh narrative card (if any) and mark it as shown."""
+    agent = _get_agent()
+    narrative = getattr(agent, "_narrative", None) if agent else None
+    if narrative is None or not hasattr(narrative, "peek_fresh"):
+        return {"card": None}
+    try:
+        entry = await asyncio.to_thread(narrative.peek_fresh)
+    except Exception:
+        return {"card": None}
+    if entry is None:
+        return {"card": None}
+    try:
+        from prism_responses import narrative_card
+        card = narrative_card(entry.content, entry.period, entry.generated_at)
+        narrative.mark_shown()
+        return {"card": card.to_json()}
+    except Exception:
+        return {"card": None}
+
+
+# ---------------------------------------------------------------------------
 # GET /search
 # ---------------------------------------------------------------------------
 
