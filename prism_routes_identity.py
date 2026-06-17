@@ -270,6 +270,52 @@ async def weekly_report_generate():
 
 
 # ---------------------------------------------------------------------------
+# GET /ceremony/state — proactive ceremony card for chat surface
+# ---------------------------------------------------------------------------
+
+
+@router.get("/ceremony/state")
+async def ceremony_state():
+    """
+    Return a ceremony card if the user hasn't completed the identity ceremony,
+    or {"card": null} once a seed exists. The chat UI fetches this on page
+    load (after the welcome bubble) so first-time users see an invite to
+    personalise PRISM without leaving chat.
+    """
+    soul = _soul()
+    has_seed = False
+    if soul is not None:
+        try:
+            has_seed = bool(soul.has_seed())
+        except Exception:
+            pass
+    if has_seed:
+        return {"card": None}
+
+    state_data = _load_onboarding_state()
+    answered = state_data.get("answers") or {}
+    try:
+        from prism_identity_ceremony import CEREMONY_QUESTIONS
+        from prism_responses import ceremony_card
+        questions = list(CEREMONY_QUESTIONS.items())
+    except Exception as exc:
+        return JSONResponse({"error": f"ceremony module unavailable: {exc}", "status": 503}, status_code=503)
+
+    if not answered:
+        return {"card": ceremony_card(mode="invite", total_questions=len(questions)).to_json()}
+
+    # Resume mid-ceremony at the next unanswered question
+    q_index = min(len(answered), len(questions) - 1)
+    _key, question = questions[q_index]
+    return {"card": ceremony_card(
+        mode="question",
+        question=question,
+        question_index=q_index,
+        total_questions=len(questions),
+    ).to_json()}
+
+
+# ---------------------------------------------------------------------------
 # GET /onboarding/status
 # ---------------------------------------------------------------------------
 

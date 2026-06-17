@@ -60,6 +60,42 @@ def narrative_card(content: str, period: str = "weekly", generated_at: float = 0
     )
 
 
+def ceremony_card(
+    mode: str,
+    question: str = "",
+    question_index: int = 0,
+    total_questions: int = 7,
+    seed: Optional[dict] = None,
+) -> PrismCard:
+    """
+    Inline identity-ceremony card surfaced on first launch (and re-surfaceable
+    later from chat). Three modes:
+
+      - "invite"  — first launch, no seed yet. Shows the rationale + Start.
+      - "question" — current ceremony question with a textarea + Next.
+      - "complete" — wraps up, summarises extracted values.
+    """
+    if mode == "invite":
+        title = "Welcome — let's set up your PRISM"
+    elif mode == "complete":
+        title = "Your PRISM is ready"
+    else:
+        title = f"Identity ceremony · question {question_index + 1} of {total_questions}"
+    return PrismCard(
+        card_type = CardType.TEXT,
+        title     = title,
+        body      = "",
+        card_data = {
+            "kind":            "ceremony",
+            "mode":            mode,
+            "question":        question,
+            "question_index":  question_index,
+            "total_questions": total_questions,
+            "seed":            seed or {},
+        },
+    )
+
+
 def setup_form_card(
     section: str,
     schema: dict,
