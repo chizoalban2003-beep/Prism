@@ -111,15 +111,18 @@ def setup_form_card(
     POSTs to /settings/save which writes ~/.prism/settings.db and hot-
     rebuilds the affected service.
     """
+    label = schema.get("label", section)
+    why   = schema.get("why", "")
+    body  = why or f"{label} needs to be set up before this can run."
     return PrismCard(
         card_type = CardType.TEXT,
-        title     = f"Set up: {schema.get('label', section)}",
-        body      = "",
+        title     = f"Set up: {label}",
+        body      = body,
         card_data = {
             "kind":           "setup_form",
             "section":        section,
-            "label":          schema.get("label", section),
-            "why":            schema.get("why", ""),
+            "label":          label,
+            "why":            why,
             "docs_url":       schema.get("docs_url", ""),
             "fields":         schema.get("fields", []),
             "current_values": current_values or {},
