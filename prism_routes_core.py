@@ -104,19 +104,28 @@ async def device_approve(request: Request):
         # Record the denial (and any reason the user gave in the textarea)
         # so the agent can learn the boundary and avoid re-asking. Best-effort:
         # missing infra is silent because denial UX shouldn't break.
+        learned: dict = {}
         try:
             agent = _get_agent()
             if agent and hasattr(agent, "record_denial"):
-                agent.record_denial(task, params, instructions)
+                learned = agent.record_denial(task, params, instructions) or {}
         except Exception:
-            pass
+            learned = {}
 
         try:
             from prism_responses import text_card
             note = ""
             if instructions and instructions.strip():
                 safe = instructions.strip()[:200]
-                note = f"\n\nNoted: \"{safe}\" — I'll remember this when similar requests come up."
+                standing_trigger = (learned.get("standing_trigger") or "").strip()
+                if standing_trigger:
+                    scope = "all requests" if standing_trigger == "always" else f"all {standing_trigger} requests"
+                    note  = (
+                        f"\n\nSaved as a rule for {scope}: \"{safe}\". "
+                        "I'll apply this going forward."
+                    )
+                else:
+                    note = f"\n\nNoted: \"{safe}\" — I'll remember this when similar requests come up."
             if task == "_synthesize_organ":
                 return text_card(
                     "Cancelled. I won't build that organ. "

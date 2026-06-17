@@ -100,6 +100,47 @@ class PrismInstructions:
                 relevant.append(instr)
         return relevant
 
+    # Phrases that turn a one-shot "no" into a standing rule.
+    _STANDING_MARKERS = (
+        "never", "always", "stop ", "don't ever", "do not ever", "no more ",
+        "from now on", "whenever", "every time", "any time",
+    )
+
+    @classmethod
+    def classify_denial(
+        cls, task: str, reason: str
+    ) -> tuple[Optional[str], Optional[str]]:
+        """Decide whether a denial reason is a standing rule.
+
+        Returns ``(standing_text, trigger_category)`` when the reason reads
+        like a permanent rule the user wants applied to all similar requests
+        — otherwise ``(None, None)`` for a one-shot decision.
+
+        Trigger category is inferred from TRIGGER_MAP keyword overlap on the
+        reason first, then the task slug as a fallback; falls back to
+        ``"always"`` only when nothing matches.
+        """
+        if not reason or not reason.strip():
+            return None, None
+        text   = reason.strip()
+        lower  = text.lower()
+        if not any(m in lower for m in cls._STANDING_MARKERS):
+            return None, None
+        # Pick category from the reason text first (user wrote what it's about).
+        for cat, keywords in cls.TRIGGER_MAP.items():
+            if cat == "always":
+                continue
+            if any(kw in lower for kw in keywords):
+                return text[:300], cat
+        # Fall back to scanning the originating task slug.
+        task_lower = (task or "").lower()
+        for cat, keywords in cls.TRIGGER_MAP.items():
+            if cat == "always":
+                continue
+            if any(kw in task_lower for kw in keywords):
+                return text[:300], cat
+        return text[:300], "always"
+
     def prior_denials_for(self, task: str) -> list[Instruction]:
         """
         Return all active denial-derived instructions tagged with this task

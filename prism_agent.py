@@ -2416,30 +2416,63 @@ class PrismAgent:
             risk_level = risk_level,
         )
 
-    def record_denial(self, task: str, params: dict, reason: str = "") -> None:
+    def record_denial(self, task: str, params: dict, reason: str = "") -> dict:
         """
         Persist a user denial so future identical requests can be pre-warned or
-        auto-declined. The user's optional textarea reason gets folded into the
-        instructions DB so the LLM-classifier sees it on the next chat turn.
-        Best-effort: silently no-ops if instructions infra is unavailable.
+        auto-declined.
+
+        Two writes happen, both best-effort:
+
+        1. **Task-scoped record** — trigger=task_slug. Surfaces via
+           ``prior_denials_for(task)`` so the next approval card for the
+           exact same task shows a "you denied this before" banner.
+        2. **Standing rule** — if the reason contains a marker like "never"
+           or "always", the reason is also stored with a broad trigger
+           category (email/calendar/finance/...) so it applies to ALL
+           similar requests, not just retries of this one task.
+
+        Returns
+        -------
+        dict
+            ``{"task_scoped": <bool>, "standing_trigger": <str|None>,
+               "standing_text": <str|None>}``. Callers can use this to
+            phrase a "saved as a rule" confirmation back to the user.
         """
+        out: dict = {"task_scoped": False, "standing_trigger": None, "standing_text": None}
         try:
             instr = getattr(self, "_instructions", None)
             if instr is None:
-                return
+                return out
+            # 1. Task-scoped record (one-shot retry guard)
             trigger = (task or "")[:80] or "denial"
             text = (reason or "").strip() or f"User denied '{task}' once. Ask again only if context differs."
             if reason and reason.strip():
                 text = f"On '{task}': {reason.strip()[:300]}"
             try:
                 instr.add(text=text, trigger=trigger)
+                out["task_scoped"] = True
             except TypeError:
                 try:
                     instr.add(text)
+                    out["task_scoped"] = True
+                except Exception:
+                    pass
+
+            # 2. Standing rule extraction
+            try:
+                standing_text, standing_trigger = instr.classify_denial(task, reason)
+            except Exception:
+                standing_text, standing_trigger = None, None
+            if standing_text and standing_trigger:
+                try:
+                    instr.add(text=standing_text, trigger=standing_trigger)
+                    out["standing_trigger"] = standing_trigger
+                    out["standing_text"]    = standing_text
                 except Exception:
                     pass
         except Exception as exc:
             logger.debug("record_denial best-effort failed: %s", exc)
+        return out
 
     def replan(self, instructions: str = "", tasks: list | None = None) -> PrismCard:
         """
