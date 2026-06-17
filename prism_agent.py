@@ -31,6 +31,7 @@ from prism_proactive import PrismProactive, build_advanced_triggers, build_defau
 from prism_push import PrismPush
 from prism_responses import (
     PrismCard,
+    approval_card,
     domain_card,
     identity_card,
     moment_card,
@@ -1116,24 +1117,58 @@ class PrismAgent:
         return self._llm_classify(message) or "general_chat"
 
     def _llm_classify(self, message: str) -> Optional[str]:
-        try:
-            labels = [intent for _, intent in self.INTENTS]
-            prompt = (
-                f"Classify this message into exactly one of: {labels}\n"
-                f"Message: {message}\n"
-                "Reply with ONLY the label, nothing else."
-            )
-            payload = json.dumps({"model": self._text_model, "prompt": prompt, "stream": False}).encode()
-            request = urllib.request.Request(
-                f"{self._ollama_host}/api/generate",
-                data=payload,
-                headers={"Content-Type": "application/json"},
-            )
-            with urllib.request.urlopen(request, timeout=30) as response:
-                result = json.loads(response.read()).get("response", "").strip().lower()
-            return result if result in labels else None
-        except Exception:
-            return None
+        """
+        Pick the closest intent label, OR return 'novel_capability' if the
+        message asks PRISM to *do* something concrete that no label covers
+        (the synthesis approval gate fires for these), OR return None to fall
+        back to general_chat for pure questions / conversation.
+
+        Uses the router so any configured LLM backend works (Ollama, DeepSeek,
+        Claude, etc); falls back to a raw Ollama call if the router isn't
+        wired yet during agent bootstrap.
+        """
+        labels = [intent for _, intent in self.INTENTS]
+        labels_with_synth = labels + ["novel_capability", "chat"]
+        prompt = (
+            "You are a routing classifier. Pick ONE label that best fits the user's message.\n\n"
+            "Labels:\n"
+            "  - One of these specific intent names: " + ", ".join(sorted(set(labels))) + "\n"
+            "  - 'novel_capability' if the user is asking PRISM to DO a concrete action "
+            "(run, send, control, generate, fetch, transform, automate something) and "
+            "no specific intent above fits.\n"
+            "  - 'chat' for questions, explanations, opinions, or anything conversational "
+            "that doesn't require a tool.\n\n"
+            f"Message: {message}\n\n"
+            "Reply with ONLY the label. No quotes, no punctuation, no explanation."
+        )
+
+        result: str = ""
+        router = getattr(self, "_router", None)
+        if router is not None:
+            try:
+                raw, _ = router.call(prompt, min_capability=1, max_tokens=24)
+                result = (raw or "").strip().lower().strip("'\"`.,!?")
+            except Exception as exc:
+                logger.debug("_llm_classify via router failed: %s", exc)
+
+        if not result:
+            try:
+                payload = json.dumps({"model": self._text_model, "prompt": prompt, "stream": False}).encode()
+                request = urllib.request.Request(
+                    f"{self._ollama_host}/api/generate",
+                    data=payload,
+                    headers={"Content-Type": "application/json"},
+                )
+                with urllib.request.urlopen(request, timeout=30) as response:
+                    result = json.loads(response.read()).get("response", "").strip().lower().strip("'\"`.,!?")
+            except Exception:
+                return None
+
+        if result in labels:
+            return result
+        if result == "novel_capability":
+            return "novel_capability"
+        return None
 
     def _execute(self, intent: str, message: str, ctx: dict) -> PrismCard:
         if intent == "my_profile":
@@ -2046,11 +2081,20 @@ class PrismAgent:
                             "expires":       time.time() + 300,
                         }
                         action_desc = message[:200]
-                        return text_card(
-                            f"**{intent}** requires approval before executing.\n\n"
-                            f"Action: {action_desc}\n\n"
-                            f"Say **yes** or **approve** to confirm, or **cancel** to abort.",
-                            f"Approval required — {intent}",
+                        risk_level = policy.get("risk_level", "medium")
+                        why_parts = []
+                        if policy.get("irreversible"):
+                            why_parts.append("Action is irreversible once taken")
+                        caps = self._organ_loader.get_organ_capabilities(intent)
+                        if caps:
+                            why_parts.append("Uses capability: " + ", ".join(sorted(caps)))
+                        why_parts.append(f"Organ '{intent}' is policy-gated")
+                        return approval_card(
+                            task       = intent,
+                            reason     = f"Run <strong>{intent}</strong> for: {action_desc}",
+                            params     = {"organ_intent": intent, "organ_message": message},
+                            risk_level = risk_level,
+                            risk_why   = " · ".join(why_parts),
                         )
 
                 # Execute via BudManager (scoped context, token lifecycle)
@@ -2279,12 +2323,39 @@ class PrismAgent:
         risk_hint = (
             f"This may affect external systems via {capability_desc}. " if approval_needed and capability_desc else ""
         ) + "Writes a Python file to ~/.prism/organs/ and may pip-install dependencies. AST-validated against unsafe operations before running."
+        risk_level = "high" if approval_needed else "medium"
         return synthesis_approval_card(
             intent     = intent_slug,
             message    = message,
             capability = capability_desc,
             risk_hint  = risk_hint,
+            risk_level = risk_level,
         )
+
+    def record_denial(self, task: str, params: dict, reason: str = "") -> None:
+        """
+        Persist a user denial so future identical requests can be pre-warned or
+        auto-declined. The user's optional textarea reason gets folded into the
+        instructions DB so the LLM-classifier sees it on the next chat turn.
+        Best-effort: silently no-ops if instructions infra is unavailable.
+        """
+        try:
+            instr = getattr(self, "_instructions", None)
+            if instr is None:
+                return
+            trigger = (task or "")[:80] or "denial"
+            text = (reason or "").strip() or f"User denied '{task}' once. Ask again only if context differs."
+            if reason and reason.strip():
+                text = f"On '{task}': {reason.strip()[:300]}"
+            try:
+                instr.add(text=text, trigger=trigger)
+            except TypeError:
+                try:
+                    instr.add(text)
+                except Exception:
+                    pass
+        except Exception as exc:
+            logger.debug("record_denial best-effort failed: %s", exc)
 
     def _slugify_intent(self, message: str) -> str:
         """

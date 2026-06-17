@@ -116,11 +116,32 @@ def setup_required_card(
     )
 
 
+_RISK_PILL_COLOR = {
+    "low":      ("#0d4d36", "#7fe6c4"),
+    "medium":   ("#4a3a0a", "#f2d27a"),
+    "high":     ("#5a1d18", "#ff9a8d"),
+    "critical": ("#5a1d18", "#ff5d4a"),
+}
+
+
+def _risk_pill(risk_level: str) -> str:
+    rl = (risk_level or "").lower()
+    if rl not in _RISK_PILL_COLOR:
+        return ""
+    bg, fg = _RISK_PILL_COLOR[rl]
+    return (
+        f"<span style='display:inline-block;padding:1px 7px;border-radius:10px;"
+        f"font-size:10px;font-weight:600;letter-spacing:.3px;text-transform:uppercase;"
+        f"background:{bg};color:{fg};margin-right:6px'>{rl} risk</span>"
+    )
+
+
 def synthesis_approval_card(
     intent:     str,
     message:    str,
     capability: str = "",
     risk_hint:  str = "",
+    risk_level: str = "medium",
 ) -> PrismCard:
     """
     Shown before PRISM synthesises a new organ for an unknown capability.
@@ -141,6 +162,7 @@ def synthesis_approval_card(
 
     cap_line = capability.strip() or f"a tool for: '{message[:80]}'"
     body = (
+        f"<div style='margin-bottom:6px'>{_risk_pill(risk_level)}</div>"
         "<div style='font-size:13px;line-height:1.5'>"
         "I don't have an organ for this yet. With your approval I'll "
         "<strong>write one now</strong>, AST-validate it against unsafe "
@@ -178,23 +200,48 @@ def synthesis_approval_card(
     )
 
 
-def approval_card(task: str, reason: str, params: Optional[dict] = None) -> PrismCard:
+def approval_card(
+    task:       str,
+    reason:     str,
+    params:     Optional[dict] = None,
+    risk_level: str = "medium",
+    risk_why:   str = "",
+) -> PrismCard:
     """
     Card shown when a device task requires user confirmation before executing.
-    The chat UI renders two buttons: Approve and Deny.
-    card_data contains everything needed to re-execute on approval.
+    The chat UI renders two buttons: Approve and Deny plus an optional
+    instructions textarea so the user can refine the request before approving.
+    card_data carries everything needed to re-execute on approval, plus
+    risk metadata so the renderer can surface a colour-coded pill.
     """
     import uuid as _uuid
     task_id = str(_uuid.uuid4())[:8]
+
+    body_parts = []
+    pill = _risk_pill(risk_level)
+    if pill:
+        body_parts.append(f"<div style='margin-bottom:6px'>{pill}</div>")
+    if reason:
+        body_parts.append(f"<div style='font-size:13px;line-height:1.5'>{reason}</div>")
+    else:
+        body_parts.append(f"<div style='font-size:13px;line-height:1.5'>Allow PRISM to: {task}</div>")
+    if risk_why:
+        safe = risk_why.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        body_parts.append(
+            f"<div style='margin-top:8px;font-size:11px;color:var(--mu)'>"
+            f"<strong style='color:var(--tx)'>Why I'm asking:</strong> {safe}</div>"
+        )
+
     return PrismCard(
         card_type = CardType.APPROVAL,
         title     = "Approval required",
-        body      = reason or f"Allow PRISM to: {task}",
+        body      = "".join(body_parts),
         card_data = {
-            "task_id": task_id,
-            "task":    task,
-            "params":  params or {},
-            "reason":  reason,
+            "task_id":    task_id,
+            "task":       task,
+            "params":     params or {},
+            "reason":     reason,
+            "risk_level": risk_level,
         },
         actions = ["Approve", "Deny"],
     )

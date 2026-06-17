@@ -101,14 +101,28 @@ async def device_approve(request: Request):
     instructions = body.get("instructions", "")
 
     if not approved:
+        # Record the denial (and any reason the user gave in the textarea)
+        # so the agent can learn the boundary and avoid re-asking. Best-effort:
+        # missing infra is silent because denial UX shouldn't break.
+        try:
+            agent = _get_agent()
+            if agent and hasattr(agent, "record_denial"):
+                agent.record_denial(task, params, instructions)
+        except Exception:
+            pass
+
         try:
             from prism_responses import text_card
+            note = ""
+            if instructions and instructions.strip():
+                safe = instructions.strip()[:200]
+                note = f"\n\nNoted: \"{safe}\" — I'll remember this when similar requests come up."
             if task == "_synthesize_organ":
                 return text_card(
                     "Cancelled. I won't build that organ. "
-                    "Rephrase or add more context if you'd like a different approach.",
+                    "Rephrase or add more context if you'd like a different approach." + note,
                     "Synthesis cancelled").to_json()
-            return text_card("Action cancelled.").to_json()
+            return text_card("Action cancelled." + note).to_json()
         except ImportError:
             return {"message": "Action cancelled."}
 
