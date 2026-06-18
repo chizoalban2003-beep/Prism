@@ -196,6 +196,11 @@ class PrismAgent:
         (r"outcome stats?|chain outcomes?|learning stats?|"
          r"completion rate|how (?:often|many chains?) (?:do you )?(?:complete|finish)",
          "outcome_stats"),
+        (r"\b(?:show|what(?:'s| is)?|check)\s+(?:my\s+|the\s+)?budget\b|"
+         r"\b(?:llm|api|prism)\s+(?:spend|cost|budget|spending)\b|"
+         r"\bhow much (?:have (?:i|you)|did (?:i|you)) spen[dt]\b|"
+         r"\bdaily (?:cost|spend|budget)\b",
+         "budget_status"),
         (r"weekly reflection|reflect (?:on (?:this|the|my) )?(?:week|month|today)|"
          r"how (?:did|was) (?:my|the|this) (?:week|month) go|"
          r"weekly summary",
@@ -700,6 +705,16 @@ class PrismAgent:
             logger.warning("PrismReflection not available: %s", e)
             self._reflection = None
 
+        # Budget — CEO-style governance over LLM spend.
+        # PRISM (the manager) checks itself before spending the user's money.
+        try:
+            from prism_budget import from_config as _budget_from_config
+            self._budget = _budget_from_config(self._config)
+            logger.info("PrismBudget ready: daily=$%.2f", self._budget.daily_usd)
+        except Exception as e:
+            logger.warning("PrismBudget not available: %s", e)
+            self._budget = None
+
         # ChainOrchestrator — prefrontal cortex for multi-step coordination
         self._orchestrator: Optional[Any] = None
         try:
@@ -1174,17 +1189,44 @@ class PrismAgent:
         (the synthesis approval gate fires for these), OR return None to fall
         back to general_chat for pure questions / conversation.
 
+        Surfaces both the hardcoded INTENTS labels AND every loaded organ
+        (bundled + synthesized) so that organs synthesized in previous
+        sessions remain reachable through the router instead of going orphan.
+
         Uses the router so any configured LLM backend works (Ollama, DeepSeek,
         Claude, etc); falls back to a raw Ollama call if the router isn't
         wired yet during agent bootstrap.
         """
-        labels = [intent for _, intent in self.INTENTS]
-        labels + ["novel_capability", "chat"]
+        regex_labels = [intent for _, intent in self.INTENTS]
+        # Pull in every loaded organ so synthesized ones aren't orphaned.
+        organ_intents: dict[str, str] = {}
+        loader = getattr(self, "_organ_loader", None)
+        if loader is not None:
+            try:
+                organ_intents = loader.known_intents()
+            except Exception:
+                pass
+        # Organs that already have a regex pattern stay grouped with regex_labels.
+        organ_only = sorted(set(organ_intents) - set(regex_labels))
+        labels = sorted(set(regex_labels) | set(organ_intents))
+
+        organ_block = ""
+        if organ_only:
+            organ_lines = "\n".join(
+                f"      {i} — {organ_intents.get(i, '')[:80]}"
+                for i in organ_only[:50]
+            )
+            organ_block = (
+                "\n  - Loaded organs (prefer these when they fit; "
+                "they execute immediately):\n" + organ_lines
+            )
+
         prompt = (
             "You are a routing classifier. Pick ONE label that best fits the user's message.\n\n"
             "Labels:\n"
-            "  - One of these specific intent names: " + ", ".join(sorted(set(labels))) + "\n"
-            "  - 'novel_capability' if the user is asking PRISM to DO a concrete action "
+            "  - One of these specific intent names: " + ", ".join(labels) + "\n"
+            + organ_block +
+            "\n  - 'novel_capability' if the user is asking PRISM to DO a concrete action "
             "(run, send, control, generate, fetch, transform, automate something) and "
             "no specific intent above fits.\n"
             "  - 'chat' for questions, explanations, opinions, or anything conversational "
@@ -2078,6 +2120,34 @@ class PrismAgent:
                 f"  Avg policy flags: {stats['avg_policy_flags']}",
             ]
             return text_card("\n".join(lines5), "Learning stats")
+
+        # ── Budget snapshot — CEO governance dashboard ────────────────────
+        if intent == "budget_status":
+            b = getattr(self, "_budget", None)
+            if b is None:
+                return text_card("Budget engine not available.", "Budget")
+            snap = b.snapshot()
+            bar_width = 24
+            filled = int(snap["fraction_used"] * bar_width)
+            bar = "█" * filled + "░" * (bar_width - filled)
+            lines = [
+                f"Daily LLM budget: ${snap['daily_limit_usd']:.2f}",
+                f"Spent today:     ${snap['spent_today_usd']:.4f}",
+                f"Remaining:       ${snap['remaining_usd']:.4f}",
+                f"  [{bar}] {int(snap['fraction_used']*100)}%",
+            ]
+            if snap["monthly_limit_usd"]:
+                lines.append(
+                    f"Monthly budget:  ${snap['monthly_limit_usd']:.2f} "
+                    f"(spent ${snap['spent_this_month_usd']:.4f})"
+                )
+            lines.append(
+                f"Local providers (Ollama): "
+                + ("not counted" if snap["free_provider_bypass"] else "counted")
+            )
+            policy = "block" if snap["block_at_ceiling"] else "warn only"
+            lines.append(f"At ceiling: {policy}. Warn at {int(snap['warn_at_fraction']*100)}%.")
+            return text_card("\n".join(lines), "Budget")
 
         # ── Weekly reflection ─────────────────────────────────────────────
         if intent == "reflection":

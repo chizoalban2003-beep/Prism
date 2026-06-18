@@ -15,6 +15,14 @@ Organ interface
         "intent":      "unique_intent_name",
         "description": "one-line description shown to the LLM router",
         "version":     "1.0",
+        # Optional — declares I/O schema so other organs can compose with this
+        # one (PowerBI-style arrows). Each field is {name: type_string}. Types
+        # are advisory strings, not enforced — they document the contract.
+        "inputs":      {"message": "str", "ctx": "dict"},
+        "outputs":     {"card": "PrismCard"},
+        # Optional — list of capability strings (file_write, network, etc.)
+        # used by the policy node and the capability auditor.
+        "capabilities": [],
     }
 
     # Optional — declares risk level so the policy node is self-extending.
@@ -138,9 +146,13 @@ _CAPABILITY_SIGNALS: dict[str, list[str]] = {
     "network":         ["urllib.request", "urlopen", "http.client", "requests."],
     "telephony":       ["twilio", "phone_call", "make_call", "plivo"],
     "email":           ["smtplib", "email_send", "sendmail"],
+    # PrismCard.body is rendered unescaped in the UI; raw HTML/JS strings
+    # injected into the body field can mutate the running frontend. Any organ
+    # that emits one must declare this capability so the policy node can gate it.
+    "frontend_mutate": ["<script", "<iframe", "onclick=", "onerror=", "javascript:", "innerHTML"],
 }
 
-_CRITICAL_CAPABILITIES = frozenset({"shell_execution", "telephony"})
+_CRITICAL_CAPABILITIES = frozenset({"shell_execution", "telephony", "frontend_mutate"})
 
 
 def _audit_capability_gap(code: str, declared: set[str]) -> list[str]:
@@ -181,6 +193,11 @@ ORGAN_META = {{
     "intent":      "{intent}",
     "description": "...",
     "version":     "1.0",
+    # Optional I/O schema — enables composition with other organs.
+    # Default contract is message+ctx → card; override only if you produce
+    # structured data another organ would consume.
+    "inputs":      {{"message": "str", "ctx": "dict"}},
+    "outputs":     {{"card": "PrismCard"}},
 }}
 
 def execute(intent: str, message: str, ctx: dict):
@@ -260,6 +277,38 @@ class OrganLoader:
         fn = entry[0]
         return list(getattr(fn, "_organ_meta", {}).get("capabilities", []))
 
+    def get_organ_schema(self, intent: str) -> dict:
+        """
+        Return the I/O schema declared in ORGAN_META as
+        ``{"inputs": {...}, "outputs": {...}}``.
+
+        Missing fields default to the standard organ contract:
+        inputs={"message": "str", "ctx": "dict"}, outputs={"card": "PrismCard"}.
+        Used by the chain planner to wire organs together (PowerBI-style arrows).
+        """
+        entry = self._organs.get(intent)
+        if entry is None:
+            return {}
+        meta = getattr(entry[0], "_organ_meta", {})
+        return {
+            "inputs":  dict(meta.get("inputs",  {"message": "str", "ctx": "dict"})),
+            "outputs": dict(meta.get("outputs", {"card": "PrismCard"})),
+        }
+
+    def composable_with(self, producer: str, consumer: str) -> bool:
+        """
+        Return True if at least one *output* of producer matches an *input*
+        type of consumer — i.e. an arrow can be drawn from producer → consumer.
+        Type comparison is exact string match; advisory only.
+        """
+        p = self.get_organ_schema(producer).get("outputs", {})
+        c = self.get_organ_schema(consumer).get("inputs",  {})
+        if not p or not c:
+            return False
+        out_types = set(p.values())
+        in_types  = set(c.values())
+        return bool(out_types & in_types)
+
     def known_intents(self) -> dict[str, str]:
         """Return {intent: description} for every loaded organ."""
         return {k: v[1].get("description", k) for k, v in self._organs.items()}
@@ -303,6 +352,8 @@ class OrganLoader:
             "irreversible":      policy.get("irreversible", False),
             "max_per_session":   policy.get("max_per_session", None),
             "capabilities": meta.get("capabilities", []),
+            "inputs":       dict(meta.get("inputs",  {"message": "str", "ctx": "dict"})),
+            "outputs":      dict(meta.get("outputs", {"card": "PrismCard"})),
         }
 
     def list_organ_details(self) -> list[dict]:

@@ -31,6 +31,9 @@ capabilities:
   smart_home:
     description: "Control smart home devices (lights, locks, thermostat)"
     risk: medium
+  frontend_mutate:
+    description: "Emit raw HTML/JS into PrismCard.body (mutates the running UI)"
+    risk: high
 
 # ── Absolute limits — cannot be overridden by L2 or user instruction ──────────
 absolute_limits:
@@ -40,6 +43,7 @@ absolute_limits:
   never_synthesize_capabilities:
     - subprocess
     - telephony
+    - frontend_mutate
   data_retention_days: 90
   # These intents must never be logged to conversation history
   never_log_intents:
