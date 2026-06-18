@@ -152,6 +152,32 @@ async def device_approve(request: Request):
             {"error": "Agent not available for synthesis approval", "status": 503},
             status_code=503)
 
+    # Organ-task path: approval cards surfaced by agent._execute() carry
+    # params={"organ_intent": "<intent>", "organ_message": "<original msg>"}.
+    # Route those back through the agent with the L2 approval flag set
+    # (_approved_<intent>=True), so the policy gate is bypassed and the
+    # organ actually runs. Without this, approving file_write / shell_run /
+    # etc. fell through to the device-task handler which doesn't know them.
+    organ_intent  = params.get("organ_intent") if isinstance(params, dict) else None
+    organ_message = params.get("organ_message") if isinstance(params, dict) else None
+    if organ_intent:
+        agent = _get_agent()
+        if agent and hasattr(agent, "_execute"):
+            try:
+                ctx = {f"_approved_{organ_intent}": True}
+                if instructions and instructions.strip():
+                    ctx["approval_instructions"] = instructions.strip()
+                card = agent._execute(organ_intent, organ_message or task, ctx)
+                if hasattr(card, "to_json"):
+                    return card.to_json()
+                from prism_responses import text_card
+                return text_card(str(card), organ_intent).to_json()
+            except Exception as exc:
+                return JSONResponse(
+                    {"error": f"Organ '{organ_intent}' failed: {exc}", "status": 500},
+                    status_code=500,
+                )
+
     try:
         from prism_device_agent import PrismDeviceAgent
         from prism_responses import device_result_card

@@ -9,6 +9,7 @@ SECURITY: Always bound to 127.0.0.1 — never expose to 0.0.0.0.
 """
 from __future__ import annotations
 
+import asyncio
 import hmac
 import json
 import logging
@@ -263,17 +264,49 @@ if _FASTAPI_AVAILABLE:
         if not msg:
             return JSONResponse({"error": "'message' query parameter required"}, status_code=400)
 
-        chain = _get_chain()
         agent = _get_agent()
-        if chain is None or agent is None:
+        if agent is None:
             return JSONResponse({"error": "agent not ready"}, status_code=503)
 
         async def event_generator():
-            async for evt in chain.run_streaming_async(msg, agent._execute, {"source": "sse"}):
-                if await request.is_disconnected():
-                    break
-                yield f"data: {json.dumps(evt, default=str)}\n\n"
-            yield f"data: {json.dumps({'event': 'close'})}\n\n"
+            # Emit a single thinking step so the UI shows progress while
+            # agent.chat() runs. Routing through agent.chat() (instead of
+            # chain.run_streaming_async) ensures intent matching, ORGAN_POLICY
+            # approval gates, and per-organ execution all fire — the bare
+            # streaming chain only ran LLM reasoning steps without invoking
+            # action organs, which produced "I would do X" text rather than
+            # actually doing X.
+            yield "data: " + json.dumps({
+                "event": "step", "step": 1, "logic": "agent",
+                "result": "Routing...", "policy": "",
+                "score": 0, "risk": "low", "caps": [],
+                "constitution": "allowed",
+            }) + "\n\n"
+
+            try:
+                card = await asyncio.to_thread(agent.chat, msg, {"source": "sse"})
+            except Exception as exc:
+                yield "data: " + json.dumps({"event": "error", "message": str(exc)}) + "\n\n"
+                yield "data: " + json.dumps({"event": "close"}) + "\n\n"
+                return
+
+            if await request.is_disconnected():
+                return
+
+            cj = card.to_json() if hasattr(card, "to_json") else {
+                "type": "text", "title": "", "body": str(card),
+                "data": {}, "actions": [],
+            }
+            yield "data: " + json.dumps({
+                "event":        "done",
+                "answer":       cj.get("body", ""),
+                "chain_id":     "",
+                "card_type":    cj.get("type", "text"),
+                "card_title":   cj.get("title", ""),
+                "card_data":    cj.get("data", {}),
+                "card_actions": cj.get("actions", []),
+            }, default=str) + "\n\n"
+            yield "data: " + json.dumps({"event": "close"}) + "\n\n"
 
         return StreamingResponse(
             event_generator(),

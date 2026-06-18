@@ -722,6 +722,31 @@ class PrismDeviceAgent:
 
     # ------------------------------------------------------------------ #
 
+    _HOME_FOLDERS = {
+        "downloads", "documents", "desktop", "pictures", "music",
+        "videos", "public", "templates", "home",
+    }
+
+    @staticmethod
+    def _resolve_user_folder(raw: str) -> str:
+        """Normalise natural-language folder phrases to a real path.
+
+        Strips leading "my "/"the " articles and maps bare common folder
+        names ("Downloads", "Documents", …) to ``~/Folder``.
+        """
+        s = (raw or "").strip().strip("'\"")
+        low = s.lower()
+        for prefix in ("my ", "the ", "in my ", "in the "):
+            if low.startswith(prefix):
+                s = s[len(prefix):].strip()
+                low = s.lower()
+                break
+        if low in PrismDeviceAgent._HOME_FOLDERS:
+            if low == "home":
+                return "~"
+            return f"~/{s[:1].upper()}{s[1:].lower()}"
+        return s
+
     @staticmethod
     def _safe_path(raw: str, allowed_roots: Optional[list[str]] = None) -> str:
         """
@@ -830,10 +855,11 @@ class PrismDeviceAgent:
 
         if task_type == "list_files":
             m = re.search(
-                r"(?:list\s+files?\s+(?:in\s+)?|what(?:'s| is)\s+(?:on|in)\s+my\s+)([\w./~-]+)",
+                r"(?:list\s+files?\s+(?:in\s+)?|what(?:'s| is)\s+(?:on|in)\s+my\s+)(.+)",
                 lowered,
             )
-            raw_path = m.group(1) if m else params.get("path", _home)
+            raw_path = m.group(1).strip() if m else params.get("path", _home)
+            raw_path = self._resolve_user_folder(raw_path)
             try:
                 path_str = self._safe_path(raw_path)
             except ValueError as exc:
