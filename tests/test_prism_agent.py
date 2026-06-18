@@ -7,7 +7,7 @@ from prism_responses import PrismCard
 
 
 def test_route_plan():
-    assert PrismAgent()._route("plan my day") == "plan"
+    assert PrismAgent()._route("plan my day") == "universal_plan"
 
 
 def test_route_medical():

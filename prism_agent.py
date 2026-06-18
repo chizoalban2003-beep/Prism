@@ -193,6 +193,13 @@ class PrismAgent:
         (r"show (?:me )?(?:the )?chain|chain (?:steps?|history|log)|"
          r"how did (?:the )?chain work|what (?:steps?|logics?) did you use",
          "chain_history"),
+        (r"outcome stats?|chain outcomes?|learning stats?|"
+         r"completion rate|how (?:often|many chains?) (?:do you )?(?:complete|finish)",
+         "outcome_stats"),
+        (r"weekly reflection|reflect (?:on (?:this|the|my) )?(?:week|month|today)|"
+         r"how (?:did|was) (?:my|the|this) (?:week|month) go|"
+         r"weekly summary",
+         "reflection"),
         (r"(?:start|begin|enable|use) (?:voice|microphone|listening|speech)|"
          r"(?:stop|disable) (?:voice|listening|speech)|"
          r"(?:voice|speech|microphone) (?:on|off|status|available)|"
