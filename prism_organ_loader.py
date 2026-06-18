@@ -408,6 +408,10 @@ class OrganLoader:
                         results[intent] = {"error": "overall timeout", "output": ""}
         return results
 
+    # Names the router classifier uses as sentinels — never let synthesis
+    # poison these with a cached organ, or every unmapped request will hit it.
+    _RESERVED_INTENTS = frozenset({"novel_capability", "general_chat", "chat"})
+
     def synthesize(self, intent: str, message: str) -> bool:
         """
         Ask the LLM to write a new organ for this intent, safety-check it,
@@ -415,6 +419,12 @@ class OrganLoader:
 
         Returns True if the organ was successfully synthesized and registered.
         """
+        if intent in self._RESERVED_INTENTS:
+            logger.warning(
+                "[organ_loader] Refusing to synthesize reserved intent %r — "
+                "this name is a router sentinel, caching it would mis-route "
+                "every unmapped request.", intent)
+            return False
         if not self._router:
             logger.warning("[organ_loader] No router — cannot synthesize %s", intent)
             return False

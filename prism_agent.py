@@ -2401,7 +2401,7 @@ class PrismAgent:
         intent_slug = (
             intent
             if intent
-            and intent != "general_chat"
+            and intent not in ("general_chat", "novel_capability", "chat")
             and re.match(r"^[a-z_][a-z0-9_]*$", intent)
             else self._slugify_intent(message)
         )

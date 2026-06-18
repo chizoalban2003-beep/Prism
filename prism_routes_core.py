@@ -33,7 +33,9 @@ router = APIRouter()
 async def chat(request: Request):
     body: dict[str, Any] = {}
     try:
-        body = await request.json()
+        parsed = await request.json()
+        if isinstance(parsed, dict):
+            body = parsed
     except Exception:
         pass
 
@@ -46,8 +48,13 @@ async def chat(request: Request):
         except ImportError as exc:
             return JSONResponse({"error": str(exc), "status": 503}, status_code=503)
 
-    message = body.get("message", "")
-    card = await asyncio.to_thread(agent.chat, message, body.get("context", {}))
+    raw_message = body.get("message", "")
+    message = raw_message if isinstance(raw_message, str) else str(raw_message or "")
+    # Cap to prevent runaway prompts; PRISM is a chat UI, not a paste bin.
+    if len(message) > 8192:
+        message = message[:8192]
+    context = body.get("context") if isinstance(body.get("context"), dict) else {}
+    card = await asyncio.to_thread(agent.chat, message, context)
 
     # Persist to named session if one is active
     session_id = body.get("session_id") or _state.get("active_session_id")
