@@ -174,7 +174,8 @@ def test_fallback_plan_returns_plan_of_action():
 def test_fallback_plan_recommended_flags_llm_unavailable():
     p = PrismPlanner()
     result = p._fallback_plan("task")
-    assert "LLM unavailable" in result.recommended.risks[0]
+    assert "Planner LLM" in result.recommended.risks[0]
+    assert "unavailable" in result.context_summary.lower()
 
 
 def test_fallback_plan_has_single_stub_strategy():

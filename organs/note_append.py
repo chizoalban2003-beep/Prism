@@ -1,4 +1,6 @@
 """Bundled organ: note_append — append a timestamped note to ~/.prism/notes.md."""
+import re
+
 ORGAN_META = {
     "intent":      "note_append",
     "description": "save a note to the PRISM notes file with a timestamp",
@@ -14,16 +16,36 @@ ORGAN_POLICY = {
 }
 
 
+_TRIGGER_PHRASE = re.compile(
+    r'^\s*(?:please\s+)?'
+    r'(?:note|write|save|record|jot(?:\s+down)?|log|remember|remind\s+me|'
+    r'add\s+(?:a\s+)?note|take\s+(?:a\s+)?note|make\s+(?:a\s+)?note|'
+    r'log\s+(?:a\s+)?(?:decision|note|thought|idea)|'
+    r'(?:save|record)\s+(?:a\s+)?(?:decision|note|thought|idea))'
+    r'\s*[.!?]?\s*$',
+    re.IGNORECASE,
+)
+
+
 def _extract_note(message: str) -> str:
-    import re
+    """Return the note body, or '' if the message is a bare trigger phrase.
+
+    Distinguishes 'Log a decision' (request to start logging — no content)
+    from 'Log: chose Postgres' (real content after the trigger).
+    """
+    if _TRIGGER_PHRASE.match(message or ''):
+        return ''
     for pat in [
-        r'(?:note|write|save|record|jot(?:\s+down)?)[:\s]+(.+)',
+        r'(?:log|save|record)\s+(?:a\s+)?(?:decision|note|thought|idea)[:\s]+(.+)',
+        r'(?:add|take|make)\s+(?:a\s+)?note[:\s]+(.+)',
         r'(?:remember|remind\s+me)[:\s]+(.+)',
-        r'(?:add\s+(?:a\s+)?note)[:\s]+(.+)',
+        r'(?:note|write|save|record|jot(?:\s+down)?|log)[:\s]+(.+)',
     ]:
         m = re.search(pat, message, re.IGNORECASE | re.DOTALL)
         if m:
-            return m.group(1).strip()
+            body = m.group(1).strip()
+            if body:
+                return body
     return message.strip()
 
 
@@ -35,7 +57,14 @@ def execute(intent: str, message: str, ctx: dict):
 
     note_text = _extract_note(message)
     if not note_text:
-        return text_card("No note content found in message.", "Note")
+        return text_card(
+            "What would you like me to save?\n\n"
+            "Try one of:\n"
+            "  • Note: <your note>\n"
+            "  • Log decision: <what you decided and why>\n"
+            "  • Remember: <thing to remember>",
+            "Note",
+        )
 
     notes_dir = Path("~/.prism").expanduser()
     try:

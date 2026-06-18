@@ -84,7 +84,7 @@ class PrismAgent:
         # News must precede plan — "today's headlines" contains "today"
         (r"news|headlines|top stories|latest stories|breaking news", "news_headlines"),
         (r"(?!.*\bto (?:french|spanish|german|japanese|chinese|arabic|russian|hindi|italian"
-         r"|portuguese)\b)(?:plan|morning|daily|today|schedule)", "plan"),
+         r"|portuguese)\b)(?:plan|morning|daily|today|schedule)", "universal_plan"),
         (r"how (?:do|can|should) i|plan (?:for|to)|strategy for|help me (?:with|plan)|"
          r"what(?:'s| is) the best way|i want to|i need to|my goal is", "universal_plan"),
         (r"predict|match|fixture|vs|versus", "predict_match"),
@@ -117,7 +117,10 @@ class PrismAgent:
          r"run (?:command|script)|execute|open (?:app|file)|"
          r"install (?:package|app)|git (?:commit|push|pull|status)|"
          r"what(?:'s| is) (?:on|in) my(?! screen| calendar| schedule| agenda| inbox| email| mailbox)|"
-         r"show me (?:my )?files", "device_task"),
+         r"show me (?:my )?files|"
+         r"\bmy files?\b|"
+         r"\bmy (?:downloads|documents|desktop|pictures|music|videos)\b",
+         "device_task"),
         (r"show (?:my )?polic|what(?:'s| are) my (?:budget|polic|limit)|"
          r"current (?:polic|budget|limit)", "show_policies"),
         (r"set (?:my )?(\w+) (?:budget|limit)|auto.?approv|never use|"
@@ -344,9 +347,14 @@ class PrismAgent:
         )
 
         self._queue  = TaskQueue()
+        _agent_cfg = self._config.get("agent", {}) if self._config else {}
+        _planner_model = _agent_cfg.get("text_model") or _agent_cfg.get("ollama_model") or text_model
+        _planner_host  = _agent_cfg.get("ollama_host") or ollama_host
+        self._text_model = _planner_model
+        self._ollama_host = _planner_host.rstrip('/')
         self._planner = PrismPlanner(
-            ollama_host    = ollama_host,
-            ollama_model   = text_model,
+            ollama_host    = _planner_host,
+            ollama_model   = _planner_model,
             claude_api_key = claude_api_key,
         )
 
@@ -1315,7 +1323,7 @@ class PrismAgent:
                 "Squad Risk")
 
         _KDE_INTENTS = {
-            "plan", "predict_match", "moment", "session",
+            "predict_match", "moment", "session",
             "transfer", "reflect",
         }
         if self._kde and intent in _KDE_INTENTS:

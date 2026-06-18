@@ -29,6 +29,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from typing import Optional
@@ -426,7 +427,7 @@ class PrismPlanner:
             method = "POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=120) as resp:
                 data = json.loads(resp.read())
             return data["content"][0]["text"]
         except Exception as e:
@@ -445,24 +446,50 @@ class PrismPlanner:
             headers = {"Content-Type": "application/json"},
         )
         try:
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=120) as resp:
                 return json.loads(resp.read()).get("response", "")
+        except urllib.error.HTTPError as e:
+            logger.warning("Ollama call failed: HTTP %s — model '%s' may not exist",
+                           e.code, self.ollama_model)
+            self._last_ollama_error = f"HTTP {e.code} (model '{self.ollama_model}' not found?)"
+            return ""
         except Exception as e:
+            etype = type(e).__name__
+            if "timed out" in str(e).lower() or "timeout" in etype.lower():
+                self._last_ollama_error = (
+                    f"model '{self.ollama_model}' timed out after 120s — "
+                    "too slow for structured planning"
+                )
+            else:
+                self._last_ollama_error = f"{etype}: {e}"
             logger.warning("Ollama call failed: %s", e)
             return ""
 
     def _fallback_plan(self, task: str) -> PlanOfAction:
         """Return a minimal plan when LLM is unavailable."""
+        reason = getattr(self, "_last_ollama_error", "no local LLM reachable")
+        if "timed out" in reason or "too slow" in reason:
+            hint = (
+                f"Your local model ({self.ollama_model}) is too slow for full planning. "
+                "Try a larger Ollama model: `ollama pull llama3.2:3b` or `ollama pull qwen2.5:3b`."
+            )
+        elif "not found" in reason or "HTTP 404" in reason:
+            hint = (
+                f"Model '{self.ollama_model}' is not installed. "
+                f"Run: `ollama pull {self.ollama_model}` (or change [agent].text_model in prism_config.toml)."
+            )
+        else:
+            hint = "Start Ollama with: `ollama serve` — or set [llm].claude_api_key in prism_config.toml."
         stub = StrategyPlan(
             name="Manual planning required", position=0.5, activation=1.0,
             expected_value=0, risk_score=0, steps=[], timeline="",
             resources=[], expected_outcome="",
-            risks=["LLM unavailable — task profile could not be extracted"],
-            why_recommended="Connect Ollama or provide Claude API key for full planning."
+            risks=[f"Planner LLM failed: {reason}"],
+            why_recommended=hint,
         )
         return PlanOfAction(
             task=task, domain="unknown", entity="user",
             timeline="", fulcrum_position=0.5,
             recommended=stub, all_strategies=[stub],
-            context_summary="LLM unavailable. Start Ollama with: ollama serve"
+            context_summary=f"Planner LLM unavailable — {reason}. {hint}"
         )

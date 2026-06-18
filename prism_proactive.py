@@ -119,6 +119,10 @@ class PrismProactive:
         """Schedule a reminder N seconds from now."""
         return self.schedule(message, time.time() + seconds)
 
+    # Debounce window for identical-message dedup. Two messages with the
+    # same body within this many seconds collapse into one delivered event.
+    _DEDUP_WINDOW_SECONDS: int = 90
+
     def _loop(self) -> None:
         while not self._stop.wait(self._poll):
             now = time.time()
@@ -129,12 +133,8 @@ class PrismProactive:
                     continue
                 try:
                     if trigger.condition():
-                        msg   = trigger.message()
-                        event = ProactiveEvent(trigger.trigger_id, msg)
-                        self._store(event)
-                        self._on_event(event)
-                        if getattr(self, '_push', None) and self._push.configured:
-                            self._push.alert(event.message)
+                        msg = trigger.message()
+                        self._emit(ProactiveEvent(trigger.trigger_id, msg))
                         trigger.last_fired = now
                 except Exception as e:
                     logger.debug("Trigger %s error: %s", trigger.trigger_id, e)
@@ -142,11 +142,33 @@ class PrismProactive:
             for st in self._scheduled:
                 if not st.fired and time.time() >= st.fire_at:
                     st.fired = True
-                    event = ProactiveEvent(st.trigger_id, st.message)
-                    self._store(event)
-                    self._on_event(event)
-                    if getattr(self, '_push', None) and self._push.configured:
-                        self._push.alert(st.message)
+                    self._emit(ProactiveEvent(st.trigger_id, st.message))
+
+    def _emit(self, event: ProactiveEvent) -> None:
+        """Store + dispatch one event, with same-message debounce.
+
+        Skips silently if an identical message was already stored within
+        the last ``_DEDUP_WINDOW_SECONDS``. Prevents the UI from showing
+        the same banner 3× in a row when several signals coincide.
+        """
+        if self._recent_duplicate(event.message):
+            return
+        self._store(event)
+        self._on_event(event)
+        if getattr(self, '_push', None) and self._push.configured:
+            self._push.alert(event.message)
+
+    def _recent_duplicate(self, message: str) -> bool:
+        try:
+            cutoff = time.time() - self._DEDUP_WINDOW_SECONDS
+            with sqlite3.connect(self._db, timeout=30.0) as c:
+                row = c.execute(
+                    "SELECT 1 FROM events WHERE message=? AND timestamp>=? LIMIT 1",
+                    (message, cutoff),
+                ).fetchone()
+            return row is not None
+        except Exception:
+            return False
 
     def _store(self, event: ProactiveEvent) -> None:
         with sqlite3.connect(self._db, timeout=30.0) as c:
