@@ -37,6 +37,27 @@ _CORRECTION_EXPLICIT = re.compile(
     r"\b(prefer|want|like|need|use|always|never|stop|don'?t)\b", re.I
 )
 
+# LLM placeholders / meta-comments we've seen poisoning the persona.
+# Reject anything that's just the prompt's example echoed back, or a
+# "no preferences identified" meta-statement.
+_PREF_BLACKLIST = re.compile(
+    r"^(?:prefers?\s+x|dislikes?\s+y|"
+    r"no(?:ne)?\s+(?:explicit\s+)?preferences?(?:\s+identified)?|"
+    r"none\s+provided|n/?a|unknown|null|undefined|"
+    r"pattern\s*\d+|example\s*\d*|placeholder)\s*[.!]?$",
+    re.I,
+)
+
+
+def _looks_like_real_preference(pref: str) -> bool:
+    """Filter out placeholder echoes and meta-comments before they hit the persona."""
+    s = pref.strip()
+    if len(s) < 8:                       # too short to carry signal
+        return False
+    if _PREF_BLACKLIST.match(s):
+        return False
+    return True
+
 
 class PrismCrystalliser:
     """
@@ -283,15 +304,19 @@ class PrismCrystalliser:
             f"Recent conversation excerpts:\n{conv_block}\n\n"
             f"Outcome stats: {stats_block}\n"
             f"Calibration events: {calib_block}\n\n"
-            "Return JSON only:\n"
+            "Return JSON only. Use EMPTY string/array fields when you have no\n"
+            "evidence — do not invent or guess.\n"
             "{\n"
             '  "communication_style": "direct/elaborate/technical/casual",\n'
             '  "response_length": "concise/medium/detailed",\n'
             '  "technical_depth": "low/medium/high",\n'
             '  "decision_style": "quick/deliberate/risk_averse/experimental",\n'
-            '  "patterns": ["pattern 1", "pattern 2"],\n'
-            '  "explicit_preferences": ["prefers X", "dislikes Y"]\n'
-            "}"
+            '  "patterns": [],\n'
+            '  "explicit_preferences": []\n'
+            "}\n"
+            "Only fill explicit_preferences with verbatim user statements like\n"
+            '"prefers Postgres over MySQL". Do NOT include meta-comments such as\n'
+            '"no preferences identified" — leave the array empty in that case.'
         )
 
     def _apply_extraction(self, data: dict) -> int:
@@ -317,14 +342,18 @@ class PrismCrystalliser:
                 updates += 1
 
         for pref in data.get("explicit_preferences", [])[:5]:
-            if isinstance(pref, str) and pref.strip():
-                self._persona.update_trait(
-                    f"pref_{pref[:30].lower().replace(' ', '_')}",
-                    pref.strip(),
-                    0.8,
-                    source="explicit",
-                    delta=1,
-                )
-                updates += 1
+            if not (isinstance(pref, str) and pref.strip()):
+                continue
+            if not _looks_like_real_preference(pref):
+                logger.debug("[crystalliser] dropping placeholder pref: %r", pref)
+                continue
+            self._persona.update_trait(
+                f"pref_{pref[:30].lower().replace(' ', '_')}",
+                pref.strip(),
+                0.8,
+                source="explicit",
+                delta=1,
+            )
+            updates += 1
 
         return updates
