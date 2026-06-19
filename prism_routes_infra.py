@@ -517,6 +517,118 @@ async def organs_execute(request: Request):
     return result
 
 
+@router.post("/organs/auto_plan")
+async def organs_auto_plan(request: Request):
+    """Pick organs for a user message, wire them, and run.
+
+    Body:
+        ``{"message": "what's the weather in Lagos and convert to F",
+           "ctx": {...},
+           "max_organs": 4,
+           "execute": true}``
+
+    Returns ``{"intents": [...], "plan": {...}, "execution": {...}}``.
+    When ``execute`` is ``false`` only the picked intents and wire diagram
+    are returned — useful for previewing the auto-pick in a UI before
+    spending budget on running it.
+    """
+    loader = _get_organ_loader()
+    if loader is None:
+        return JSONResponse(
+            {"error": "organ_loader not initialised"}, status_code=503
+        )
+    llm_router = _get_llm_router()
+    if llm_router is None:
+        return JSONResponse(
+            {"error": "llm_router not initialised — auto-pick needs an LLM"},
+            status_code=503,
+        )
+    try:
+        body: dict = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+
+    message = str(body.get("message", "")).strip()
+    if not message:
+        return JSONResponse(
+            {"error": "'message' is required"}, status_code=400
+        )
+    raw_ctx = body.get("ctx", {})
+    ctx = raw_ctx if isinstance(raw_ctx, dict) else {}
+    try:
+        max_organs = max(1, min(int(body.get("max_organs", 4)), 8))
+    except (TypeError, ValueError):
+        max_organs = 4
+    execute_flag = bool(body.get("execute", True))
+
+    from prism_organ_planner import (
+        auto_select_organs,
+        compose,
+        execute_plan,
+        has_cycle,
+    )
+
+    intents = auto_select_organs(loader, message, llm_router, max_organs=max_organs)
+    if not intents:
+        return {
+            "intents":   [],
+            "plan":      {"nodes": [], "arrows": [], "roots": [],
+                          "leaves": [], "orphans": []},
+            "execution": None,
+            "note":      "auto-picker returned no organs — fall back to "
+                         "single-organ routing or synthesis",
+        }
+
+    try:
+        plan = compose(loader, intents)
+    except Exception as exc:
+        return JSONResponse(
+            {"error": f"compose failed: {exc}", "intents": intents},
+            status_code=500,
+        )
+
+    if has_cycle(plan):
+        return JSONResponse(
+            {"error": "plan contains a cycle — refuse to execute",
+             "intents": intents, "plan": plan},
+            status_code=400,
+        )
+
+    if not execute_flag:
+        return {"intents": intents, "plan": plan, "execution": None}
+
+    try:
+        result = execute_plan(loader, plan, message=message, initial_ctx=ctx)
+    except Exception as exc:
+        return JSONResponse(
+            {"error": f"execute failed: {exc}",
+             "intents": intents, "plan": plan},
+            status_code=500,
+        )
+
+    def _serialize(v):
+        if hasattr(v, "model_dump"):
+            try:
+                return v.model_dump()
+            except Exception:
+                pass
+        if hasattr(v, "__dict__"):
+            try:
+                return {k: _serialize(x) for k, x in vars(v).items()
+                        if not k.startswith("_")}
+            except Exception:
+                return str(v)
+        try:
+            import json as _json
+            _json.dumps(v)
+            return v
+        except Exception:
+            return str(v)
+
+    result["outputs"] = {k: _serialize(v) for k, v in result["outputs"].items()}
+    return {"intents": intents, "plan": plan, "execution": result}
+
+
 @router.get("/organs/bundles/index")
 async def organs_bundle_index():
     """Return the curated list of installable organ bundles.

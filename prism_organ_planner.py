@@ -156,6 +156,78 @@ def topological_order(plan: dict) -> list[str]:
     return order
 
 
+def auto_select_organs(
+    loader,
+    message: str,
+    llm_router,
+    max_organs: int = 4,
+) -> list[str]:
+    """Ask the LLM to pick the smallest set of loaded organs that handle the
+    user message. Returns a list of intent names that exist in the loader.
+
+    Empty list means: the picker failed, or the LLM decided no organ fits.
+    Callers should fall back to single-organ routing in that case.
+
+    The prompt uses the LIVE loader's known_intents() — not a stale hard-
+    coded registry — so newly installed or synthesised organs are reachable
+    the moment they're loaded.
+    """
+    if llm_router is None or not message.strip():
+        return []
+    try:
+        intents = loader.known_intents()
+    except Exception:
+        return []
+    if not intents:
+        return []
+
+    catalog = "\n".join(f"  {k}: {v}" for k, v in sorted(intents.items()))
+    prompt = (
+        "You are picking organs (tools) to satisfy a user request.\n\n"
+        f"Available organs:\n{catalog}\n\n"
+        f"User request: \"{message}\"\n\n"
+        f"Pick up to {max_organs} organs whose combined output answers the "
+        "request. Prefer the smallest set. If exactly one organ is enough, "
+        "return just that one. If nothing fits, return an empty list.\n\n"
+        "Return ONLY valid JSON of this exact shape:\n"
+        "{\"intents\": [\"organ_name\", ...]}\n"
+    )
+    try:
+        raw, _ = llm_router.call(
+            prompt, min_capability=1, max_tokens=200, json_mode=True
+        )
+    except Exception:
+        return []
+    if not raw:
+        return []
+
+    import json as _json
+    text = raw.strip()
+    for prefix in ("```json", "```"):
+        if text.startswith(prefix):
+            text = text[len(prefix):].strip()
+    if text.endswith("```"):
+        text = text[:-3].strip()
+    try:
+        data = _json.loads(text)
+    except Exception:
+        return []
+    picked = data.get("intents") if isinstance(data, dict) else None
+    if not isinstance(picked, list):
+        return []
+
+    seen: set[str] = set()
+    out: list[str] = []
+    for item in picked:
+        name = str(item).strip()
+        if name and name in intents and name not in seen:
+            seen.add(name)
+            out.append(name)
+        if len(out) >= max_organs:
+            break
+    return out
+
+
 def execute_plan(
     loader,
     plan: dict,
