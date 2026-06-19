@@ -87,6 +87,13 @@ def test_topological_order_and_executor_propagate_upstream():
     assert result["outputs"]["leaf"]["final"] == 3.14 * 2 + 1
 
 
+def test_execute_plan_distinguishes_empty_from_cycle():
+    loader = _StubLoader({})
+    plan = compose(loader, [])
+    result = execute_plan(loader, plan)
+    assert "empty plan" in result["errors"]["_plan"]
+
+
 def test_has_cycle_detects_loop():
     loader = _StubLoader({
         "a": {"inputs": {"v": "int"}, "outputs": {"v": "int"}, "fn": _identity_fn(0)},

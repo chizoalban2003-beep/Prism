@@ -68,13 +68,21 @@ async def agent_status():
             phase_engine = _pp.get_engine()
         except Exception:
             pass
+        _phase_obj = getattr(phase_engine, "current_phase", None) if phase_engine else None
+        # Serialise the enum by .value ("LIQUID") rather than its repr
+        # ("PhaseState.LIQUID") so the API surface is clean and consistent
+        # with /identity/dashboard.
+        _phase_str = (
+            _phase_obj.value if hasattr(_phase_obj, "value")
+            else (str(_phase_obj) if _phase_obj is not None else "UNKNOWN")
+        )
         status = {
             "agent": type(agent).__name__,
             "chain_ready": chain is not None,
             "soul_seeded": bool(
                 getattr(getattr(agent, "_soul", None), "has_seed", lambda: False)()
             ),
-            "phase": str(getattr(phase_engine, "current_phase", "UNKNOWN")) if phase_engine else "UNKNOWN",
+            "phase": _phase_str,
         }
     status["ollama"]       = ollama_ok
     status["ollama_model"] = ollama_model

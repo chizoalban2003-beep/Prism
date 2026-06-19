@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 import hashlib
 import json
 import logging
@@ -31,88 +30,23 @@ class AcquiredTool:
     last_result:  str   = ""
 
 
-# ── AST-based safety check — never execute code containing these ──────────────
-_BLOCKED_CALLS = {
-    "eval", "exec", "compile", "__import__",
-    "open",          # file writes blocked; reads OK if path is safe
-    "breakpoint",
-}
-_BLOCKED_IMPORTS = {
-    "os", "subprocess", "shutil", "socket", "ctypes",
-    "multiprocessing", "importlib", "builtins", "pty",
-}
-_BLOCKED_ATTRS = {
-    # os.system, os.remove, os.chmod, shutil.rmtree, etc.
-    "system", "popen", "remove", "unlink", "rmtree", "rmdir",
-    "chmod", "chown", "rename", "replace", "symlink",
-    "fork", "spawn", "execv", "execve", "kill",
-    # pathlib write methods
-    "write_text", "write_bytes",
-    # Sandbox-escape vectors: type('').__mro__[1].__subclasses__()[…] gives
-    # arbitrary class access; func.__globals__ reaches the host module's
-    # builtins. Blocking the dunders is cheaper than chasing all the chains.
-    "__mro__", "__subclasses__", "__bases__", "__globals__", "__class__",
-}
-# Bare-name references to these in a Load context are flagged. Without this,
-# `e = eval; e('1+1')` sails past visit_Call (the callee is a Name "e",
-# not "eval"), and `getattr(__builtins__, 'exec')(...)` reaches `exec` via a
-# subscript bypass. Catching the Name at load-time closes both routes.
-_BLOCKED_NAME_LOADS = _BLOCKED_CALLS | {"globals", "vars", "__builtins__"}
-
-class _SafetyVisitor(ast.NodeVisitor):
-    def __init__(self):
-        self.violations: list[str] = []
-
-    def visit_Import(self, node):
-        for alias in node.names:
-            root = alias.name.split(".")[0]
-            if root in _BLOCKED_IMPORTS:
-                self.violations.append(f"blocked import: {alias.name}")
-        self.generic_visit(node)
-
-    def visit_ImportFrom(self, node):
-        root = (node.module or "").split(".")[0]
-        if root in _BLOCKED_IMPORTS:
-            self.violations.append(f"blocked from-import: {node.module}")
-        self.generic_visit(node)
-
-    def visit_Call(self, node):
-        # Direct calls: eval(...), exec(...)
-        if isinstance(node.func, ast.Name):
-            if node.func.id in _BLOCKED_CALLS:
-                self.violations.append(f"blocked call: {node.func.id}()")
-        # Attribute calls: os.system(...), shutil.rmtree(...)
-        elif isinstance(node.func, ast.Attribute):
-            if node.func.attr in _BLOCKED_ATTRS:
-                self.violations.append(f"blocked attr call: .{node.func.attr}()")
-        self.generic_visit(node)
-
-    def visit_Attribute(self, node):
-        if node.attr in _BLOCKED_ATTRS:
-            self.violations.append(f"blocked attribute access: .{node.attr}")
-        self.generic_visit(node)
-
-    def visit_Name(self, node):
-        if isinstance(node.ctx, ast.Load) and node.id in _BLOCKED_NAME_LOADS:
-            self.violations.append(f"blocked name reference: {node.id}")
-        self.generic_visit(node)
+# ── AST-based safety check ────────────────────────────────────────────────────
+# The actual checker lives in prism_organ_loader (_SafetyVisitor + _is_safe).
+# _is_safe_code delegates there so there is exactly one definition of "unsafe".
 
 
 def _is_safe_code(code: str) -> tuple[bool, str]:
     """
-    AST-based safety check. Parses code into a syntax tree and walks
-    every node looking for dangerous imports, calls, and attribute access.
-    Cannot be bypassed by string obfuscation.
+    AST-based safety check for synthesised tool code.
+
+    Single-sourced from :func:`prism_organ_loader._is_safe` (strict mode) so the
+    autonomous engine and the organ loader can never drift apart on what counts
+    as unsafe. Strict mode also blocks arbitrary file writes
+    (write_text/write_bytes/write), which is the right posture for LLM-generated
+    tools. Cannot be bypassed by string obfuscation.
     """
-    try:
-        tree = ast.parse(code)
-    except SyntaxError as e:
-        return False, f"Syntax error: {e}"
-    visitor = _SafetyVisitor()
-    visitor.visit(tree)
-    if visitor.violations:
-        return False, "; ".join(visitor.violations)
-    return True, ""
+    from prism_organ_loader import _is_safe
+    return _is_safe(code, strict=True)
 
 
 class PrismAutonomous:

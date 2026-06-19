@@ -165,6 +165,12 @@ class SnapshotRegistry:
 
     def __init__(self, db_path: str = "ksa_state.db"):
         self.db_path = Path(db_path)
+        # Ensure the parent directory exists before sqlite3.connect — otherwise
+        # the first-ever command on a fresh home (e.g. `ksa status`) dies with
+        # "unable to open database file".
+        parent = self.db_path.parent
+        if str(parent) not in ("", "."):
+            parent.mkdir(parents=True, exist_ok=True)
         self._init_db()
 
     # ── Internal helpers ────────────────────────────────────────────────────

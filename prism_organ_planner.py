@@ -269,7 +269,12 @@ def execute_plan(
     }
     if not order:
         result["skipped"] = list(nodes)
-        result["errors"]["_plan"] = "cycle detected or empty plan"
+        if not nodes:
+            result["errors"]["_plan"] = (
+                "empty plan — no known organs matched the requested intents"
+            )
+        else:
+            result["errors"]["_plan"] = "cycle detected among organs — refuse to execute"
         return result
 
     ctx = dict(initial_ctx or {})

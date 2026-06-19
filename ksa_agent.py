@@ -155,7 +155,7 @@ class KSAgent:
 
         # 1. Route
         route_result = self.router.route(prompt)
-        logger.debug("Routed to '%s' via %s (conf=%.0%%)",
+        logger.debug("Routed to '%s' via %s (conf=%.0f%%)",
                      route_result.task_name, route_result.method,
                      route_result.confidence * 100)
 
@@ -169,12 +169,17 @@ class KSAgent:
         )
 
         # 3. Execute
+        # Thread the prompt into the executor payload so search/shell executors
+        # actually receive their input. Without this, LocalSearchExecutor and
+        # ShellExecutor always saw an empty payload and returned
+        # "No query/command provided in ctx.payload[...]".
         ctx = ExecutionContext(
             task_name   = route_result.task_name,
             version     = route_result.version,
             result      = eq_result,
             working_dir = self.working_dir,
             dry_run     = self.dry_run,
+            payload     = {"query": prompt, "command": prompt},
         )
         outcome = self.executor_registry.execute(ctx)
         logger.info("Outcome: %s", outcome)

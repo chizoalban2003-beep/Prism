@@ -51,8 +51,19 @@ def _persona():
 
 
 def _phase_engine():
+    # Prefer an agent-attached engine, but fall back to the process-wide phase
+    # singleton (the one the daemon's phase-ticker keeps fresh). PrismAgent does
+    # not expose `_phase`, so without this fallback the dashboard always showed
+    # phase=UNKNOWN while /status reported the real phase — an inconsistency.
     agent = _get_agent()
-    return getattr(agent, "_phase", None) if agent else None
+    engine = getattr(agent, "_phase", None) if agent else None
+    if engine is not None:
+        return engine
+    try:
+        import prism_phase
+        return prism_phase.get_engine()
+    except Exception:
+        return None
 
 
 def _kinetic_engine():
@@ -83,20 +94,28 @@ async def identity_dashboard():
 
     snapshot: dict[str, Any] = {"generated_at": time.time()}
 
-    # Phase
+    # Phase — read the latest cached reading the daemon's phase-ticker
+    # maintains. We deliberately do NOT call compute() here: a GET must not
+    # mutate the global phase singleton (recomputing on every dashboard view
+    # could spuriously flip the system into LIQUID and make the orchestrator
+    # defer work). This also keeps /identity/dashboard consistent with /status,
+    # which both read the same singleton's most recent reading.
     phase_engine = _phase_engine()
-    if phase_engine is not None:
-        try:
-            reading = phase_engine.compute(soul, None, kinetic=_kinetic_engine())
-            phase_val = reading.phase.value if hasattr(reading.phase, "value") else str(reading.phase)
-            snapshot["phase"] = {
-                "current": phase_val,
-                "phi": round(reading.phi, 3),
-                "delta_H": round(reading.delta_H, 3),
-                "delta_K": round(reading.delta_K, 3),
-            }
-        except Exception:
-            snapshot["phase"] = {"current": "UNKNOWN", "phi": 0.0, "delta_H": 0.0, "delta_K": 0.0}
+    reading = None
+    try:
+        history = getattr(phase_engine, "history", None) if phase_engine else None
+        if history:
+            reading = history[-1]
+    except Exception:
+        reading = None
+    if reading is not None:
+        phase_val = reading.phase.value if hasattr(reading.phase, "value") else str(reading.phase)
+        snapshot["phase"] = {
+            "current": phase_val,
+            "phi": round(reading.phi, 3),
+            "delta_H": round(reading.delta_H, 3),
+            "delta_K": round(reading.delta_K, 3),
+        }
     else:
         snapshot["phase"] = {"current": "UNKNOWN", "phi": 0.0, "delta_H": 0.0, "delta_K": 0.0}
 

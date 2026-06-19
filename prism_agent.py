@@ -242,6 +242,16 @@ class PrismAgent:
          "wikipedia_lookup"),
         (r"translate|translation|in (?:spanish|french|german|italian|portuguese|chinese|japanese|arabic|russian|hindi)",
          "translate_text"),
+        # Physical-unit disambiguation FIRST: when an unambiguous metric/imperial
+        # unit token is present (kg, miles, celsius, …) treat it as a unit
+        # conversion even if a currency word like "pounds" also appears
+        # ("10 kg to pounds" is weight, not GBP). Currency words (usd, dollar…)
+        # are deliberately excluded here so real FX requests fall through.
+        (r"\b(?:km|kilometers?|kilometres?|miles?|kg|kilograms?|grams?|mg|"
+         r"ounces?|oz|stones?|celsius|fahrenheit|kelvin|meters?|metres?|cm|mm|"
+         r"feet|foot|inch|inches|yards?|liters?|litres?|ml|gallons?|pints?|"
+         r"mph|kph|km/h)\b[^.]{0,30}?\b(?:to|in|into)\b",
+         "unit_convert"),
         (r"(?:convert|exchange|how much) .* (?:usd|eur|gbp|jpy|cad|aud|chf|cny|currency)|"
          r"(?:usd|eur|gbp|jpy|cad|aud|chf|cny) (?:to|in|into)|"
          r"(?:dollar|euro|pound|yen|yuan|franc|rupee|peso|won|ruble|lira|krona|"
@@ -1446,7 +1456,17 @@ class PrismAgent:
                 )
             try:
                 raw, _ = router.call(message, min_capability=1, max_tokens=400)
-                return text_card(raw.strip() or "(no response)", "Chat")
+                answer = (raw or "").strip()
+                if not answer:
+                    # Router returned nothing — almost always means no LLM
+                    # backend is actually reachable (stdlib fallback yields "").
+                    return text_card(
+                        "I couldn't generate a reply — no LLM backend is reachable. "
+                        "Connect Ollama or add a Claude/OpenAI key at "
+                        "/settings/llm (or run `python3 prism_daemon.py --setup-llm`).",
+                        "LLM not connected",
+                    )
+                return text_card(answer, "Chat")
             except Exception as exc:
                 return text_card(f"LLM call failed: {exc}", "Chat")
         if intent == "status":
