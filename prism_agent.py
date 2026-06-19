@@ -2142,7 +2142,7 @@ class PrismAgent:
                     f"(spent ${snap['spent_this_month_usd']:.4f})"
                 )
             lines.append(
-                f"Local providers (Ollama): "
+                "Local providers (Ollama): "
                 + ("not counted" if snap["free_provider_bypass"] else "counted")
             )
             policy = "block" if snap["block_at_ceiling"] else "warn only"
