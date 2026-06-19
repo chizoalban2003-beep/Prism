@@ -545,8 +545,8 @@ async def organs_bundle_index():
         except Exception:
             installed_intents = set()
 
-    from pathlib import Path
     import json
+    from pathlib import Path
     manifest_path = Path("~/.prism/bundles/manifest.json").expanduser()
     if not manifest_path.exists():
         return {"bundles": [], "count": 0, "note": "no manifest at ~/.prism/bundles/manifest.json"}
