@@ -2130,24 +2130,26 @@ class PrismAgent:
             bar_width = 24
             filled = int(snap["fraction_used"] * bar_width)
             bar = "█" * filled + "░" * (bar_width - filled)
-            lines = [
+            budget_lines: list[str] = [
                 f"Daily LLM budget: ${snap['daily_limit_usd']:.2f}",
                 f"Spent today:     ${snap['spent_today_usd']:.4f}",
                 f"Remaining:       ${snap['remaining_usd']:.4f}",
                 f"  [{bar}] {int(snap['fraction_used']*100)}%",
             ]
             if snap["monthly_limit_usd"]:
-                lines.append(
+                budget_lines.append(
                     f"Monthly budget:  ${snap['monthly_limit_usd']:.2f} "
                     f"(spent ${snap['spent_this_month_usd']:.4f})"
                 )
-            lines.append(
+            budget_lines.append(
                 "Local providers (Ollama): "
                 + ("not counted" if snap["free_provider_bypass"] else "counted")
             )
-            policy = "block" if snap["block_at_ceiling"] else "warn only"
-            lines.append(f"At ceiling: {policy}. Warn at {int(snap['warn_at_fraction']*100)}%.")
-            return text_card("\n".join(lines), "Budget")
+            policy_label = "block" if snap["block_at_ceiling"] else "warn only"
+            budget_lines.append(
+                f"At ceiling: {policy_label}. Warn at {int(snap['warn_at_fraction']*100)}%."
+            )
+            return text_card("\n".join(budget_lines), "Budget")
 
         # ── Weekly reflection ─────────────────────────────────────────────
         if intent == "reflection":
