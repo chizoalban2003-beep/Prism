@@ -448,6 +448,141 @@ async def organs_compose(request: Request):
     return plan
 
 
+@router.post("/organs/execute")
+async def organs_execute(request: Request):
+    """Execute a wire diagram in topological order.
+
+    Body:
+        ``{"intents": ["fetch_quote", "format_card"],
+           "message": "AAPL",
+           "ctx": {...},
+           "max_steps": 50}``
+
+    Returns ``{order, outputs, errors, skipped, executed}``. Each organ
+    is run with ctx["_upstream"][producer_intent] = producer_return so
+    downstream organs that declared matching input types can read the
+    structured upstream data.
+    """
+    loader = _get_organ_loader()
+    if loader is None:
+        return JSONResponse({"error": "organ_loader not initialised"}, status_code=503)
+    try:
+        body: dict = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    intents = body.get("intents") or []
+    if not isinstance(intents, list):
+        return JSONResponse({"error": "'intents' must be a list"}, status_code=400)
+    intents = [str(i).strip() for i in intents if str(i).strip()]
+    message = str(body.get("message", "")).strip()
+    raw_ctx = body.get("ctx", {})
+    ctx = raw_ctx if isinstance(raw_ctx, dict) else {}
+    try:
+        max_steps = max(1, min(int(body.get("max_steps", 50)), 200))
+    except (TypeError, ValueError):
+        max_steps = 50
+    try:
+        from prism_organ_planner import compose, execute_plan, has_cycle
+        plan = compose(loader, intents)
+        if has_cycle(plan):
+            return JSONResponse(
+                {"error": "plan contains a cycle — refuse to execute",
+                 "plan": plan},
+                status_code=400,
+            )
+        result = execute_plan(loader, plan, message=message,
+                              initial_ctx=ctx, max_steps=max_steps)
+    except Exception as exc:
+        return JSONResponse({"error": f"execute failed: {exc}"}, status_code=500)
+
+    def _serialize(v):
+        if hasattr(v, "model_dump"):
+            try:
+                return v.model_dump()
+            except Exception:
+                pass
+        if hasattr(v, "__dict__"):
+            try:
+                return {k: _serialize(x) for k, x in vars(v).items() if not k.startswith("_")}
+            except Exception:
+                return str(v)
+        try:
+            import json as _json
+            _json.dumps(v)
+            return v
+        except Exception:
+            return str(v)
+
+    result["outputs"] = {k: _serialize(v) for k, v in result["outputs"].items()}
+    return result
+
+
+@router.get("/organs/bundles/index")
+async def organs_bundle_index():
+    """Return the curated list of installable organ bundles.
+
+    Reads ``~/.prism/bundles/manifest.json`` — a CEO-maintained
+    registry, *not* a remote fetch. The manifest is a list of objects:
+
+        [
+          {"intent": "stock_quote", "description": "...",
+           "sha256": "<hex>", "code": "...",
+           "version": "1.0",
+           "capabilities": ["internet_read"],
+           "source_url": "https://..."},
+          ...
+        ]
+
+    The endpoint returns the manifest along with which entries are
+    *already installed* (intent already known to the loader) so the
+    UI can show install/installed/update buttons.
+    """
+    loader = _get_organ_loader()
+    installed_intents: set[str] = set()
+    if loader is not None:
+        try:
+            installed_intents = set(loader.list_organs())
+        except Exception:
+            installed_intents = set()
+
+    from pathlib import Path
+    import json
+    manifest_path = Path("~/.prism/bundles/manifest.json").expanduser()
+    if not manifest_path.exists():
+        return {"bundles": [], "count": 0, "note": "no manifest at ~/.prism/bundles/manifest.json"}
+    try:
+        raw = manifest_path.read_text()
+        data = json.loads(raw)
+    except Exception as exc:
+        return JSONResponse(
+            {"error": f"manifest read failed: {exc}", "path": str(manifest_path)},
+            status_code=500,
+        )
+    if not isinstance(data, list):
+        return JSONResponse(
+            {"error": "manifest must be a JSON array of bundle objects"},
+            status_code=400,
+        )
+
+    items: list[dict] = []
+    for entry in data:
+        if not isinstance(entry, dict):
+            continue
+        intent = str(entry.get("intent", "")).strip()
+        if not intent:
+            continue
+        items.append({
+            "intent":       intent,
+            "description":  str(entry.get("description", "")),
+            "version":      str(entry.get("version", "1.0")),
+            "sha256":       str(entry.get("sha256", "")),
+            "capabilities": list(entry.get("capabilities", []) or []),
+            "source_url":   str(entry.get("source_url", "")),
+            "installed":    intent in installed_intents,
+        })
+    return {"bundles": items, "count": len(items), "path": str(manifest_path)}
+
+
 @router.post("/organs/install")
 async def organs_install(request: Request):
     """Install a third-party organ bundle (CEO-controlled plug-in).

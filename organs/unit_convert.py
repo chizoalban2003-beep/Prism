@@ -4,6 +4,15 @@ ORGAN_META = {
     "description": "convert between units: length, weight, temperature, volume, speed",
     "version":     "1.0",
     "capabilities": [],
+    "inputs": {
+        "value": "float",
+    },
+    "outputs": {
+        "value":     "float",
+        "src_unit":  "str",
+        "tgt_unit":  "str",
+        "category":  "str",
+    },
 }
 
 ORGAN_POLICY = {
@@ -160,9 +169,16 @@ def execute(intent: str, message: str, ctx: dict):
     if src_l in _TEMP_TOKENS or tgt_l in _TEMP_TOKENS:
         try:
             result = _convert_temperature(value, src_l, tgt_l)
-            return text_card(
+            card = text_card(
                 f"{value} {src_unit} = {result:.4g} {tgt_unit}", "Convert"
             )
+            card.card_data.update({
+                "value":    float(result),
+                "src_unit": src_unit,
+                "tgt_unit": tgt_unit,
+                "category": "temperature",
+            })
+            return card
         except Exception:
             return text_card(
                 f"Unknown temperature units: {src_unit} or {tgt_unit}", "Convert"
@@ -188,6 +204,13 @@ def execute(intent: str, message: str, ctx: dict):
     si_value = value * src_factor
     result = si_value / tgt_factor
 
-    return text_card(
+    card = text_card(
         f"{value} {src_unit} = {result:.6g} {tgt_unit}", "Convert"
     )
+    card.card_data.update({
+        "value":    float(result),
+        "src_unit": src_unit,
+        "tgt_unit": tgt_unit,
+        "category": src_cat,
+    })
+    return card

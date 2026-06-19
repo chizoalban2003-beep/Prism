@@ -6,6 +6,16 @@ ORGAN_META = {
     "description": "converts an amount between currencies using live exchange rates",
     "version":     "1.0",
     "capabilities": ["internet_read"],
+    "inputs": {
+        "amount": "float",
+    },
+    "outputs": {
+        "amount":         "float",
+        "converted":      "float",
+        "src_currency":   "str",
+        "dst_currency":   "str",
+        "rate":           "float",
+    },
 }
 
 ORGAN_POLICY = {
@@ -124,6 +134,7 @@ def execute(intent: str, message: str, ctx: dict):
 
     amount, src, dst = parsed
     url = f"https://open.er-api.com/v6/latest/{src}"
+    structured: dict = {"amount": amount, "src_currency": src, "dst_currency": dst}
     try:
         with urllib.request.urlopen(url, timeout=6) as resp:
             data = _json.loads(resp.read())
@@ -134,7 +145,11 @@ def execute(intent: str, message: str, ctx: dict):
             return text_card(f"Unknown target currency: {dst}", "Currency")
         converted = amount * rate
         result = f"{amount:,.2f} {src} = {converted:,.4g} {dst}  (rate: {rate:.6g})"
+        structured.update({"converted": float(converted), "rate": float(rate)})
     except Exception as exc:
         result = f"Currency conversion failed: {exc}"
+        structured["error"] = str(exc)
 
-    return text_card(result, "Currency")
+    card = text_card(result, "Currency")
+    card.card_data.update(structured)
+    return card

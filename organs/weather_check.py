@@ -4,6 +4,17 @@ ORGAN_META = {
     "description": "fetches current weather conditions for a city or location",
     "version":     "1.0",
     "capabilities": ["internet_read"],
+    "inputs": {
+        "location": "str",
+    },
+    "outputs": {
+        "location":      "str",
+        "temperature_c": "float",
+        "feels_like_c":  "float",
+        "humidity":      "int",
+        "wind_kmh":      "float",
+        "description":   "str",
+    },
 }
 
 ORGAN_POLICY = {
@@ -27,6 +38,7 @@ def execute(intent: str, message: str, ctx: dict):
     city     = words[-1] if words else "London"
 
     url = f"https://wttr.in/{urllib.parse.quote(city)}?format=j1"
+    structured: dict = {"location": city.title()}
     try:
         with urllib.request.urlopen(url, timeout=6) as resp:
             data    = _json.loads(resp.read())
@@ -41,7 +53,17 @@ def execute(intent: str, message: str, ctx: dict):
             f"Temperature: {temp_c}°C (feels like {feels}°C)\n"
             f"Humidity: {humid}%  |  Wind: {wind} km/h"
         )
+        structured.update({
+            "description":   desc,
+            "temperature_c": float(temp_c),
+            "feels_like_c":  float(feels),
+            "humidity":      int(humid),
+            "wind_kmh":      float(wind),
+        })
     except Exception as exc:
         result = f"Could not fetch weather for '{city}': {exc}"
+        structured["error"] = str(exc)
 
-    return text_card(result, "Weather")
+    card = text_card(result, "Weather")
+    card.card_data.update(structured)
+    return card

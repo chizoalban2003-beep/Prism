@@ -38,11 +38,15 @@ if TYPE_CHECKING:
 
 
 def _matching_types(producer_outputs: dict, consumer_inputs: dict) -> list[str]:
-    """Return the set of types that appear in both producer outputs and
-    consumer inputs. Empty list means the arrow can't be drawn."""
-    out_types = set(producer_outputs.values())
-    in_types = set(consumer_inputs.values())
-    return sorted(out_types & in_types)
+    """Return the keys where producer outputs and consumer inputs agree on
+    both name and type — PowerBI-style column matching. An arrow forms only
+    when the consumer's declared input key appears in the producer's outputs
+    with the same type. Empty list means no arrow."""
+    matched = [
+        key for key, t_in in consumer_inputs.items()
+        if producer_outputs.get(key) == t_in
+    ]
+    return sorted(matched)
 
 
 def compose(loader: OrganLoader, intents: list[str]) -> dict:
@@ -116,3 +120,105 @@ def has_cycle(plan: dict) -> bool:
         return False
 
     return any(dfs(n) for n in color if color[n] == WHITE)
+
+
+def topological_order(plan: dict) -> list[str]:
+    """Kahn's algorithm — returns nodes in execution order.
+
+    Roots first, leaves last. Returns [] if the graph has a cycle.
+    Orphan nodes (no arrows in or out) are appended in their original order.
+    """
+    nodes = list(plan.get("nodes", []))
+    arrows = plan.get("arrows", [])
+    if not nodes:
+        return []
+
+    indeg: dict[str, int] = {n: 0 for n in nodes}
+    graph: dict[str, list[str]] = {n: [] for n in nodes}
+    for a in arrows:
+        f, t = a["from"], a["to"]
+        if f in graph and t in indeg:
+            graph[f].append(t)
+            indeg[t] += 1
+
+    ready = [n for n in nodes if indeg[n] == 0]
+    order: list[str] = []
+    while ready:
+        n = ready.pop(0)
+        order.append(n)
+        for nxt in graph[n]:
+            indeg[nxt] -= 1
+            if indeg[nxt] == 0:
+                ready.append(nxt)
+
+    if len(order) != len(nodes):
+        return []
+    return order
+
+
+def execute_plan(
+    loader,
+    plan: dict,
+    message: str = "",
+    initial_ctx: dict | None = None,
+    max_steps: int = 50,
+) -> dict:
+    """Walk the DAG in topological order, executing each organ.
+
+    Convention
+    ----------
+    Each organ runs with ``ctx`` plus a per-key entry ``ctx["_upstream"]``
+    mapping intent → that organ's return value. Downstream organs that
+    declared input types matching an upstream output can read structured
+    data from there; organs that don't care just ignore it.
+
+    The standard PrismCard return is preserved as the "result" — callers
+    can render the final card (typically the leaf node's output) or
+    inspect intermediate outputs in ``outputs[<intent>]``.
+
+    Returns
+    -------
+        {
+          "order":    [...],          # topological execution sequence
+          "outputs":  {intent: any},  # whatever each organ returned
+          "errors":   {intent: str},  # exceptions per organ (empty on success)
+          "skipped":  [...],          # organs not run (cycle or hit max_steps)
+          "executed": int,            # count of organs that ran
+        }
+    """
+    order = topological_order(plan)
+    nodes = plan.get("nodes", [])
+    result: dict = {
+        "order":    order,
+        "outputs":  {},
+        "errors":   {},
+        "skipped":  [],
+        "executed": 0,
+    }
+    if not order:
+        result["skipped"] = list(nodes)
+        result["errors"]["_plan"] = "cycle detected or empty plan"
+        return result
+
+    ctx = dict(initial_ctx or {})
+    ctx.setdefault("_upstream", {})
+
+    for i, intent in enumerate(order):
+        if i >= max_steps:
+            result["skipped"] = order[i:]
+            break
+        fn = loader.get(intent)
+        if fn is None:
+            result["errors"][intent] = "organ not loaded"
+            result["skipped"].append(intent)
+            continue
+        try:
+            out = fn(intent, message, ctx)
+        except Exception as exc:
+            result["errors"][intent] = f"{type(exc).__name__}: {exc}"
+            continue
+        result["outputs"][intent] = out
+        ctx["_upstream"][intent] = out
+        result["executed"] += 1
+
+    return result

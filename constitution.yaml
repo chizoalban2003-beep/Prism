@@ -31,6 +31,9 @@ capabilities:
   smart_home:
     description: "Control smart home devices (lights, locks, thermostat)"
     risk: medium
+  mechanical_actuate:
+    description: "Drive physical hardware beyond smart-home: robotics, motors, valves, drones, vehicles, industrial IO"
+    risk: critical
   frontend_mutate:
     description: "Emit raw HTML/JS into PrismCard.body (mutates the running UI)"
     risk: high
@@ -44,6 +47,8 @@ absolute_limits:
     - subprocess
     - telephony
     - frontend_mutate
+    - smart_home
+    - mechanical_actuate
   data_retention_days: 90
   # These intents must never be logged to conversation history
   never_log_intents:
