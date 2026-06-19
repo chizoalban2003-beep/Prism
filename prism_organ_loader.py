@@ -555,6 +555,85 @@ class OrganLoader:
             self._save_index()
         return True
 
+    def install_bundle(self, intent: str, code: str) -> bool:
+        """
+        Install a third-party organ bundle. Same safety guarantees as
+        synthesize() — strict AST scan, capability auditor, critical-cap
+        block — but the LLM is not involved; caller supplies the code.
+
+        Returns True on successful install + hot-register. The caller is
+        responsible for SHA256 verification before calling this method (the
+        HTTP layer does that check).
+        """
+        if intent in self._RESERVED_INTENTS:
+            logger.warning(
+                "[organ_loader] Refusing to install bundle for reserved intent %r",
+                intent,
+            )
+            return False
+        if not isinstance(code, str) or "def execute" not in code or "ORGAN_META" not in code:
+            logger.warning("[organ_loader] Install bundle missing interface for %s", intent)
+            return False
+
+        safe, reason = _is_safe(code, strict=True)
+        if not safe:
+            logger.warning("[organ_loader] Unsafe bundle blocked (%s): %s", intent, reason)
+            return False
+
+        try:
+            tree = ast.parse(code)
+            declared: set[str] = set()
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Assign) and any(
+                    isinstance(t, ast.Name) and t.id == "ORGAN_META" for t in node.targets
+                ) and isinstance(node.value, ast.Dict):
+                    for k, v in zip(node.value.keys, node.value.values):
+                        if isinstance(k, ast.Constant) and k.value == "capabilities":
+                            if isinstance(v, ast.List):
+                                for elt in v.elts:
+                                    if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
+                                        declared.add(elt.value)
+        except Exception:
+            declared = set()
+
+        gaps = _audit_capability_gap(code, declared)
+        if gaps:
+            critical = [c for c in gaps if c in _CRITICAL_CAPABILITIES]
+            if critical:
+                logger.warning(
+                    "[organ_loader] Install blocked — critical undeclared capabilities %s in bundle %s",
+                    critical, intent,
+                )
+                return False
+            logger.warning(
+                "[organ_loader] Install proceeding despite undeclared (non-critical) capabilities %s in %s",
+                gaps, intent,
+            )
+
+        out_path = self._user / f"{intent}.py"
+        out_path.write_text(code)
+        logger.info("[organ_loader] Bundle installed: %s", out_path)
+
+        compiled = self._compile_organ(out_path)
+
+        fn = self._load_file(out_path, trusted=True)
+        if fn is None:
+            out_path.unlink(missing_ok=True)
+            self._index.pop(intent, None)
+            self._save_index()
+            return False
+
+        meta = getattr(fn, "_organ_meta", {}) or {}
+        meta.setdefault("intent", intent)
+        meta.setdefault("description", intent)
+        meta.setdefault("version", "1.0")
+        self._register(intent, fn, meta, source="user")
+        if intent in self._index:
+            self._index[intent]["compiled"] = compiled
+            self._index[intent]["source"]   = "installed"
+            self._save_index()
+        return True
+
     # ── Loading ───────────────────────────────────────────────────────────────
 
     def _load_all(self):

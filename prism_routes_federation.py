@@ -90,25 +90,45 @@ def _verify_payload_hmac(raw_body: bytes, request: Request) -> bool:
     return hmac.compare_digest(expected, sig_header)
 
 
+def _federation_config() -> dict:
+    """Read the [federation] section from prism_config.toml via the agent.
+    Returns {} when the agent or section is absent."""
+    agent = _state.get("agent")
+    cfg = getattr(agent, "_config", None) if agent is not None else None
+    if isinstance(cfg, dict):
+        section = cfg.get("federation", {})
+        if isinstance(section, dict):
+            return section
+    return {}
+
+
 def _require_federation_auth(request: Request) -> bool:
     """Return True if the request is authorized.
 
+    Policy precedence (CEO-style): prism_config.toml [federation] sets the
+    default; PRISM_FEDERATION_* env vars override (for one-off ops).
+
+        [federation]
+        require_auth = true        # strict mode default
+        token        = "secret"    # bearer token
+
+    Env overrides: PRISM_FEDERATION_TOKEN, PRISM_FEDERATION_REQUIRE_AUTH=1.
+
     Auth modes
     ----------
-    PRISM_FEDERATION_REQUIRE_AUTH=1
-        Strict mode: token MUST be set and present in every request.
-        Returns False when no token is configured (forces admin to set one).
-    default
-        Legacy mode: allow when no token configured (backward-compatible).
-
-    Set PRISM_FEDERATION_TOKEN=<secret> to enable bearer-token auth.
-    Set PRISM_FEDERATION_REQUIRE_AUTH=1 in multi-node deployments to
-    prevent unauthenticated peers from joining.
+    strict   → token MUST be set AND present in every request; missing
+               config + strict = deny (misconfigured).
+    legacy   → allow when no token configured (backward-compatible default).
     """
-    token  = os.environ.get("PRISM_FEDERATION_TOKEN", "")
-    strict = os.environ.get("PRISM_FEDERATION_REQUIRE_AUTH", "") in ("1", "true", "yes")
+    cfg = _federation_config()
+    token  = os.environ.get("PRISM_FEDERATION_TOKEN", "") or str(cfg.get("token", ""))
+    env_strict = os.environ.get("PRISM_FEDERATION_REQUIRE_AUTH", "")
+    if env_strict:
+        strict = env_strict in ("1", "true", "yes")
+    else:
+        strict = bool(cfg.get("require_auth", False))
     if not token:
-        return not strict  # strict → deny (no token = misconfigured); legacy → allow
+        return not strict
     auth_header = request.headers.get("Authorization", "")
     return auth_header == f"Bearer {token}"
 

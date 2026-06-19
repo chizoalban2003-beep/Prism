@@ -418,6 +418,86 @@ async def organs_synthesize(request: Request):
     return {"ok": True, "intent": intent, "details": loader.organ_details(intent)}
 
 
+@router.post("/organs/compose")
+async def organs_compose(request: Request):
+    """Compose a wire diagram for a set of organ intents.
+
+    Body: ``{"intents": ["weather_check", "translate_text", ...]}``
+
+    Returns ``{nodes, arrows, orphans, roots, leaves, has_cycle}``. Arrows
+    are drawn by matching organ outputs to organ inputs declared in
+    ORGAN_META — the PowerBI-style composition primitive.
+    """
+    loader = _get_organ_loader()
+    if loader is None:
+        return JSONResponse({"error": "organ_loader not initialised"}, status_code=503)
+    try:
+        body: dict = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    intents = body.get("intents") or []
+    if not isinstance(intents, list):
+        return JSONResponse({"error": "'intents' must be a list"}, status_code=400)
+    intents = [str(i).strip() for i in intents if str(i).strip()]
+    try:
+        from prism_organ_planner import compose, has_cycle
+        plan = compose(loader, intents)
+        plan["has_cycle"] = has_cycle(plan)
+    except Exception as exc:
+        return JSONResponse({"error": f"compose failed: {exc}"}, status_code=500)
+    return plan
+
+
+@router.post("/organs/install")
+async def organs_install(request: Request):
+    """Install a third-party organ bundle (CEO-controlled plug-in).
+
+    Body:
+        ``{"intent": "stock_quote",
+           "code": "ORGAN_META = {...}\\ndef execute(...): ...",
+           "sha256": "<hex digest of code>"}``
+
+    SHA256 is verified before any code touches disk. AST safety runs in
+    strict mode (same checks as synthesis). The bundle is saved to
+    ``~/.prism/organs/<intent>.py`` and hot-registered.
+    """
+    loader = _get_organ_loader()
+    if loader is None:
+        return JSONResponse({"error": "organ_loader not initialised"}, status_code=503)
+    try:
+        body: dict = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    intent = str(body.get("intent", "")).strip()
+    code   = body.get("code", "")
+    digest = str(body.get("sha256", "")).strip().lower()
+    if not intent or not isinstance(code, str) or not code:
+        return JSONResponse(
+            {"error": "'intent' and non-empty 'code' string are required"},
+            status_code=400,
+        )
+    if not digest:
+        return JSONResponse({"error": "'sha256' digest is required"}, status_code=400)
+    import hashlib
+    actual = hashlib.sha256(code.encode("utf-8")).hexdigest()
+    if actual != digest:
+        return JSONResponse(
+            {"error": "sha256 mismatch — bundle integrity check failed",
+             "expected": digest, "actual": actual},
+            status_code=400,
+        )
+    try:
+        ok = loader.install_bundle(intent, code)
+    except Exception as exc:
+        return JSONResponse({"error": f"install failed: {exc}"}, status_code=500)
+    if not ok:
+        return JSONResponse(
+            {"error": f"install rejected for '{intent}' — see daemon logs (likely safety or interface violation)"},
+            status_code=400,
+        )
+    return {"ok": True, "intent": intent, "details": loader.organ_details(intent)}
+
+
 @router.get("/organs/{name}")
 async def organs_get(name: str):
     """Get details for a single organ by intent name."""

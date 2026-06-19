@@ -240,6 +240,74 @@ async def user_identity(user_id: str):
 
 
 # ---------------------------------------------------------------------------
+# GET /persona/policy — CEO-inspectable view of what the manager learned
+# ---------------------------------------------------------------------------
+
+
+@router.get("/persona/policy")
+async def persona_policy():
+    """Return what the crystalliser has learned about the user, formatted as
+    a policy snapshot the CEO can review. Read-only: this exposes traits,
+    behavioural patterns, peak hours, and the underlying source of each
+    inference so the user can decide if the manager's model of them is
+    accurate.
+
+    Shape:
+        {
+          "traits":   [{name, value, confidence, source, observations}, ...],
+          "patterns": [{description, frequency, examples}, ...],
+          "peak_hours": [int, ...],
+          "growth_7d": {new_traits, new_patterns, confidence_avg},
+        }
+    """
+    try:
+        from prism_state import _get_agent  # noqa: PLC0415
+        agent = _get_agent()
+    except Exception:
+        agent = None
+    persona = getattr(agent, "_persona", None) if agent is not None else None
+    if persona is None:
+        return JSONResponse(
+            {"error": "PrismPersona not available", "status": 503},
+            status_code=503,
+        )
+
+    try:
+        traits = persona.list_traits()
+        patterns = persona._top_patterns(20)
+        peaks = persona.peak_hours()
+        growth = persona.growth_since(days=7)
+    except Exception as exc:
+        return JSONResponse(
+            {"error": f"persona read failed: {exc}", "status": 500},
+            status_code=500,
+        )
+
+    return {
+        "traits": [
+            {
+                "name":         t.name,
+                "value":        t.value,
+                "confidence":   round(t.confidence, 3),
+                "source":       t.source,
+                "observations": t.observation_count,
+            }
+            for t in traits
+        ],
+        "patterns": [
+            {
+                "description": p.description,
+                "frequency":   p.frequency,
+                "examples":    list(p.examples or [])[-3:],
+            }
+            for p in patterns
+        ],
+        "peak_hours": peaks,
+        "growth_7d":  growth,
+    }
+
+
+# ---------------------------------------------------------------------------
 # GET /household/dashboard — HTML
 # ---------------------------------------------------------------------------
 

@@ -565,13 +565,23 @@ def main():
         w.start()
     logger.info("Background workers started: %s", [w.name for w in workers])
 
-    # Federation security advisory
+    # Federation security advisory — quiet when config or env covers it.
     import os as _os
-    if not _os.environ.get("PRISM_FEDERATION_REQUIRE_AUTH"):
+    _fed_cfg = (getattr(agent, "_config", {}) or {}).get("federation", {}) or {}
+    _fed_strict = bool(
+        _os.environ.get("PRISM_FEDERATION_REQUIRE_AUTH")
+        or _fed_cfg.get("require_auth")
+    )
+    _fed_token = bool(
+        _os.environ.get("PRISM_FEDERATION_TOKEN")
+        or _fed_cfg.get("token")
+    )
+    if not (_fed_strict and _fed_token):
         logger.warning(
             "Federation running in legacy-permissive mode. "
-            "Set PRISM_FEDERATION_REQUIRE_AUTH=1 and PRISM_FEDERATION_TOKEN=<secret> "
-            "to harden multi-node deployments."
+            "Set [federation] require_auth=true and token=<secret> in "
+            "prism_config.toml (or PRISM_FEDERATION_REQUIRE_AUTH=1 + "
+            "PRISM_FEDERATION_TOKEN=<secret>) to harden multi-node deployments."
         )
     if not _os.environ.get("PRISM_FEDERATION_HMAC_SECRET"):
         logger.warning(
