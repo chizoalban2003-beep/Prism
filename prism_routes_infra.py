@@ -745,6 +745,88 @@ async def organs_install(request: Request):
     return {"ok": True, "intent": intent, "details": loader.organ_details(intent)}
 
 
+@router.post("/organs/pack/export")
+async def organs_pack_export(request: Request):
+    """Bundle one or more installed organs into a portable, hash-verified pack.
+
+    Body:
+        ``{"intents": ["hacker_news", "currency_convert"],
+           "name": "research-tools", "version": "1.0",
+           "description": "...", "author": "alice",
+           "preview": false}``
+
+    Returns the full pack (``prism.organ-pack/v1``) ready to share, or a
+    code-free summary when ``preview=true``.
+    """
+    loader = _get_organ_loader()
+    if loader is None:
+        return JSONResponse({"error": "organ_loader not initialised"}, status_code=503)
+    try:
+        body: dict = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+
+    intents = body.get("intents") or []
+    if not isinstance(intents, list) or not intents:
+        return JSONResponse(
+            {"error": "'intents' must be a non-empty array"}, status_code=400
+        )
+    import prism_organ_pack as _pack
+    try:
+        pack = _pack.build_pack(
+            loader,
+            [str(i) for i in intents],
+            name=str(body.get("name", "")),
+            version=str(body.get("version", "1.0")),
+            description=str(body.get("description", "")),
+            author=str(body.get("author", "")),
+        )
+    except ValueError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+    except Exception as exc:
+        return JSONResponse({"error": f"export failed: {exc}"}, status_code=500)
+
+    if bool(body.get("preview", False)):
+        return _pack.pack_summary(pack)
+    return pack
+
+
+@router.post("/organs/pack/import")
+async def organs_pack_import(request: Request):
+    """Install every organ in a shared pack through the safe install path.
+
+    Body is either the pack object directly, or
+    ``{"pack": {...}, "overwrite": false}``. Each organ is sha256-verified and
+    installed via the strict AST/capability-audited loader path. Returns an
+    install report ``{ok, installed, skipped, failed}``.
+    """
+    loader = _get_organ_loader()
+    if loader is None:
+        return JSONResponse({"error": "organ_loader not initialised"}, status_code=503)
+    try:
+        body: dict = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+
+    pack = body.get("pack") if isinstance(body, dict) and "pack" in body else body
+    overwrite = bool(body.get("overwrite", False)) if isinstance(body, dict) else False
+    if not isinstance(pack, dict):
+        return JSONResponse({"error": "missing pack object"}, status_code=400)
+
+    import prism_organ_pack as _pack
+    ok, reason = _pack.verify_pack(pack)
+    if not ok:
+        return JSONResponse(
+            {"error": f"pack verification failed: {reason}"}, status_code=400
+        )
+    try:
+        report = _pack.import_pack(loader, pack, overwrite=overwrite)
+    except Exception as exc:
+        return JSONResponse({"error": f"import failed: {exc}"}, status_code=500)
+    status = 200 if report.get("ok") else 207
+    return JSONResponse(report, status_code=status)
+
+
 @router.get("/organs/{name}")
 async def organs_get(name: str):
     """Get details for a single organ by intent name."""

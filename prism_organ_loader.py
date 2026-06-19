@@ -313,6 +313,27 @@ class OrganLoader:
         """Return {intent: description} for every loaded organ."""
         return {k: v[1].get("description", k) for k, v in self._organs.items()}
 
+    def organ_source(self, intent: str) -> Optional[str]:
+        """Return the raw Python source for an organ, or None if not on disk.
+
+        Resolution order: indexed user-organ path → ``<user>/<intent>.py`` →
+        ``<bundled>/<intent>.py``. Used by the Organ-Pack exporter so an organ
+        can be shared with another PRISM instance.
+        """
+        candidates = []
+        entry = self._index.get(intent)
+        if entry and entry.get("path"):
+            candidates.append(self._user / str(entry["path"]))
+        candidates.append(self._user / f"{intent}.py")
+        candidates.append(self._bundled / f"{intent}.py")
+        for path in candidates:
+            try:
+                if path.exists():
+                    return path.read_text()
+            except Exception:
+                continue
+        return None
+
     def list_organs(self) -> list[str]:
         """Return sorted list of loaded organ intent names."""
         return sorted(self._organs.keys())

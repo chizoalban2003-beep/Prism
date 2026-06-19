@@ -1,0 +1,28 @@
+flowchart TB
+    subgraph PRISM["PRISM — local-first, interpretable"]
+        direction TB
+        I["Interfaces: FastAPI 127.0.0.1 · PWA · CLI · gateways"]
+        N["NUCLEUS prism_agent — 4-tier cascade<br/>orchestrator → expert → chain → composer → single"]
+        D["★ Decision Engine — Gaussian fulcrum physics<br/>p = Σ(w·v·t) / Σ(w·v)  (interpretable)"]
+        SEC["★ Security: L1 Constitution → L2 Policy → L3 Bud<br/>+ AST safety + SSRF"]
+        ORG["Organs (37) + on-demand SYNTHESIS<br/>+ portable Organ Packs"]
+        ID["★ Identity: Soul + Persona + Crystalliser<br/>+ VEAX axes + Φ_melt phase + biometrics"]
+        MEM["Memory: hot → WAL → cold + watchdog (chaos-tested)"]
+        I --> N --> D --> SEC --> ORG
+        N --> ID
+        N --> MEM
+    end
+
+    subgraph HERMES["Hermes Agent — cloud-first, skill-learner"]
+        direction TB
+        H1["18+ messaging platforms · 6-7 exec backends · MCP"]
+        H2["LLM reasoning loop (no decision-physics)"]
+        H3["Sandboxed execution"]
+        H4["Autonomous Curator — skills graded/pruned (cron)"]
+        H5["Honcho user modeling + FTS5 recall"]
+        H1 --> H2 --> H3 --> H4 --> H5
+    end
+
+    D -. "PRISM-only: named, interpretable causes" .-> H2
+    ID -. "both build a model of you" .-> H5
+    ORG -. "both self-extend (organs ≈ skills)" .-> H4
