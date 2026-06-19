@@ -78,6 +78,9 @@ class TestConstitutionGuard:
     def test_max_synthesis_per_session(self):
         assert self.guard.max_synthesis_per_session() == 10
 
+    def test_max_organs_per_session(self):
+        assert self.guard.max_organs_per_session() == 200
+
     def test_check_unknown_intent_allowed(self):
         # Intents not in constitution have no requirements → allowed
         ok, reason = self.guard.check("some_new_intent", [])

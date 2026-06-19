@@ -1095,7 +1095,7 @@ class PrismAgent:
                 "decide", "best way", "should i", "compare",
                 "comprehensive", "investigate", "evaluate",
             ]
-            use_expert = (message and msg_ln > 5
+            use_expert = (card is None and message and msg_ln > 5
                           and any(s in msg_lw for s in EXPERT_SIGNALS))
 
             if use_expert:
@@ -1903,7 +1903,10 @@ class PrismAgent:
                     organ_fn = self._organ_loader.get(organ_intent)
                     if organ_fn:
                         try:
-                            return organ_fn(organ_intent, organ_message, organ_ctx)
+                            # Re-enter the full gate with the approval flag set:
+                            # this runs the organ through L3 BudManager scoped
+                            # context instead of handing it the unscoped ctx.
+                            return self._execute(organ_intent, organ_message, organ_ctx)
                         except Exception as exc:
                             return text_card(f"Organ '{organ_intent}' failed: {exc}", organ_intent)
                     return text_card(f"Organ '{organ_intent}' no longer available.", organ_intent)
@@ -2241,6 +2244,29 @@ class PrismAgent:
                             risk_level = risk_level,
                             risk_why   = " · ".join(why_parts),
                         )
+
+                # L1 absolute ceiling — total organ executions per session.
+                if self._bud_mgr is not None and self._bud_mgr.organ_budget_exceeded():
+                    logger.warning(
+                        "[constitution] organ session ceiling reached — blocking %s", intent)
+                    return text_card(
+                        "PRISM has reached its per-session organ execution limit "
+                        "(constitution L1). Start a new session to continue.",
+                        f"Blocked — {intent}",
+                    )
+
+                # L2 per-organ rate limit — ORGAN_POLICY.max_per_session.
+                _policy = self._organ_loader.get_organ_policy(intent)
+                _cap = _policy.get("max_per_session")
+                if (_cap is not None and self._bud_mgr is not None
+                        and self._bud_mgr.session_intent_count(intent) >= int(_cap)):
+                    logger.warning(
+                        "[policy] %s exceeded max_per_session=%s — blocking", intent, _cap)
+                    return text_card(
+                        f"'{intent}' has hit its per-session limit ({_cap} run"
+                        f"{'s' if int(_cap) != 1 else ''}). It won't run again this session.",
+                        f"Rate limited — {intent}",
+                    )
 
                 # Execute via BudManager (scoped context, token lifecycle)
                 if self._bud_mgr is not None:
@@ -2722,13 +2748,26 @@ class PrismAgent:
                        f"User instructions for the implementation:\n"
                        f"{instructions.strip()}")
 
+        # L1 absolute limit — cap how many organs may be synthesised per session.
+        if self._bud_mgr is not None and not self._bud_mgr.synthesis_allowed():
+            return text_card(
+                "PRISM has reached its per-session synthesis limit (constitution L1). "
+                "Start a new session before building more tools.",
+                "Synthesis blocked")
+
         # First try the OrganLoader pipeline (sandboxed, AST-checked, persistent).
         try:
             if self._organ_loader and self._organ_loader.synthesize(intent, refined):
+                if self._bud_mgr is not None:
+                    self._bud_mgr.record_synthesis()
                 organ_fn = self._organ_loader.get(intent)
                 if organ_fn:
                     try:
-                        return organ_fn(intent, message, {})
+                        # Run the freshly-registered organ through the full
+                        # security gate (L1 constitution → L2 approval/rate
+                        # limit → L3 BudManager scoped ctx) rather than calling
+                        # it directly with an unscoped, empty context.
+                        return self._execute(intent, message, {})
                     except Exception as exc:
                         logger.warning("Synthesised organ '%s' failed at execution: %s",
                                        intent, exc)

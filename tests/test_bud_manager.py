@@ -170,6 +170,40 @@ class TestDecommission:
         assert self.mgr.active_count() == 1
 
 
+# ── Per-session rate limits (L2 max_per_session / L1 organ ceiling) ───────────
+
+class TestSessionRateLimits:
+    def setup_method(self):
+        self.mgr = BudManager()
+
+    def test_session_intent_count_starts_zero(self):
+        assert self.mgr.session_intent_count("email_send") == 0
+
+    def test_session_intent_count_increments_per_intent(self):
+        self.mgr.spawn("email_send", "m", {}, ["internet_write"])
+        self.mgr.spawn("email_send", "m", {}, ["internet_write"])
+        self.mgr.spawn("web_search", "m", {}, ["internet_read"])
+        assert self.mgr.session_intent_count("email_send") == 2
+        assert self.mgr.session_intent_count("web_search") == 1
+
+    def test_session_organ_total_counts_all_intents(self):
+        self.mgr.spawn("a", "m", {}, [])
+        self.mgr.spawn("b", "m", {}, [])
+        assert self.mgr.session_organ_total() == 2
+
+    def test_organ_budget_not_exceeded_without_guard(self):
+        assert self.mgr.organ_budget_exceeded() is False
+
+    def test_organ_budget_exceeded_at_ceiling(self):
+        guard = MagicMock()
+        guard.max_organs_per_session.return_value = 2
+        mgr = BudManager(constitution_guard=guard)
+        assert mgr.organ_budget_exceeded() is False
+        mgr.spawn("a", "m", {}, [])
+        mgr.spawn("b", "m", {}, [])
+        assert mgr.organ_budget_exceeded() is True
+
+
 # ── Synthesis limits ──────────────────────────────────────────────────────────
 
 class TestSynthesisLimits:

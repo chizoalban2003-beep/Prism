@@ -128,6 +128,7 @@ class BudManager:
         self._active_buds: dict[str, BudHandle] = {}
         self._session_count = 0
         self._session_synthesis = 0
+        self._session_intent_counts: dict[str, int] = {}
         self._db_path = Path(db_path) if db_path else _DEFAULT_DB
         self._conn: Optional[sqlite3.Connection] = None
         self._init_db()
@@ -158,6 +159,9 @@ class BudManager:
         )
         self._active_buds[bud_id] = handle
         self._session_count += 1
+        self._session_intent_counts[intent] = (
+            self._session_intent_counts.get(intent, 0) + 1
+        )
         logger.debug(
             "[bud:%s] spawned  intent=%s  caps=%s",
             bud_id[:6], intent, declared_capabilities,
@@ -199,6 +203,23 @@ class BudManager:
 
     def active_count(self) -> int:
         return len(self._active_buds)
+
+    def session_intent_count(self, intent: str) -> int:
+        """Number of times this intent has been spawned in the current session."""
+        return self._session_intent_counts.get(intent, 0)
+
+    def session_organ_total(self) -> int:
+        """Total organ Buds spawned in the current session (all intents)."""
+        return self._session_count
+
+    def organ_budget_exceeded(self) -> bool:
+        """True when the L1 max_organs_per_session ceiling has been reached."""
+        if self._guard is None:
+            return False
+        try:
+            return self._session_count >= self._guard.max_organs_per_session()
+        except Exception:
+            return False
 
     def session_stats(self) -> dict:
         total_all_time = self._session_count

@@ -458,6 +458,73 @@ def _get_or_build(agent, attr: str, factory):
     return val if val is not None else factory()
 
 
+# ---------------------------------------------------------------------------
+# Durability stack — WAL-backed graph memory (hot → WAL → cold)
+# ---------------------------------------------------------------------------
+
+def _start_durability(agent):
+    """Bring the WAL-backed memory-graph durability stack online.
+
+    On startup we (1) replay any uncommitted WAL entries into the hot buffer,
+    (2) run the shadow pipeline that drains hot → cold on a fixed interval,
+    and (3) supervise it with a watchdog that resurrects the pipeline if it
+    dies while mutations are still pending. Without this wiring the graph WAL
+    accumulates (Ψ > 0) and crash recovery never runs in production.
+
+    Returns ``(graph, pipeline, watchdog)`` or ``(None, None, None)`` if the
+    stack could not be started (degrades gracefully — the flat PrismMemory
+    recall path is unaffected).
+    """
+    try:
+        from prism_memory_graph import PrismMemoryGraph
+        from prism_shadow_pipeline import PrismShadowPipeline
+        from prism_watchdog import PrismWatchdog
+    except Exception as exc:
+        logger.warning("[durability] stack unavailable: %s", exc)
+        return None, None, None
+
+    try:
+        graph = getattr(agent, "_memory_graph", None) or PrismMemoryGraph()
+        agent._memory_graph = graph
+
+        replayed = graph.replay_wal()
+        if replayed:
+            logger.info(
+                "[durability] replayed %d uncommitted WAL entr%s on startup",
+                replayed, "y" if replayed == 1 else "ies",
+            )
+        try:
+            import prism_metrics as _pm
+            _pm.metrics.inc("wal_replays", replayed or 0)
+        except Exception:
+            pass
+
+        phase_engine = None
+        try:
+            import prism_phase as _pp
+            phase_engine = _pp.get_engine()
+        except Exception:
+            pass
+
+        pipeline = PrismShadowPipeline(
+            graph,
+            soul=getattr(agent, "_soul", None),
+            phase_engine=phase_engine,
+        )
+        pipeline.start()
+
+        watchdog = PrismWatchdog(pipeline)
+        watchdog.start()
+
+        agent._shadow_pipeline = pipeline
+        agent._watchdog = watchdog
+        logger.info("[durability] shadow pipeline + watchdog online")
+        return graph, pipeline, watchdog
+    except Exception as exc:
+        logger.warning("[durability] failed to start: %s", exc)
+        return None, None, None
+
+
 def _asgi_server_thread(agent, host: str, port: int):
     """Start the FastAPI/ASGI server (primary HTTP server, Phase 4+)."""
     try:
@@ -565,6 +632,9 @@ def main():
         w.start()
     logger.info("Background workers started: %s", [w.name for w in workers])
 
+    # Durability: replay WAL, then run the shadow pipeline under the watchdog.
+    _graph, _pipeline, _watchdog = _start_durability(agent)
+
     # Federation security advisory — quiet when config or env covers it.
     import os as _os
     _fed_cfg = (getattr(agent, "_config", {}) or {}).get("federation", {}) or {}
@@ -605,6 +675,19 @@ def main():
             _SHUTDOWN.wait(timeout=5)
     finally:
         logger.info("Shutting down...")
+        # Stop the durability stack first so a final commit drains the hot
+        # buffer before the process exits (watchdog must stop before pipeline
+        # so it doesn't resurrect the pipeline mid-shutdown).
+        if _watchdog is not None:
+            try:
+                _watchdog.stop()
+            except Exception as exc:
+                logger.warning("Watchdog stop error: %s", exc)
+        if _pipeline is not None:
+            try:
+                _pipeline.stop()
+            except Exception as exc:
+                logger.warning("Shadow pipeline stop error: %s", exc)
         if hasattr(agent, 'stop'):
             try:
                 agent.stop()

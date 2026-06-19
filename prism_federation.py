@@ -392,7 +392,11 @@ class FederationManager:
             return {"pushed": 0, "failed": 0}
 
         payload = self.get_sync_payload()
-        payload_bytes = _json.dumps(payload).encode()
+        # The POST /federation/sync receiver expects the envelope
+        # ``{peer_id, payload}`` (peer_id identifies the sender). Sign the
+        # exact bytes that go on the wire so the receiver's HMAC check matches.
+        request_body = {"peer_id": self.node_id, "payload": payload}
+        payload_bytes = _json.dumps(request_body).encode()
 
         for peer_id in peer_ids:
             try:
@@ -434,7 +438,7 @@ class FederationManager:
                     _hdrs["X-Prism-Timestamp"] = _ts
                     _hdrs["X-Prism-Signature"] = f"sha256={_sig}"
                 req = _urlreq.Request(
-                    f"{peer_url}/federation/receive",
+                    f"{peer_url}/federation/sync",
                     data=payload_bytes,
                     headers=_hdrs,
                 )

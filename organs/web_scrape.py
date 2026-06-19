@@ -56,6 +56,20 @@ def execute(intent: str, message: str, ctx: dict):
             "Web Scrape",
         )
 
+    # SSRF guard: the URL is attacker-influenced (it comes straight from the
+    # user/LLM message), so refuse loopback, RFC1918, link-local and cloud
+    # metadata targets before issuing the request.
+    try:
+        from prism_ssrf import is_safe_external_url
+        if not is_safe_external_url(url, allow_private=False):
+            return text_card(
+                "Refusing to fetch that URL — it resolves to a private, loopback, "
+                "or otherwise blocked address (SSRF protection).",
+                "Web Scrape",
+            )
+    except ImportError:
+        pass
+
     req = urllib.request.Request(
         url,
         headers={"User-Agent": "Mozilla/5.0 (compatible; PRISM/1.0)"},

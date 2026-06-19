@@ -433,6 +433,59 @@ class TestFederationSyncEndpoints:
         assert resp.status_code == 400
 
 
+class TestPushPending:
+    """push_pending must POST the {peer_id, payload} envelope to the
+    /federation/sync receiver (not the non-existent /federation/receive)."""
+
+    def _make_stale_peer(self, fm):
+        import sqlite3 as _sql
+        fm.add_peer("peer-1", "Home", "http://192.168.1.10:8742")
+        # Force the peer stale so pending_sync() selects it.
+        with _sql.connect(fm._db, timeout=30.0) as conn:
+            conn.execute(
+                "UPDATE federation_peers SET last_seen = 0 WHERE peer_id = ?",
+                ("peer-1",),
+            )
+
+    def test_push_targets_sync_endpoint_with_envelope(self, tmp_path, monkeypatch):
+        import json as _json
+        import urllib.request as _urlreq
+
+        fm = _manager(tmp_path)
+        self._make_stale_peer(fm)
+
+        captured: dict = {}
+
+        class _Resp:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def read(self):
+                return b"{}"
+
+        def fake_urlopen(req, timeout=5):
+            captured["url"] = req.full_url
+            captured["body"] = req.data
+            return _Resp()
+
+        monkeypatch.setattr(_urlreq, "urlopen", fake_urlopen)
+
+        result = fm.push_pending()
+        assert result["pushed"] == 1
+        assert result["failed"] == 0
+        # Correct endpoint
+        assert captured["url"].endswith("/federation/sync")
+        assert not captured["url"].endswith("/federation/receive")
+        # Correct envelope the receiver expects
+        body = _json.loads(captured["body"])
+        assert body["peer_id"] == fm.node_id
+        assert "payload" in body
+        assert "goals" in body["payload"]
+
+
 class TestFederationStatusEndpoint:
     def test_federation_status(self, client):
         resp = client.get("/federation/status")

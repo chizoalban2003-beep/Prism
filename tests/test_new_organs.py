@@ -100,6 +100,22 @@ class TestWebScrape:
         assert "alert" not in stripped
         assert "Clean text" in stripped
 
+    def test_ssrf_guard_blocks_loopback(self):
+        # SSRF protection: never fetch loopback / metadata targets, and never
+        # reach the network when the URL is blocked.
+        with patch("urllib.request.urlopen", side_effect=AssertionError("network reached")):
+            card = self.organ.execute(
+                "web_scrape", "scrape http://127.0.0.1:8742/secret", {}
+            )
+        assert "ssrf" in card.body.lower() or "refus" in card.body.lower()
+
+    def test_ssrf_guard_blocks_cloud_metadata(self):
+        with patch("urllib.request.urlopen", side_effect=AssertionError("network reached")):
+            card = self.organ.execute(
+                "web_scrape", "scrape http://169.254.169.254/latest/meta-data/", {}
+            )
+        assert "ssrf" in card.body.lower() or "refus" in card.body.lower()
+
 
 # ── wikipedia_lookup ───────────────────────────────────────────────────────────
 

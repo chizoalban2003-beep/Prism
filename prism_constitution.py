@@ -160,6 +160,12 @@ class ConstitutionGuard:
             .get("max_synthesis_per_session", 10)
         )
 
+    def max_organs_per_session(self) -> int:
+        return int(
+            self._data.get("absolute_limits", {})
+            .get("max_organs_per_session", 200)
+        )
+
     def is_never_log(self, intent: str) -> bool:
         never = (
             self._data.get("absolute_limits", {})
