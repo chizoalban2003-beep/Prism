@@ -289,3 +289,43 @@ class TestWsSessionPersistence:
                 if evt.get("event") in ("done", "error"):
                     break
         assert evt["event"] == "done"
+
+
+# ---------------------------------------------------------------------------
+# Cascade fast-path: simple requests route through agent.chat (not the chain)
+# so they work even with no LLM backend (cf. FrugalGPT cascade).
+# ---------------------------------------------------------------------------
+
+class TestWsFastPath:
+
+    def _fast_path_agent(self):
+        from prism_chain import PrismChain
+        from prism_responses import text_card
+
+        agent = MagicMock()
+        agent._execute = MagicMock()
+        agent.chat = MagicMock(return_value=text_card("8.05 km", "Convert"))
+        chain = MagicMock(spec=PrismChain)
+        chain.should_chain.return_value = False  # simple → fast-path
+        # If the chain were (wrongly) used, this would raise.
+        chain.run_streaming.side_effect = AssertionError("chain must not run")
+        chain.run_streaming_async = PrismChain.run_streaming_async.__get__(chain)
+        agent._chain = chain
+        return agent
+
+    def test_simple_request_uses_chat_not_chain(self):
+        agent = self._fast_path_agent()
+        _set_state(agent=agent)
+        c = TestClient(app)
+        with c.websocket_connect("/ws/chat") as ws:
+            ws.send_json({"message": "convert 5 miles to km"})
+            events = []
+            while True:
+                evt = ws.receive_json()
+                events.append(evt)
+                if evt.get("event") in ("done", "error"):
+                    break
+        assert [e["event"] for e in events][-1] == "done"
+        done = next(e for e in events if e["event"] == "done")
+        assert done["answer"] == "8.05 km"
+        agent.chat.assert_called_once()

@@ -436,6 +436,49 @@ def _build_asgi_state(agent) -> dict:
     except Exception as _exc:
         logger.warning("FederationManager wire failed: %s", _exc)
 
+    # Causal reasoner (belief DAG + counterfactuals) — without this the
+    # /causality/* routes always answered "causal_reasoner not configured".
+    try:
+        from prism_causality import CausalGraph, CausalReasoner
+        graph = CausalGraph()
+        state["causal_reasoner"] = CausalReasoner(
+            graph,
+            soul=getattr(agent, "_soul", None),
+            llm_router=getattr(agent, "_router", None),
+        )
+    except Exception as _exc:
+        logger.warning("CausalReasoner wire failed: %s", _exc)
+
+    # Multi-user registry + household bus — without these the /users and
+    # /household routes answered 503 "UserRegistry not available" even though
+    # the daemon was running.
+    try:
+        from prism_multi_user import HouseholdBus, UserRegistry
+        reg = getattr(agent, "_user_registry", None) or UserRegistry()
+        agent._user_registry = reg
+        state["user_registry"] = reg
+        state["household_bus"] = HouseholdBus(
+            reg, organ_bus=getattr(agent, "_organ_bus", None)
+        )
+    except Exception as _exc:
+        logger.warning("UserRegistry wire failed: %s", _exc)
+
+    # Mobile sync manager — needed by the /mobile/* routes.
+    try:
+        from prism_mobile_sync import MobileSyncManager
+        _mobile_secret = os.environ.get("PRISM_MOBILE_SECRET", "")
+        if not _mobile_secret:
+            logger.warning(
+                "Mobile sync using the built-in default HMAC secret. "
+                "Set PRISM_MOBILE_SECRET=<secret> to secure device tokens."
+            )
+        state["mobile_sync"] = MobileSyncManager(secret_key=_mobile_secret)
+    except Exception as _exc:
+        logger.warning("MobileSyncManager wire failed: %s", _exc)
+
+    # OutcomeTracker — surfaced for routes that read it (e.g. ml nightly sweep).
+    state.setdefault("outcome_tracker", getattr(agent, "_outcome_tracker", None))
+
     state["ml_assembler"] = getattr(agent, "_ml_assembler", None)
 
     try:

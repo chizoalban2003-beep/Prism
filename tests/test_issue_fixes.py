@@ -100,3 +100,16 @@ def test_autonomous_safety_still_blocks_eval_and_os():
     from prism_autonomous import _is_safe_code
     assert not _is_safe_code("def execute(t, p):\n    return eval(t)")[0]
     assert not _is_safe_code("import os\ndef execute(t, p):\n    os.system('ls')")[0]
+
+
+# ── daemon wires the previously-unreachable subsystems into ASGI state ──────────
+
+def test_build_asgi_state_wires_subsystems():
+    """causality / multi-user / mobile routes used to 503 in a live daemon
+    because _build_asgi_state never injected their dependencies."""
+    import prism_daemon
+    from prism_agent import PrismAgent
+    agent = PrismAgent()
+    state = prism_daemon._build_asgi_state(agent)
+    for key in ("causal_reasoner", "user_registry", "household_bus", "mobile_sync"):
+        assert state.get(key) is not None, f"{key} not wired into ASGI state"

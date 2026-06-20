@@ -47,6 +47,14 @@ class TestMLRun:
         r = client.post("/ml/run", json={"task": "predict something"})
         assert r.status_code == 422
 
+    def test_run_missing_fields_message_is_helpful(self, client):
+        # The error should name the missing field(s), not just echo a KeyError.
+        r = client.post("/ml/run", json={"y": [1, 2]})
+        assert r.status_code == 422
+        body = r.json()
+        assert "task" in body["error"] and "X" in body["error"]
+        assert body.get("required") == ["task", "X"]
+
     def test_run_valid_labelled(self, client):
         pytest.importorskip("numpy")
         import numpy as np

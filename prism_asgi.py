@@ -367,10 +367,50 @@ if _FASTAPI_AVAILABLE:
                 session_id = data.get("session_id") or _state.get("active_session_id")
                 answer = None
 
-                async for evt in chain.run_streaming_async(msg, agent._execute, {"source": "ws"}):
-                    await websocket.send_json(evt)
-                    if evt.get("event") == "done":
-                        answer = evt.get("answer")
+                # Cascade routing (cf. FrugalGPT, Chen/Zaharia/Zou,
+                # arXiv:2305.05176): handle simple one-shot requests on the
+                # cheap deterministic path and only escalate to the streaming
+                # LLM chain for genuinely multi-step reasoning. Previously every
+                # WS turn went straight to the chain, so simple organ requests
+                # ("convert 2 miles to km") returned "Chain produced no results"
+                # whenever no LLM backend was reachable — unlike /chat and
+                # /stream/chat, which route through agent.chat().
+                use_chain = bool(chain.should_chain(msg))
+
+                if use_chain:
+                    async for evt in chain.run_streaming_async(
+                        msg, agent._execute, {"source": "ws"}
+                    ):
+                        await websocket.send_json(evt)
+                        if evt.get("event") == "done":
+                            answer = evt.get("answer")
+                else:
+                    await websocket.send_json({
+                        "event": "step", "step": 1, "logic": "router",
+                        "result": "Routing…", "policy": "", "score": 0,
+                        "risk": "low", "caps": [], "constitution": "allowed",
+                    })
+                    try:
+                        card = await asyncio.to_thread(
+                            agent.chat, msg, {"source": "ws"}
+                        )
+                    except Exception as exc:
+                        await websocket.send_json(
+                            {"event": "error", "message": str(exc)}
+                        )
+                        continue
+                    cj = card.to_json() if hasattr(card, "to_json") else {
+                        "type": "text", "title": "", "body": str(card),
+                        "data": {}, "actions": [],
+                    }
+                    answer = cj.get("body", "")
+                    await websocket.send_json({
+                        "event": "done", "answer": answer, "chain_id": "",
+                        "card_type": cj.get("type", "text"),
+                        "card_title": cj.get("title", ""),
+                        "card_data": cj.get("data", {}),
+                        "card_actions": cj.get("actions", []),
+                    })
 
                 if session_id and answer:
                     try:

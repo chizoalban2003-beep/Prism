@@ -48,6 +48,11 @@ async def _llm_call(prompt: str, system: str) -> str:
         return "[PRISM: agent not ready — start prism_daemon first]"
     try:
         result = llm.call(prompt=prompt, system=system)
+        # LLMRouter.call() returns a (text, model_name) tuple. Unwrap it so the
+        # endpoint returns the answer text rather than a stringified tuple like
+        # "('', 'none')" (which is what leaked before this fix).
+        if isinstance(result, tuple):
+            result = result[0] if result else ""
         if isinstance(result, str):
             return result
         # Some router implementations return a dict with an "answer" key

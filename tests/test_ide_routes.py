@@ -98,6 +98,29 @@ class TestIdeExplain:
         assert "explanation" in r.json()
         assert r.json()["explanation"] == "This assigns 1 to x."
 
+    def test_unwraps_router_tuple(self, client):
+        # The real LLMRouter.call returns a (text, model) tuple. The endpoint
+        # must return the text, not a stringified tuple like "('...', 'mistral')".
+        agent = MagicMock()
+        agent._phase = None
+        agent._soul = None
+        agent._router = MagicMock()
+        agent._router.call.return_value = ("This assigns 1 to x.", "mistral")
+        _set_state(agent=agent)
+        r = client.post("/ide/explain", json={"code": "x = 1", "language": "python"})
+        assert r.json()["explanation"] == "This assigns 1 to x."
+
+    def test_empty_llm_does_not_leak_tuple(self, client):
+        agent = MagicMock()
+        agent._phase = None
+        agent._soul = None
+        agent._router = MagicMock()
+        agent._router.call.return_value = ("", "none")
+        _set_state(agent=agent)
+        r = client.post("/ide/explain", json={"code": "x = 1", "language": "python"})
+        assert r.json()["explanation"] == ""
+        assert "none" not in r.json()["explanation"]
+
     def test_missing_code_returns_400(self, client):
         r = client.post("/ide/explain", json={"language": "python"})
         assert r.status_code == 400

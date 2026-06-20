@@ -60,6 +60,19 @@ async def ml_run(body: dict) -> JSONResponse:
       feature_names list[str]|null
       translate     bool (default true)
     """
+    if not isinstance(body, dict):
+        return JSONResponse(
+            {"error": "request body must be a JSON object with keys: task, X"},
+            status_code=422,
+        )
+    missing = [k for k in ("task", "X") if k not in body]
+    if missing:
+        return JSONResponse(
+            {"error": f"missing required field(s): {', '.join(missing)}",
+             "required": ["task", "X"],
+             "optional": ["y", "feature_names", "translate", "sequential"]},
+            status_code=422,
+        )
     try:
         task = str(body["task"])
         X = body["X"]
@@ -68,7 +81,7 @@ async def ml_run(body: dict) -> JSONResponse:
         translate = bool(body.get("translate", True))
         sequential = bool(body.get("sequential", False))
     except (KeyError, TypeError) as exc:
-        return JSONResponse({"error": str(exc)}, status_code=422)
+        return JSONResponse({"error": f"invalid body: {exc}"}, status_code=422)
 
     asm = get_or_set_assembler()
     result = asm.run(
