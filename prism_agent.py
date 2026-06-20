@@ -66,6 +66,10 @@ class PrismAgent:
     Returns PrismCard for every request. Never raises.
     """
 
+    # Most-recent user-turn graph node id, used by the durability bridge to
+    # link a user turn to the assistant turn that answers it.
+    _last_user_turn_node: Optional[str] = None
+
     INTENTS = [
         # Horizon goals — "when X" / "watch for" / "notify when" must precede every
         # other intent because the trigger clause ("when bitcoin drops") would
@@ -991,7 +995,8 @@ class PrismAgent:
                              "source": r.entry.source, "score": round(r.score, 3)}
                             for r in mem_results
                         ]
-                    self._memory.ingest_conversation("user", message)
+                    _uid = self._memory.ingest_conversation("user", message)
+                    self._mirror_turn_to_graph("user", message, _uid)
                 except Exception:
                     pass
 
@@ -1153,7 +1158,8 @@ class PrismAgent:
             # 9. Memory ingestion for response
             if self._memory and card.body:
                 try:
-                    self._memory.ingest_conversation("assistant", card.body)
+                    _aid = self._memory.ingest_conversation("assistant", card.body)
+                    self._mirror_turn_to_graph("assistant", card.body, _aid)
                 except Exception:
                     pass
 
@@ -1174,6 +1180,40 @@ class PrismAgent:
         except Exception as exc:
             logging.exception("PrismAgent.chat error")
             return text_card(f"Something went wrong: {exc}", "Error")
+
+    def _mirror_turn_to_graph(self, role: str, content: str, entry_id) -> None:
+        """Mirror a conversation turn into the WAL-backed memory graph.
+
+        PrismMemory (flat SQLite) stays the recall store; this additionally
+        records the turn as a durable graph node so the hot→WAL→cold pipeline
+        (replay_wal / commit_pending / watchdog) actually protects conversation
+        memory and the Ψ/Dm durability metrics reflect real activity. Without
+        this bridge the chaos-tested durability stack ran but had nothing to
+        commit. Best-effort; a no-op when no graph is attached (e.g. when
+        PrismAgent runs outside the daemon, which is what sets _memory_graph).
+        """
+        graph = getattr(self, "_memory_graph", None)
+        if graph is None or not entry_id or not content:
+            return
+        try:
+            from prism_memory_graph import GraphEdge, GraphNode
+            node_id = f"conv_{entry_id}"
+            graph.write_node(GraphNode(
+                node_id=node_id,
+                node_type="observation",
+                value={"role": role, "content": content[:2000],
+                       "source": "conversation"},
+            ))
+            if role == "user":
+                self._last_user_turn_node = node_id
+            elif role == "assistant":
+                prev = getattr(self, "_last_user_turn_node", None)
+                if prev:
+                    graph.write_edge(GraphEdge(
+                        src=prev, dst=node_id, relation="answered_by"))
+                    self._last_user_turn_node = None
+        except Exception:
+            pass
 
     def _request_approval(self, task: str, reason: str) -> bool:
         """
@@ -2210,6 +2250,7 @@ class PrismAgent:
                 ctx.setdefault("email", getattr(self, "_email", None))
                 ctx.setdefault("calendar", getattr(self, "_calendar", None))
                 ctx.setdefault("router", getattr(self, "_router", None))
+                ctx.setdefault("memory_graph", getattr(self, "_memory_graph", None))
                 _tw = dict(self._config.get("twilio", {}))
                 import os as _os
                 _tw.setdefault("account_sid", _os.environ.get("TWILIO_ACCOUNT_SID", ""))

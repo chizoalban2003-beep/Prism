@@ -101,11 +101,13 @@ class PrismMemory:
         scored.sort(key=lambda r: r.score, reverse=True)
         return [r for r in scored[:top_n] if r.score > 0.15]
 
-    def ingest_conversation(self, role: str, content: str) -> None:
-        """Store a single conversation turn."""
+    def ingest_conversation(self, role: str, content: str) -> str | None:
+        """Store a single conversation turn. Returns the entry_id, or None if
+        the turn was too short to store."""
         if len(content) > 50:   # skip very short turns
-            self.ingest(content, source="conversation",
-                        title=f"{role}: {content[:40]}")
+            return self.ingest(content, source="conversation",
+                               title=f"{role}: {content[:40]}")
+        return None
 
     # ── Helpers ───────────────────────────────────────────────────────────
 

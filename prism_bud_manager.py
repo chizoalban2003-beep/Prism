@@ -72,7 +72,7 @@ _CAPABILITY_CTX_KEYS: dict[str, list[str]] = {
         "email", "calendar", "tasks", "contacts",
         "standing_instructions", "history", "persona_context",
         "memory_context", "perception", "perception_summary",
-        "context_profile",
+        "context_profile", "memory_graph",
     ],
 }
 
