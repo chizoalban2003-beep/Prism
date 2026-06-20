@@ -87,6 +87,12 @@ def test_topological_order_and_executor_propagate_upstream():
     assert result["outputs"]["leaf"]["final"] == 3.14 * 2 + 1
 
 
+def test_compose_dedupes_repeated_intents():
+    loader = _StubLoader({"a": {"fn": _identity_fn(1)}})
+    plan = compose(loader, ["a", "a", "a"])
+    assert plan["nodes"] == ["a"]
+
+
 def test_execute_plan_distinguishes_empty_from_cycle():
     loader = _StubLoader({})
     plan = compose(loader, [])

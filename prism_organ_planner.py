@@ -56,7 +56,16 @@ def compose(loader: OrganLoader, intents: list[str]) -> dict:
     Skips intents that are not loaded. Self-edges (where producer == consumer)
     are not emitted — they would always loop the default `card → card` arrow.
     """
-    nodes = [i for i in intents if loader.get(i) is not None]
+    # Dedupe while preserving order — the DAG keys nodes by intent, so a
+    # repeated intent is the same node (and would otherwise inflate the
+    # order/skipped counts).
+    seen: set[str] = set()
+    nodes = []
+    for i in intents:
+        if i in seen or loader.get(i) is None:
+            continue
+        seen.add(i)
+        nodes.append(i)
     if len(nodes) < 1:
         return {"nodes": [], "arrows": [], "orphans": [], "roots": [], "leaves": []}
 

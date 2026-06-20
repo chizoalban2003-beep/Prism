@@ -32,6 +32,10 @@ def _make_streaming_agent(events=None):
     agent._execute = MagicMock(return_value="ok")
 
     chain = MagicMock(spec=PrismChain)
+    # The WS cascade gate routes on should_chain(); pin it True so these
+    # streaming-path tests deterministically exercise the chain (not the
+    # deterministic fast-path), regardless of MagicMock truthiness quirks.
+    chain.should_chain.return_value = True
 
     captured_events = list(events)
 
