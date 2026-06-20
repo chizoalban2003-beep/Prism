@@ -529,6 +529,24 @@ class PrismAgent:
         self._organ_loader = OrganLoader(llm_router=self._router)
         self._chain._organ_loader = self._organ_loader
 
+        # MCP (Model Context Protocol) client — connect to any configured
+        # external MCP servers and expose their tools as organs. Disabled
+        # unless [mcp].enabled is set in prism_config.toml, so this is a no-op
+        # for the default install and for tests.
+        self._mcp: Optional[Any] = None
+        try:
+            import prism_mcp
+            self._mcp = prism_mcp.MCPManager.from_config(self._config)
+            prism_mcp.set_manager(self._mcp)
+            if self._mcp.server_names():
+                self._mcp.connect_all()
+                _n = prism_mcp.register_mcp_organs(self._organ_loader, self._mcp)
+                logger.info("MCP: registered %d tool(s) from %d server(s)",
+                            _n, len(self._mcp.server_names()))
+        except Exception as e:
+            logger.warning("MCP init failed: %s", e)
+            self._mcp = None
+
         # L1 Constitution guard + Bud execution manager
         self._constitution: Optional[Any] = None
         self._bud_mgr: Optional[Any] = None

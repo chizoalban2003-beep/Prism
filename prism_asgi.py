@@ -202,6 +202,7 @@ if _FASTAPI_AVAILABLE:
     from prism_routes_infra import router as infra_router
     from prism_routes_integrations import router as integrations_router
     from prism_routes_kinetic import router as kinetic_router
+    from prism_routes_mcp import router as mcp_router
     from prism_routes_media import router as media_router
     from prism_routes_mesh import router as mesh_router
     from prism_routes_ml import router as ml_router
@@ -236,6 +237,7 @@ if _FASTAPI_AVAILABLE:
     app.include_router(kinetic_router)
     app.include_router(ml_router)
     app.include_router(mesh_router)
+    app.include_router(mcp_router)
 
     # ── Built-in routes (kept from Phase 1) ──────────────────────────────
 

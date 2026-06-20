@@ -476,6 +476,14 @@ def _build_asgi_state(agent) -> dict:
     except Exception as _exc:
         logger.warning("MobileSyncManager wire failed: %s", _exc)
 
+    # MCP manager — exposes /mcp/* routes. Built (and possibly connected) in
+    # PrismAgent.__init__; fall back to the module singleton.
+    try:
+        import prism_mcp
+        state["mcp"] = getattr(agent, "_mcp", None) or prism_mcp.get_manager()
+    except Exception as _exc:
+        logger.warning("MCP wire failed: %s", _exc)
+
     # OutcomeTracker — surfaced for routes that read it (e.g. ml nightly sweep).
     state.setdefault("outcome_tracker", getattr(agent, "_outcome_tracker", None))
 
@@ -731,6 +739,12 @@ def main():
                 _pipeline.stop()
             except Exception as exc:
                 logger.warning("Shadow pipeline stop error: %s", exc)
+        _mcp = getattr(agent, "_mcp", None)
+        if _mcp is not None:
+            try:
+                _mcp.shutdown()
+            except Exception as exc:
+                logger.warning("MCP shutdown error: %s", exc)
         if hasattr(agent, 'stop'):
             try:
                 agent.stop()
