@@ -29,6 +29,33 @@ class TestScopedCtx:
         scoped = _scoped_ctx(full, [])
         assert "_approved_shell_run" in scoped
 
+    def test_internet_write_grants_mail_handles(self):
+        # email/calendar/contacts/router-style mail handles are granted to
+        # internet_write organs, not to everyone.
+        full = {"email": "E", "calendar": "C", "contacts": "K", "organ_loader": "ol"}
+        scoped = _scoped_ctx(full, ["internet_write"])
+        assert scoped.get("email") == "E"
+        assert scoped.get("calendar") == "C"
+        assert scoped.get("contacts") == "K"
+
+    def test_mail_handles_not_in_always(self):
+        # A read-only / unrelated organ must NOT receive the mailbox/calendar.
+        full = {"email": "E", "calendar": "C", "contacts": "K", "organ_loader": "ol"}
+        scoped = _scoped_ctx(full, ["internet_read"])
+        assert "email" not in scoped
+        assert "calendar" not in scoped
+
+    def test_sensitive_context_not_leaked_to_organs(self):
+        # Conversation history / persona / recalled memory are never exposed.
+        full = {
+            "organ_loader": "ol", "history": [1], "persona_context": "p",
+            "memory_context": [{}], "perception": {}, "standing_instructions": "x",
+        }
+        scoped = _scoped_ctx(full, [])
+        for leaked in ("history", "persona_context", "memory_context",
+                       "perception", "standing_instructions"):
+            assert leaked not in scoped
+
     def test_telephony_cap_does_not_leak_shell_runner(self):
         full = {"shell_runner": "sr", "twilio_config": "tc", "organ_loader": "ol"}
         scoped = _scoped_ctx(full, ["telephony"])

@@ -57,7 +57,10 @@ class BudStatus(str, Enum):
 # keys their declared capabilities grant.  The token field is always included.
 _CAPABILITY_CTX_KEYS: dict[str, list[str]] = {
     "internet_read":    [],                         # no extra ctx needed
-    "internet_write":   ["twilio_config"],
+    # Email/calendar/contacts handles + the LLM router are only needed by
+    # internet_write organs (email_send, calendar_write); they are NOT in
+    # _always, so a read-only or unrelated organ never sees your mailbox.
+    "internet_write":   ["twilio_config", "email", "calendar", "contacts"],
     "filesystem_read":  [],
     "filesystem_write": [],
     "subprocess":       ["shell_runner"],
@@ -66,13 +69,16 @@ _CAPABILITY_CTX_KEYS: dict[str, list[str]] = {
     "notifications":    [],
     "smart_home":       [],
     "spectrum_control": [],  # uses module singleton; no extra ctx keys needed
-    # Always included regardless of capability
+    # Always included regardless of capability. Deliberately minimal
+    # (least privilege): only infra handles that capability-less organs
+    # legitimately need (policy_inspect→organ_loader, policy_update→
+    # policy_engine, task_reminder→tasks, veax_control→router,
+    # canary_check→memory_graph). The user's conversation history, persona,
+    # perception, and recalled memories are NOT exposed to organs — no organ
+    # reads them, and they are sensitive.
     "_always": [
         "organ_loader", "policy_engine", "router",
-        "email", "calendar", "tasks", "contacts",
-        "standing_instructions", "history", "persona_context",
-        "memory_context", "perception", "perception_summary",
-        "context_profile", "memory_graph",
+        "tasks", "memory_graph",
     ],
 }
 
