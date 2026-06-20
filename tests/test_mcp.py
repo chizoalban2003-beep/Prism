@@ -197,6 +197,32 @@ class TestPrompts:
         assert "Hello, PRISM!" in out["messages"][0]["content"]["text"]
 
 
+class TestChatRouting:
+    """MCP tools registered as organs are reachable through the chat router."""
+
+    def test_mcp_organ_executes_via_agent(self, manager):
+        from prism_agent import PrismAgent
+        agent = PrismAgent()
+        prism_mcp.register_mcp_organs(agent._organ_loader, manager)
+        card = agent._execute("mcp.mock.echo", "hello",
+                              {"mcp_arguments": {"text": "routed via chat"}})
+        assert "routed via chat" in card.body
+
+    def test_mcp_intent_surfaced_to_classifier(self, manager):
+        from prism_agent import PrismAgent
+        agent = PrismAgent()
+        prism_mcp.register_mcp_organs(agent._organ_loader, manager)
+
+        class _StubRouter:
+            def call(self, prompt, **kw):
+                # The classifier prompt should list the mcp organ as a label.
+                assert "mcp.mock.echo" in prompt
+                return ("mcp.mock.echo", "stub")
+
+        agent._router = _StubRouter()
+        assert agent._llm_classify("please echo something") == "mcp.mock.echo"
+
+
 class TestResourcePromptRoutes:
     def _client(self, manager):
         from fastapi.testclient import TestClient

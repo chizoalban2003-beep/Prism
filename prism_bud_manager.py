@@ -88,9 +88,11 @@ def _scoped_ctx(full_ctx: dict, capabilities: list[str]) -> dict:
     allowed_keys: set[str] = set(_CAPABILITY_CTX_KEYS.get("_always", []))
     for cap in capabilities:
         allowed_keys.update(_CAPABILITY_CTX_KEYS.get(cap, []))
-    # Always pass through approval flags so the organ gate works
+    # Always pass through approval flags so the organ gate works, plus
+    # explicit per-call tool arguments (benign data, not a credential/handle).
     approval_keys = {k for k in full_ctx if k.startswith("_approved_")}
     allowed_keys |= approval_keys
+    allowed_keys.add("mcp_arguments")
     return {k: v for k, v in full_ctx.items() if k in allowed_keys}
 
 
