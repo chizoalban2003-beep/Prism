@@ -416,11 +416,45 @@ class MCPManager:
 
 # ── organ bridge — expose MCP tools as PRISM organs ───────────────────────────
 
-def _resolve_arguments(tool: MCPTool, message: str, ctx: Optional[dict]) -> dict:
+def _synthesise_arguments(tool: MCPTool, message: str, router: Any) -> Optional[dict]:
+    """Ask the LLM to map a free-text message onto the tool's JSON input schema.
+
+    Returns a dict of arguments, or None on any failure (caller falls back).
+    Only used for multi-property schemas where deterministic mapping is
+    ambiguous. Mirrors the codebase's JSON-in-prompt pattern.
+    """
+    try:
+        schema = tool.input_schema or {}
+        prompt = (
+            "Map the user request to arguments for a tool. Output ONLY a JSON "
+            "object matching the schema's properties — no prose, no code fence.\n"
+            f"Tool: {tool.name} — {tool.description}\n"
+            f"Schema: {json.dumps(schema)}\n"
+            f"Request: {message}"
+        )
+        raw, _ = router.call(prompt, min_capability=1, max_tokens=300, json_mode=True)
+        text = (raw or "").strip()
+        if text.startswith("```"):
+            text = text.strip("`")
+            if "\n" in text:
+                text = text.split("\n", 1)[1]
+        start, end = text.find("{"), text.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            parsed = json.loads(text[start:end + 1])
+            if isinstance(parsed, dict):
+                return parsed
+    except Exception:
+        pass
+    return None
+
+
+def _resolve_arguments(tool: MCPTool, message: str, ctx: Optional[dict],
+                       router: Any = None) -> dict:
     """Best-effort mapping of an organ call into MCP tool arguments.
 
     Priority: explicit ``ctx['mcp_arguments']`` → a JSON object in the message →
-    a single required string property filled from the message → empty.
+    a single required string property filled from the message → LLM synthesis
+    from the schema (when a router is available) → empty.
     """
     if isinstance(ctx, dict):
         explicit = ctx.get("mcp_arguments")
@@ -445,10 +479,15 @@ def _resolve_arguments(tool: MCPTool, message: str, ctx: Optional[dict]) -> dict
     ]
     if len(string_props) == 1:
         return {string_props[0]: message}
+    # Multi-property schema → let the LLM fill it from the message, if available.
+    if router is not None:
+        synth = _synthesise_arguments(tool, message, router)
+        if synth is not None:
+            return synth
     return {}
 
 
-def make_mcp_organ(manager: MCPManager, tool: MCPTool):
+def make_mcp_organ(manager: MCPManager, tool: MCPTool, router: Any = None):
     """Return ``(intent, execute_fn, meta)`` exposing one MCP tool as an organ."""
     intent = f"mcp.{tool.server}.{tool.name}"
     meta = {
@@ -463,7 +502,7 @@ def make_mcp_organ(manager: MCPManager, tool: MCPTool):
     def execute(intent: str, message: str, ctx: dict):
         from prism_responses import text_card
         try:
-            args = _resolve_arguments(tool, message, ctx)
+            args = _resolve_arguments(tool, message, ctx, router=router)
             result = manager.call_tool(tool.server, tool.name, args)
             text = extract_text(result)
             if result.get("isError"):
@@ -484,12 +523,12 @@ def make_mcp_organ(manager: MCPManager, tool: MCPTool):
     return intent, execute, meta
 
 
-def register_mcp_organs(loader: Any, manager: MCPManager) -> int:
+def register_mcp_organs(loader: Any, manager: MCPManager, router: Any = None) -> int:
     """Register every connected MCP tool as an organ on *loader*. Returns count."""
     count = 0
     for srv in manager._servers.values():
         for tool in srv.tools:
-            intent, fn, meta = make_mcp_organ(manager, tool)
+            intent, fn, meta = make_mcp_organ(manager, tool, router=router)
             try:
                 loader._register(intent, fn, meta, source="mcp")
                 count += 1

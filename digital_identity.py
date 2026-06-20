@@ -114,9 +114,13 @@ class DigitalIdentity:
         }
 
 
-class CrystallisationEngine:
+class DigitalIdentityEngine:
     """
     Builds and updates a DigitalIdentity from observed decisions.
+
+    (Renamed from ``CrystallisationEngine`` to avoid confusion with the
+    unrelated ``prism_phase.CrystallizationEngine`` thermodynamic phase engine.
+    The old name remains as a backward-compatible alias below.)
     """
 
     EMA_ALPHA = 0.08
@@ -374,3 +378,8 @@ class CrystallisationEngine:
                 """,
                 (now, self.user_name),
             )
+
+
+# Backward-compatible alias. Deprecated — use ``DigitalIdentityEngine``.
+# (Distinct from prism_phase.CrystallizationEngine, the phase/melt engine.)
+CrystallisationEngine = DigitalIdentityEngine

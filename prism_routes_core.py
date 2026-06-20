@@ -13,6 +13,7 @@ Routes:
 from __future__ import annotations
 
 import asyncio
+import json
 from typing import Any
 
 from fastapi import APIRouter, Request
@@ -32,12 +33,18 @@ router = APIRouter()
 @router.post("/chat")
 async def chat(request: Request):
     body: dict[str, Any] = {}
-    try:
-        parsed = await request.json()
-        if isinstance(parsed, dict):
-            body = parsed
-    except Exception:
-        pass
+    raw = await request.body()
+    if raw:
+        try:
+            parsed = json.loads(raw)
+        except Exception:
+            return JSONResponse(
+                {"error": "invalid JSON body", "status": 400}, status_code=400)
+        if not isinstance(parsed, dict):
+            return JSONResponse(
+                {"error": "body must be a JSON object", "status": 400},
+                status_code=400)
+        body = parsed
 
     agent = _get_agent()
     if agent is None:

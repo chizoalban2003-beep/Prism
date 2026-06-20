@@ -465,14 +465,11 @@ def _build_asgi_state(agent) -> dict:
 
     # Mobile sync manager — needed by the /mobile/* routes.
     try:
+        from prism_auth import ensure_mobile_secret
         from prism_mobile_sync import MobileSyncManager
-        _mobile_secret = os.environ.get("PRISM_MOBILE_SECRET", "")
-        if not _mobile_secret:
-            logger.warning(
-                "Mobile sync using the built-in default HMAC secret. "
-                "Set PRISM_MOBILE_SECRET=<secret> to secure device tokens."
-            )
-        state["mobile_sync"] = MobileSyncManager(secret_key=_mobile_secret)
+        # Per-install random secret (env override honoured) instead of the weak
+        # built-in default, so mobile device tokens are signed securely.
+        state["mobile_sync"] = MobileSyncManager(secret_key=ensure_mobile_secret())
     except Exception as _exc:
         logger.warning("MobileSyncManager wire failed: %s", _exc)
 

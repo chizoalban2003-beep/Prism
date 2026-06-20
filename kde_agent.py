@@ -31,7 +31,7 @@ from typing import Any, Optional
 from artifact_store import Artifact, ArtifactStore
 from daily_workflow import DailyWorkflow, EveningReview, MorningBrief, SessionLog
 from device_hub import Device, DeviceHub, DeviceType
-from digital_identity import CrystallisationEngine
+from digital_identity import DigitalIdentityEngine
 from domain_configs import ALL_DOMAINS, DomainDecisionModel
 from identity_bus import IdentityBus
 from kde_profiles import UserProfile, UserRole, from_toml
@@ -410,7 +410,7 @@ class KDEAgent:
         self._injector   = LiveWeightInjector()
         self._optimizer  = GroundTruthOptimizer()
         self._bus        = IdentityBus(db_path=bus_db_path)
-        self._crystal    = CrystallisationEngine(profile.name, self._bus, db_path=identity_db)
+        self._crystal    = DigitalIdentityEngine(profile.name, self._bus, db_path=identity_db)
         self._artifacts  = ArtifactStore(db_path=artifact_db)
 
         # Register profile

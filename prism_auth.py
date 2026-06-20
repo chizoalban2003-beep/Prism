@@ -28,6 +28,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 TOKEN_FILE = Path.home() / ".prism" / "auth_token"
+MOBILE_SECRET_FILE = Path.home() / ".prism" / "mobile_sync_secret"
 
 _DISABLE_VALUES = frozenset({"1", "true", "yes", "on"})
 
@@ -77,3 +78,31 @@ def ensure_token() -> str:
     except OSError as exc:
         logger.warning("auth: chmod 0600 failed on %s: %s", TOKEN_FILE, exc)
     return token
+
+
+def ensure_mobile_secret() -> str:
+    """Idempotently materialise the mobile-sync HMAC secret and return it.
+
+    Mirrors :func:`ensure_token`: env override (PRISM_MOBILE_SECRET) →
+    ~/.prism/mobile_sync_secret (chmod 600) → generate + persist. Replaces the
+    weak built-in ``b"prism-default-secret"`` so device tokens are signed with a
+    per-install random key by default.
+    """
+    env = os.environ.get("PRISM_MOBILE_SECRET")
+    if env:
+        return env
+    try:
+        if MOBILE_SECRET_FILE.exists():
+            value = MOBILE_SECRET_FILE.read_text(encoding="utf-8").strip()
+            if value:
+                return value
+    except OSError as exc:
+        logger.warning("auth: failed to read %s: %s", MOBILE_SECRET_FILE, exc)
+    MOBILE_SECRET_FILE.parent.mkdir(parents=True, exist_ok=True)
+    secret = secrets.token_urlsafe(32)
+    MOBILE_SECRET_FILE.write_text(secret, encoding="utf-8")
+    try:
+        os.chmod(MOBILE_SECRET_FILE, 0o600)
+    except OSError as exc:
+        logger.warning("auth: chmod 0600 failed on %s: %s", MOBILE_SECRET_FILE, exc)
+    return secret

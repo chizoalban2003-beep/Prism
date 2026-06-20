@@ -82,7 +82,8 @@ async def mcp_connect(request: Request):
         agent = _get_agent()
         loader = getattr(agent, "_organ_loader", None) if agent else None
         if loader is not None:
-            prism_mcp.register_mcp_organs(loader, mgr)
+            router = getattr(agent, "_router", None) if agent else None
+            prism_mcp.register_mcp_organs(loader, mgr, router=router)
     except Exception:
         pass
     return {"ok": True, "result": result}

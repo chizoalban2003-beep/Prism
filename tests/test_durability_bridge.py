@@ -52,6 +52,24 @@ def test_mirror_links_user_and_assistant(tmp_path):
     assert any(e.dst == "conv_a1" and e.relation == "answered_by" for e in edges)
 
 
+def test_graph_recall_merges_into_context(tmp_path):
+    g = _graph(tmp_path)
+    ns = types.SimpleNamespace(_memory_graph=g)
+    # seed a past turn in the graph
+    PrismAgent._mirror_turn_to_graph(ns, "user", "the migration must finish first", "p1")
+    ctx: dict = {}
+    PrismAgent._graph_recall(ns, "tell me about the migration", ctx)
+    mc = ctx.get("memory_context", [])
+    assert any("migration" in (e.get("excerpt", "")) for e in mc)
+
+
+def test_graph_recall_noop_without_graph():
+    ns = types.SimpleNamespace()
+    ctx: dict = {}
+    PrismAgent._graph_recall(ns, "anything", ctx)  # must not raise
+    assert ctx == {}
+
+
 def test_mirror_noop_without_graph():
     ns = types.SimpleNamespace()  # no _memory_graph
     # Must not raise.

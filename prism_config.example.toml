@@ -1,0 +1,76 @@
+# PRISM example configuration.
+# Copy to `prism_config.toml` (next to prism_agent.py) and edit. Everything is
+# optional — PRISM runs locally with no config, degrading gracefully when a
+# section is absent. Secrets can also be supplied via environment variables.
+
+# ── LLM provider ──────────────────────────────────────────────────────────────
+# Reasoning, organ routing, and synthesis need an LLM. Run `python3
+# prism_daemon.py --setup-llm` for an interactive wizard, or set it here.
+[llm]
+preferred      = "ollama/llama3.2:3b"   # "ollama/<model>" | "claude" | "openai"
+fallback       = "ollama"
+ollama_host    = "http://localhost:11434"
+ollama_model   = "llama3.2:3b"
+# claude_api_key = "sk-ant-..."
+# openai_api_key = "sk-..."
+# openai_host    = "https://api.openai.com"
+
+[agent]
+# text_model  = "llama3.2:3b"           # overrides [llm].ollama_model for planning
+
+# ── Model Context Protocol (MCP) ──────────────────────────────────────────────
+# Connect external MCP servers; their tools are auto-registered as governed
+# organs (intent "mcp.<server>.<tool>") and exposed under /mcp/*.
+[mcp]
+enabled = false
+
+# [[mcp.servers]]
+# name    = "filesystem"
+# command = ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/data"]
+# env     = { }
+
+# [[mcp.servers]]
+# name    = "github"
+# command = ["npx", "-y", "@modelcontextprotocol/server-github"]
+# env     = { GITHUB_PERSONAL_ACCESS_TOKEN = "ghp_..." }
+
+# ── Voice (local STT) ─────────────────────────────────────────────────────────
+[voice]
+enabled     = false
+model       = "base"        # tiny | base | small | medium | large
+language    = "en"          # ISO 639-1; blank = auto-detect
+sample_rate = 16000
+
+# ── Email (IMAP/SMTP) ─────────────────────────────────────────────────────────
+# [email]
+# provider  = "gmail"
+# address   = "you@gmail.com"
+# imap_host = "imap.gmail.com"
+# imap_port = 993
+# password  = "xxxx xxxx xxxx xxxx"     # Gmail App Password, not your login
+
+# ── Calendar (iCal / CalDAV / Google) ─────────────────────────────────────────
+# [calendar]
+# provider = "ical_url"
+# ical_url = "webcal://..."
+
+# ── Telephony (Twilio) ────────────────────────────────────────────────────────
+# [twilio]
+# account_sid = "AC..."
+# auth_token  = "..."
+# from_number = "+1..."
+
+# ── Federation (multi-node sync) ──────────────────────────────────────────────
+# Harden multi-node deployments: require a bearer token and HMAC-sign payloads.
+[federation]
+require_auth = true
+# token      = "<shared-secret>"        # or env PRISM_FEDERATION_TOKEN
+# HMAC signing: set env PRISM_FEDERATION_HMAC_SECRET=<secret>
+
+# ── Mobile sync ───────────────────────────────────────────────────────────────
+# Device tokens are HMAC-signed. The daemon auto-generates a per-install secret
+# at ~/.prism/mobile_sync_secret; override with env PRISM_MOBILE_SECRET.
+
+# ── Tasks (Todoist / GitHub / Linear / local) ─────────────────────────────────
+# [tasks]
+# provider = "local"

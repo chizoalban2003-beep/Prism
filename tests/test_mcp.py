@@ -127,6 +127,17 @@ class TestOrganBridge:
         card = fn("mcp.mock.add", '{"a": 1, "b": 5}', {})
         assert "6.0" in card.body
 
+    def test_llm_arg_synthesis_for_multi_prop_schema(self, manager):
+        # 'add' has two numeric props → no deterministic single-string mapping;
+        # a router synthesises the JSON arguments from the message.
+        class _StubRouter:
+            def call(self, prompt, **kw):
+                return ('{"a": 4, "b": 6}', "stub")
+        tool = manager.find_tool("add")
+        _, fn, _ = prism_mcp.make_mcp_organ(manager, tool, router=_StubRouter())
+        card = fn("mcp.mock.add", "add four and six", {})
+        assert "10.0" in card.body
+
 
 # ── HTTP routes ──────────────────────────────────────────────────────────────────
 
