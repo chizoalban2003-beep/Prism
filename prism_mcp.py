@@ -106,6 +106,8 @@ class MCPServer:
         self.initialized = False
         self.server_info: dict = {}
         self.tools: list[MCPTool] = []
+        self.resources: list[dict] = []
+        self.prompts: list[dict] = []
 
     # ── lifecycle ────────────────────────────────────────────────────────────
 
@@ -258,6 +260,42 @@ class MCPServer:
         })
         return result or {}
 
+    # ── resources ────────────────────────────────────────────────────────────
+
+    def refresh_resources(self) -> list[dict]:
+        try:
+            result = self._request("resources/list")
+        except MCPError:
+            self.resources = []          # server may not support resources
+            return self.resources
+        self.resources = [
+            r for r in (result or {}).get("resources", []) or []
+            if isinstance(r, dict) and r.get("uri")
+        ]
+        return self.resources
+
+    def read_resource(self, uri: str) -> dict:
+        return self._request("resources/read", {"uri": uri}) or {}
+
+    # ── prompts ──────────────────────────────────────────────────────────────
+
+    def refresh_prompts(self) -> list[dict]:
+        try:
+            result = self._request("prompts/list")
+        except MCPError:
+            self.prompts = []            # server may not support prompts
+            return self.prompts
+        self.prompts = [
+            p for p in (result or {}).get("prompts", []) or []
+            if isinstance(p, dict) and p.get("name")
+        ]
+        return self.prompts
+
+    def get_prompt(self, name: str, arguments: Optional[dict] = None) -> dict:
+        return self._request("prompts/get", {
+            "name": name, "arguments": arguments or {},
+        }) or {}
+
 
 # ── result helpers ────────────────────────────────────────────────────────────
 
@@ -341,9 +379,15 @@ class MCPManager:
         srv.start()
         srv.initialize()
         srv.refresh_tools()
-        logger.info("[mcp] connected '%s' (%d tool(s))", name, len(srv.tools))
+        srv.refresh_resources()   # best-effort; empty if unsupported
+        srv.refresh_prompts()     # best-effort; empty if unsupported
+        logger.info(
+            "[mcp] connected '%s' (%d tool(s), %d resource(s), %d prompt(s))",
+            name, len(srv.tools), len(srv.resources), len(srv.prompts))
         return {"server": name, "server_info": srv.server_info,
-                "tools": [t.name for t in srv.tools]}
+                "tools": [t.name for t in srv.tools],
+                "resources": [r.get("uri") for r in srv.resources],
+                "prompts": [p.get("name") for p in srv.prompts]}
 
     def connect_all(self) -> dict[str, Any]:
         results: dict[str, Any] = {}
@@ -371,6 +415,8 @@ class MCPManager:
                 "alive": s.is_alive(),
                 "initialized": s.initialized,
                 "tool_count": len(s.tools),
+                "resource_count": len(s.resources),
+                "prompt_count": len(s.prompts),
                 "server_info": s.server_info,
             }
             for s in self._servers.values()
@@ -412,6 +458,39 @@ class MCPManager:
     def call_text(self, server: str, tool: str,
                   arguments: Optional[dict] = None) -> str:
         return extract_text(self.call_tool(server, tool, arguments))
+
+    # resources / prompts -------------------------------------------------------
+
+    def list_resources(self) -> list[dict]:
+        out: list[dict] = []
+        for s in self._servers.values():
+            for r in s.resources:
+                out.append({**r, "server": s.name})
+        return out
+
+    def read_resource(self, server: str, uri: str) -> dict:
+        srv = self._servers.get(server)
+        if srv is None:
+            raise MCPError(f"unknown MCP server: {server}")
+        if not srv.initialized:
+            raise MCPError(f"MCP server '{server}' not connected")
+        return srv.read_resource(uri)
+
+    def list_prompts(self) -> list[dict]:
+        out: list[dict] = []
+        for s in self._servers.values():
+            for p in s.prompts:
+                out.append({**p, "server": s.name})
+        return out
+
+    def get_prompt(self, server: str, name: str,
+                   arguments: Optional[dict] = None) -> dict:
+        srv = self._servers.get(server)
+        if srv is None:
+            raise MCPError(f"unknown MCP server: {server}")
+        if not srv.initialized:
+            raise MCPError(f"MCP server '{server}' not connected")
+        return srv.get_prompt(name, arguments)
 
 
 # ── organ bridge — expose MCP tools as PRISM organs ───────────────────────────

@@ -55,6 +55,29 @@ def main():
             continue  # notification — no response
         elif method == "tools/list":
             _send({"jsonrpc": "2.0", "id": mid, "result": {"tools": TOOLS}})
+        elif method == "resources/list":
+            _send({"jsonrpc": "2.0", "id": mid, "result": {"resources": [
+                {"uri": "mem://note", "name": "note",
+                 "description": "a note", "mimeType": "text/plain"},
+            ]}})
+        elif method == "resources/read":
+            uri = (msg.get("params", {}) or {}).get("uri", "")
+            _send({"jsonrpc": "2.0", "id": mid, "result": {"contents": [
+                {"uri": uri, "mimeType": "text/plain", "text": f"contents of {uri}"},
+            ]}})
+        elif method == "prompts/list":
+            _send({"jsonrpc": "2.0", "id": mid, "result": {"prompts": [
+                {"name": "greet", "description": "a greeting prompt",
+                 "arguments": [{"name": "who", "required": True}]},
+            ]}})
+        elif method == "prompts/get":
+            params = msg.get("params", {}) or {}
+            who = (params.get("arguments", {}) or {}).get("who", "world")
+            _send({"jsonrpc": "2.0", "id": mid, "result": {
+                "description": "greeting",
+                "messages": [{"role": "user", "content": {
+                    "type": "text", "text": f"Hello, {who}!"}}],
+            }})
         elif method == "tools/call":
             params = msg.get("params", {})
             name = params.get("name")

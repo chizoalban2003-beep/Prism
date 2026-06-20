@@ -167,3 +167,62 @@ class TestRoutes:
         c = self._client(manager)
         r = c.post("/mcp/call", json={"server": "mock"})
         assert r.status_code == 400
+
+
+# ── resources + prompts ─────────────────────────────────────────────────────────
+
+class TestResources:
+    def test_list_resources(self, manager):
+        res = manager.list_resources()
+        assert any(r["uri"] == "mem://note" and r["server"] == "mock" for r in res)
+
+    def test_read_resource(self, manager):
+        out = manager.read_resource("mock", "mem://note")
+        assert "mem://note" in extract_text(
+            {"content": [{"type": "text", "text": out["contents"][0]["text"]}]})
+
+    def test_status_counts(self, manager):
+        st = manager.status()[0]
+        assert st["resource_count"] == 1
+        assert st["prompt_count"] == 1
+
+
+class TestPrompts:
+    def test_list_prompts(self, manager):
+        prompts = manager.list_prompts()
+        assert any(p["name"] == "greet" and p["server"] == "mock" for p in prompts)
+
+    def test_get_prompt(self, manager):
+        out = manager.get_prompt("mock", "greet", {"who": "PRISM"})
+        assert "Hello, PRISM!" in out["messages"][0]["content"]["text"]
+
+
+class TestResourcePromptRoutes:
+    def _client(self, manager):
+        from fastapi.testclient import TestClient
+
+        from prism_asgi import app
+        from prism_state import _set_state
+        _set_state(agent=None, mcp=manager)
+        return TestClient(app, raise_server_exceptions=False)
+
+    def test_resources_route(self, manager):
+        c = self._client(manager)
+        assert c.get("/mcp/resources").json()["count"] == 1
+
+    def test_resource_read_route(self, manager):
+        c = self._client(manager)
+        r = c.post("/mcp/resource/read", json={"server": "mock", "uri": "mem://note"})
+        assert r.status_code == 200
+        assert "mem://note" in r.json()["result"]["contents"][0]["text"]
+
+    def test_prompts_route(self, manager):
+        c = self._client(manager)
+        assert c.get("/mcp/prompts").json()["count"] == 1
+
+    def test_prompt_get_route(self, manager):
+        c = self._client(manager)
+        r = c.post("/mcp/prompt/get",
+                   json={"server": "mock", "name": "greet", "arguments": {"who": "X"}})
+        assert r.status_code == 200
+        assert "Hello, X!" in r.json()["result"]["messages"][0]["content"]["text"]

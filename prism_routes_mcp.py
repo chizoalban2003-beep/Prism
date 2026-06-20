@@ -89,6 +89,67 @@ async def mcp_connect(request: Request):
     return {"ok": True, "result": result}
 
 
+@router.get("/mcp/resources")
+async def mcp_resources():
+    mgr = _manager()
+    res = mgr.list_resources() if mgr else []
+    return {"resources": res, "count": len(res)}
+
+
+@router.post("/mcp/resource/read")
+async def mcp_resource_read(request: Request):
+    mgr = _manager()
+    if mgr is None:
+        return JSONResponse({"error": "MCP not available"}, status_code=503)
+    try:
+        body: dict[str, Any] = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    server = str(body.get("server", "")).strip()
+    uri = str(body.get("uri", "")).strip()
+    if not server or not uri:
+        return JSONResponse(
+            {"error": "'server' and 'uri' are required"}, status_code=400)
+    try:
+        import asyncio
+        result = await asyncio.to_thread(mgr.read_resource, server, uri)
+        return {"ok": True, "result": result}
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+
+@router.get("/mcp/prompts")
+async def mcp_prompts():
+    mgr = _manager()
+    prompts = mgr.list_prompts() if mgr else []
+    return {"prompts": prompts, "count": len(prompts)}
+
+
+@router.post("/mcp/prompt/get")
+async def mcp_prompt_get(request: Request):
+    mgr = _manager()
+    if mgr is None:
+        return JSONResponse({"error": "MCP not available"}, status_code=503)
+    try:
+        body: dict[str, Any] = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    server = str(body.get("server", "")).strip()
+    name = str(body.get("name", "")).strip()
+    arguments = body.get("arguments") or {}
+    if not server or not name:
+        return JSONResponse(
+            {"error": "'server' and 'name' are required"}, status_code=400)
+    if not isinstance(arguments, dict):
+        return JSONResponse({"error": "'arguments' must be an object"}, status_code=400)
+    try:
+        import asyncio
+        result = await asyncio.to_thread(mgr.get_prompt, server, name, arguments)
+        return {"ok": True, "result": result}
+    except Exception as exc:
+        return JSONResponse({"error": str(exc)}, status_code=400)
+
+
 @router.post("/mcp/call")
 async def mcp_call(request: Request):
     mgr = _manager()
