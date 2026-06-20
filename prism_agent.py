@@ -25,6 +25,7 @@ from prism_instructions import PrismInstructions
 from prism_intents import INTENTS as _ROUTING_INTENTS
 from prism_llm_router import LLMRouter
 from prism_memory import PrismMemory
+from prism_organ_dispatch import dispatch_organ
 from prism_organ_loader import OrganLoader
 from prism_perception import PrismPerception
 from prism_planner import PrismPlanner
@@ -32,7 +33,6 @@ from prism_proactive import PrismProactive, build_advanced_triggers, build_defau
 from prism_push import PrismPush
 from prism_responses import (
     PrismCard,
-    approval_card,
     domain_card,
     identity_card,
     moment_card,
@@ -2077,107 +2077,12 @@ class PrismAgent:
         if intent == "vision_query":
             return self._handle_vision_query(message, ctx)
 
-        # Dynamic organ registry — check loaded and synthesized organs
-        organ_fn = self._organ_loader.get(intent)
-        if organ_fn is not None:
-            try:
-                ctx.setdefault("organ_loader", self._organ_loader)
-                ctx.setdefault("policy_engine", self._policy)
-                ctx.setdefault("tasks", getattr(self, "_tasks", None))
-                ctx.setdefault("email", getattr(self, "_email", None))
-                ctx.setdefault("calendar", getattr(self, "_calendar", None))
-                ctx.setdefault("router", getattr(self, "_router", None))
-                ctx.setdefault("memory_graph", getattr(self, "_memory_graph", None))
-                _tw = dict(self._config.get("twilio", {}))
-                import os as _os
-                _tw.setdefault("account_sid", _os.environ.get("TWILIO_ACCOUNT_SID", ""))
-                _tw.setdefault("auth_token",  _os.environ.get("TWILIO_AUTH_TOKEN", ""))
-                _tw.setdefault("from_number", _os.environ.get("TWILIO_FROM", ""))
-                ctx.setdefault("twilio_config", _tw)
-                ctx.setdefault("contacts", getattr(self, "_contacts", None))
-
-                # L1 Constitution check — validate organ capabilities against L1 rules
-                if self._constitution is not None:
-                    caps = self._organ_loader.get_organ_capabilities(intent)
-                    ok, reason = self._constitution.check(intent, caps)
-                    if not ok:
-                        logger.warning("[constitution] Blocked %s: %s", intent, reason)
-                        return text_card(
-                            f"This action is restricted by PRISM's constitution.\n\n{reason}",
-                            f"Blocked — {intent}",
-                        )
-
-                # L2 Hard approval gate — block irreversible/requires_approval organs
-                if not ctx.get(f"_approved_{intent}"):
-                    policy = self._organ_loader.get_organ_policy(intent)
-                    if policy.get("requires_approval"):
-                        self._pending_approval = {
-                            "organ_intent":  intent,
-                            "organ_message": message,
-                            "organ_ctx":     dict(ctx),
-                            "expires":       time.time() + 300,
-                        }
-                        action_desc = message[:200]
-                        risk_level = policy.get("risk_level", "medium")
-                        why_parts = []
-                        if policy.get("irreversible"):
-                            why_parts.append("Action is irreversible once taken")
-                        caps = self._organ_loader.get_organ_capabilities(intent)
-                        if caps:
-                            why_parts.append("Uses capability: " + ", ".join(sorted(caps)))
-                        why_parts.append(f"Organ '{intent}' is policy-gated")
-                        prior = []
-                        try:
-                            if self._instructions is not None:
-                                prior = self._instructions.prior_denials_for(intent)
-                        except Exception:
-                            prior = []
-                        if prior:
-                            last = prior[0].text[:200]
-                            why_parts.append(f"You denied this before: \"{last}\"")
-                        return approval_card(
-                            task       = intent,
-                            reason     = f"Run <strong>{intent}</strong> for: {action_desc}",
-                            params     = {"organ_intent": intent, "organ_message": message},
-                            risk_level = risk_level,
-                            risk_why   = " · ".join(why_parts),
-                        )
-
-                # L1 absolute ceiling — total organ executions per session.
-                if self._bud_mgr is not None and self._bud_mgr.organ_budget_exceeded():
-                    logger.warning(
-                        "[constitution] organ session ceiling reached — blocking %s", intent)
-                    return text_card(
-                        "PRISM has reached its per-session organ execution limit "
-                        "(constitution L1). Start a new session to continue.",
-                        f"Blocked — {intent}",
-                    )
-
-                # L2 per-organ rate limit — ORGAN_POLICY.max_per_session.
-                _policy = self._organ_loader.get_organ_policy(intent)
-                _cap = _policy.get("max_per_session")
-                if (_cap is not None and self._bud_mgr is not None
-                        and self._bud_mgr.session_intent_count(intent) >= int(_cap)):
-                    logger.warning(
-                        "[policy] %s exceeded max_per_session=%s — blocking", intent, _cap)
-                    return text_card(
-                        f"'{intent}' has hit its per-session limit ({_cap} run"
-                        f"{'s' if int(_cap) != 1 else ''}). It won't run again this session.",
-                        f"Rate limited — {intent}",
-                    )
-
-                # Execute via BudManager (scoped context, token lifecycle)
-                if self._bud_mgr is not None:
-                    caps = self._organ_loader.get_organ_capabilities(intent)
-                    handle = self._bud_mgr.spawn(intent, message, ctx, caps)
-                    try:
-                        return self._bud_mgr.execute(handle, organ_fn)
-                    except Exception as exc:
-                        return text_card(f"Organ '{intent}' failed: {exc}", intent)
-                else:
-                    return organ_fn(intent, message, ctx)
-            except Exception as exc:
-                return text_card(f"Organ '{intent}' failed: {exc}", intent)
+        # Dynamic organ registry — run a loaded organ through the three-layer
+        # gate (L1 constitution → L2 approval/rate-limit → L3 BudManager).
+        # Extracted to prism_organ_dispatch to keep this module focused.
+        organ_card = dispatch_organ(self, intent, message, ctx)
+        if organ_card is not None:
+            return organ_card
 
         # Unknown intent — defer to _handle_unknown, which gates organ
         # synthesis behind a synthesis_approval_card. Approval round-trips
