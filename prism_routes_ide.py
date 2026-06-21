@@ -37,8 +37,28 @@ def _router_llm():
 
 
 def _phase_engine():
+    # Prefer an agent-attached engine; fall back to the process-wide phase
+    # singleton the daemon's ticker keeps fresh (PrismAgent has no _phase).
     agent = _get_agent()
-    return getattr(agent, "_phase", None) if agent else None
+    engine = getattr(agent, "_phase", None) if agent else None
+    if engine is not None:
+        return engine
+    try:
+        import prism_phase
+        return prism_phase.get_engine()
+    except Exception:
+        return None
+
+
+def _phase_value(phase_engine) -> str:
+    """Serialise the engine's current phase by .value (not the enum repr)."""
+    try:
+        p = getattr(phase_engine, "current_phase", None)
+        if p is None:
+            return "UNKNOWN"
+        return p.value if hasattr(p, "value") else str(p)
+    except Exception:
+        return "UNKNOWN"
 
 
 async def _llm_call(prompt: str, system: str) -> str:
@@ -78,10 +98,7 @@ async def ide_status():
     current_phase = "UNKNOWN"
     phase_engine = _phase_engine()
     if phase_engine is not None:
-        try:
-            current_phase = str(getattr(phase_engine, "current_phase", "UNKNOWN"))
-        except Exception:  # noqa: BLE001
-            pass
+        current_phase = _phase_value(phase_engine)
 
     return {
         "ok": True,
@@ -350,10 +367,7 @@ async def ide_context():
     current_phase = "UNKNOWN"
     phase_engine = _phase_engine()
     if phase_engine is not None:
-        try:
-            current_phase = str(getattr(phase_engine, "current_phase", "UNKNOWN"))
-        except Exception:  # noqa: BLE001
-            pass
+        current_phase = _phase_value(phase_engine)
 
     user_info: dict[str, Any] = {}
     if agent is not None:

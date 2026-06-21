@@ -1209,8 +1209,8 @@ Rules:
                     "INSERT INTO audit_log(ts, logic, note) VALUES (?,?,?)",
                     (time.time(), logic, note),
                 )
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning("policy audit write failed: %s", exc)
 
     # ── Evaluator node ────────────────────────────────────────────────────────
 

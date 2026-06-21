@@ -225,10 +225,18 @@ class PrismShadowPipeline:
             if not db_path.exists():
                 return
             try:
-                with sqlite3.connect(db_path, timeout=30.0) as con:
+                con = sqlite3.connect(db_path, timeout=30.0)
+                try:
                     for sql, params in stmts:
                         con.execute(sql, params)
-                con.execute("VACUUM")
+                    con.commit()
+                    # VACUUM must run outside a transaction and on a live
+                    # connection — after commit() there is none, so reclaim
+                    # disk here (previously it ran on a closed connection and
+                    # silently failed, so space was never reclaimed).
+                    con.execute("VACUUM")
+                finally:
+                    con.close()
             except Exception as exc:
                 _log.debug("[shadow-gc] %s: %s", db_path.name, exc)
 

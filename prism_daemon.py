@@ -486,6 +486,15 @@ def _build_asgi_state(agent) -> dict:
 
     state["ml_assembler"] = getattr(agent, "_ml_assembler", None)
 
+    # Visual perception (LLaVA scene analysis) — without this the
+    # /perception/visual* routes always 503 in a live daemon.
+    try:
+        from prism_visual_perception import VisualPerception
+        state["visual_perception"] = VisualPerception(
+            organ_bus=getattr(agent, "_organ_bus", None))
+    except Exception as _exc:
+        logger.warning("VisualPerception wire failed: %s", _exc)
+
     try:
         from prism_vision_ml_bridge import VisionMLBridge, get_or_set_bridge
         asm = state.get("ml_assembler")

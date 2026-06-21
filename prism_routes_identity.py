@@ -363,7 +363,8 @@ async def onboarding_status():
     phase_engine = _phase_engine()
     if phase_engine is not None:
         try:
-            current_phase = str(getattr(phase_engine, "current_phase", "UNKNOWN"))
+            _p = getattr(phase_engine, "current_phase", None)
+            current_phase = _p.value if hasattr(_p, "value") else str(_p or "UNKNOWN")
         except Exception:
             pass
 

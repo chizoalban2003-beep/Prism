@@ -223,16 +223,20 @@ async def user_identity(user_id: str):
     except Exception:
         pass
 
-    # Phase — from agent._phase if available
+    # Phase — read the cached reading the daemon's phase-ticker maintains.
+    # (Fall back to the process-wide singleton; PrismAgent has no _phase. Do
+    # NOT call compute() in a GET — it would mutate the global phase.)
     try:
         from prism_state import _get_agent  # noqa: PLC0415
 
         agent = _get_agent()
         phase_engine = getattr(agent, "_phase", None) if agent else None
-        if phase_engine is not None:
-            reading = phase_engine.compute(None, None, kinetic=getattr(agent, "_kinetic", None))
-            phase_val = reading.phase.value if hasattr(reading.phase, "value") else str(reading.phase)
-            snapshot["phase"] = phase_val
+        if phase_engine is None:
+            import prism_phase  # noqa: PLC0415
+            phase_engine = prism_phase.get_engine()
+        p = getattr(phase_engine, "current_phase", None)
+        if p is not None:
+            snapshot["phase"] = p.value if hasattr(p, "value") else str(p)
     except Exception:
         pass
 
