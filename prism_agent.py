@@ -765,10 +765,15 @@ class PrismAgent:
             # 3. Inject conversation history
             context["history"] = self._chat_history[-10:]
 
-            # 4. Add to history
-            self._chat_history.append({"role": "user", "content": message or ""})
-            if len(self._chat_history) > 20:
-                self._chat_history = self._chat_history[-20:]
+            # 4. Add to history — unless this is a never-log intent
+            # (constitution: e.g. email_send / phone_call must not have their
+            # content persisted to conversation history or sessions).
+            suppress_log = self._should_suppress_logging(message or "")
+            self._suppress_logging = suppress_log
+            if not suppress_log:
+                self._chat_history.append({"role": "user", "content": message or ""})
+                if len(self._chat_history) > 20:
+                    self._chat_history = self._chat_history[-20:]
 
             # 5. Perception context
             if self._perception:
@@ -790,8 +795,9 @@ class PrismAgent:
                     # this turn is mirrored, so it surfaces *past* turns, not the
                     # current one). Flat semantic results stay primary.
                     self._graph_recall(message, context)
-                    _uid = self._memory.ingest_conversation("user", message)
-                    self._mirror_turn_to_graph("user", message, _uid)
+                    if not suppress_log:
+                        _uid = self._memory.ingest_conversation("user", message)
+                        self._mirror_turn_to_graph("user", message, _uid)
                 except Exception:
                     pass
 
@@ -945,13 +951,13 @@ class PrismAgent:
                 intent = self._route(message or "")
                 card   = self._execute(intent, message or "", context)
 
-            # 8. Store response in history
-            if hasattr(card, 'body') and card.body:
+            # 8. Store response in history (skip for never-log intents)
+            if hasattr(card, 'body') and card.body and not suppress_log:
                 self._chat_history.append(
                     {"role": "assistant", "content": card.body[:500]})
 
             # 9. Memory ingestion for response
-            if self._memory and card.body:
+            if self._memory and card.body and not suppress_log:
                 try:
                     _aid = self._memory.ingest_conversation("assistant", card.body)
                     self._mirror_turn_to_graph("assistant", card.body, _aid)
@@ -1070,6 +1076,21 @@ class PrismAgent:
             if re.search(pattern, lowered):
                 return intent
         return self._llm_classify(message) or "general_chat"
+
+    def _should_suppress_logging(self, message: str) -> bool:
+        """True when the message routes (by regex, no LLM call) to a
+        constitution ``never_log`` intent (e.g. email_send / phone_call), so
+        its content is kept out of conversation history, memory, and sessions."""
+        if not message or self._constitution is None:
+            return False
+        lowered = message.lower()
+        for pattern, intent in self.INTENTS:
+            if re.search(pattern, lowered):
+                try:
+                    return bool(self._constitution.is_never_log(intent))
+                except Exception:
+                    return False
+        return False
 
     def _llm_classify(self, message: str) -> Optional[str]:
         """

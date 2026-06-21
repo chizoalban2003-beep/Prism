@@ -43,7 +43,15 @@ def _make_streaming_agent(events=None):
         yield from captured_events
 
     chain.run_streaming.side_effect = _fake_streaming
-    chain.run_streaming_async = PrismChain.run_streaming_async.__get__(chain)
+
+    # Deterministic async generator (no thread-bridge) so streaming tests don't
+    # race under full-suite load — the real threaded run_streaming_async
+    # occasionally dropped the 'done' event, an intermittent test flake.
+    async def _fake_streaming_async(message, fn, ctx):
+        for evt in captured_events:
+            yield evt
+
+    chain.run_streaming_async = _fake_streaming_async
     agent._chain = chain
 
     return agent

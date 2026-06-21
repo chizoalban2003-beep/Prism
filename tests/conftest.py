@@ -14,6 +14,25 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _isolate_session_manager(tmp_path_factory):
+    """Reset the global SessionManager singleton (and any leaked active session)
+    to a fresh per-test DB. The singleton was shared across tests, causing an
+    intermittent ordering flake in the WS/chat session-persistence tests."""
+    try:
+        import prism_session_manager
+        d = tmp_path_factory.mktemp("sessions")
+        prism_session_manager.reset_session_manager(db_path=str(d / "sessions.db"))
+    except Exception:
+        pass
+    try:
+        import prism_state
+        prism_state._state.pop("active_session_id", None)
+    except Exception:
+        pass
+    yield
+
+
 @pytest.fixture
 def temp_db(tmp_path):
     """A temporary SQLite database path for tests that use SQLite."""

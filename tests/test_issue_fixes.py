@@ -74,6 +74,28 @@ def test_execute_plan_cycle_message():
 
 # ── autonomous: AST safety is single-sourced from the organ loader (strict) ─────
 
+def test_never_log_intents_not_persisted_to_history():
+    """Constitution never_log intents (email_send/phone_call) must keep their
+    content out of conversation history."""
+    from prism_agent import PrismAgent
+    agent = PrismAgent()
+    secret = "send an email to alice@example.com saying the launch code is hunter2"
+    agent.chat(secret, {"source": "test"})
+    assert getattr(agent, "_suppress_logging", False) is True
+    joined = " ".join(h.get("content", "") for h in agent._chat_history)
+    assert "hunter2" not in joined
+    assert "launch code" not in joined
+
+
+def test_normal_message_is_logged_to_history():
+    from prism_agent import PrismAgent
+    agent = PrismAgent()
+    agent.chat("what is the capital of France", {"source": "test"})
+    assert getattr(agent, "_suppress_logging", True) is False
+    joined = " ".join(h.get("content", "") for h in agent._chat_history)
+    assert "capital of France" in joined
+
+
 def test_task_stores_do_not_collide_on_db_file():
     """PrismTasks (PA to-dos) and TaskQueue (background queue) must not share
     ~/.prism/tasks.db — they used the same file + 'tasks' table with different

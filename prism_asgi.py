@@ -414,7 +414,8 @@ if _FASTAPI_AVAILABLE:
                         "card_actions": cj.get("actions", []),
                     })
 
-                if session_id and answer:
+                if (session_id and answer
+                        and getattr(agent, "_suppress_logging", False) is not True):
                     try:
                         from prism_session_manager import get_session_manager
                         sm = get_session_manager()

@@ -65,7 +65,7 @@ async def chat(request: Request):
 
     # Persist to named session if one is active
     session_id = body.get("session_id") or _state.get("active_session_id")
-    if session_id and message:
+    if session_id and message and getattr(agent, "_suppress_logging", False) is not True:
         try:
             from prism_session_manager import get_session_manager
             sm = get_session_manager()
