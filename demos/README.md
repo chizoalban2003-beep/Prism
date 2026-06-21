@@ -1,7 +1,19 @@
-# PRISM demo
+# PRISM demos
 
-An end-to-end walkthrough of the running PRISM daemon, driven entirely over the
+End-to-end walkthroughs of the running PRISM daemon, driven entirely over the
 local HTTP API on `127.0.0.1`.
+
+## A multitask morning ("day in the life")
+
+A single user session that decides, triages, converts, researches, hits an
+approval gate, manages tasks, borrows a capability via an Organ Pack, and
+checks its own crystallisation phase — all on-device.
+
+![PRISM multitask session](multitask_demo.svg)
+
+Run it: `PRISM_PORT=8742 PRISM_HOME="$HOME" bash demos/multitask_demo.sh`
+
+## Feature walkthrough
 
 ![PRISM walkthrough](demo.svg)
 
