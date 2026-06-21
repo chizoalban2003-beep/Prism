@@ -74,6 +74,17 @@ def test_execute_plan_cycle_message():
 
 # ── autonomous: AST safety is single-sourced from the organ loader (strict) ─────
 
+def test_task_stores_do_not_collide_on_db_file():
+    """PrismTasks (PA to-dos) and TaskQueue (background queue) must not share
+    ~/.prism/tasks.db — they used the same file + 'tasks' table with different
+    schemas, which broke add_task with 'table tasks has N columns but M values'."""
+    from prism_task_queue import TaskQueue
+    from prism_tasks import PrismTasks
+    pa_db = PrismTasks.__init__.__defaults__[0]
+    tq_db = TaskQueue.__init__.__defaults__[0]
+    assert pa_db != tq_db      # different default db files — no collision
+
+
 def test_autonomous_safety_blocks_file_writes():
     from prism_autonomous import _is_safe_code
     code = textwrap.dedent("""

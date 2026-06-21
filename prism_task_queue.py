@@ -50,7 +50,10 @@ class TaskQueue:
     The UI polls GET /tasks/{id}/status for live updates.
     """
 
-    def __init__(self, db_path: str = "~/.prism/tasks.db"):
+    def __init__(self, db_path: str = "~/.prism/task_queue.db"):
+        # Own DB file: ~/.prism/tasks.db is the PA to-do store (prism_tasks),
+        # which uses a different `tasks` schema. Sharing the file + table name
+        # caused a "table tasks has N columns but M values" collision.
         self._db  = Path(db_path).expanduser()
         self._db.parent.mkdir(parents=True, exist_ok=True)
         self._threads: dict[str, threading.Thread] = {}
