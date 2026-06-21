@@ -77,39 +77,25 @@ class MCPError(Exception):
     """Raised on protocol / transport / tool errors."""
 
 
-class MCPServer:
-    """A single MCP server spoken to over stdio (newline-delimited JSON-RPC)."""
+class _StdioTransport:
+    """Newline-delimited JSON-RPC over a subprocess's stdio."""
 
-    def __init__(
-        self,
-        name: str,
-        command: list[str],
-        env: Optional[dict[str, str]] = None,
-        cwd: Optional[str] = None,
-        timeout: float = _DEFAULT_TIMEOUT,
-    ) -> None:
+    def __init__(self, name: str, command: list[str],
+                 env: dict, cwd: Optional[str], timeout: float) -> None:
         if not command or not isinstance(command, list):
-            raise ValueError("MCP server 'command' must be a non-empty argv list")
+            raise ValueError("MCP stdio server 'command' must be a non-empty argv list")
         self.name = name
         self.command = command
         self.env = env or {}
         self.cwd = cwd
         self.timeout = timeout
-
         self._proc: Optional[subprocess.Popen] = None
-        self._lock = threading.Lock()          # serialises writes
+        self._lock = threading.Lock()
         self._id = 0
         self._pending: dict[int, queue.Queue] = {}
         self._pending_lock = threading.Lock()
         self._reader: Optional[threading.Thread] = None
         self._alive = False
-        self.initialized = False
-        self.server_info: dict = {}
-        self.tools: list[MCPTool] = []
-        self.resources: list[dict] = []
-        self.prompts: list[dict] = []
-
-    # ── lifecycle ────────────────────────────────────────────────────────────
 
     def start(self) -> None:
         if self._alive:
@@ -117,14 +103,9 @@ class MCPServer:
         full_env = {**os.environ, **self.env}
         try:
             self._proc = subprocess.Popen(
-                self.command,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                env=full_env,
-                cwd=self.cwd,
-                text=True,
-                bufsize=1,                     # line-buffered
+                self.command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL, env=full_env, cwd=self.cwd,
+                text=True, bufsize=1,
             )
         except FileNotFoundError as exc:
             raise MCPError(f"MCP server '{self.name}' command not found: {exc}") from exc
@@ -132,8 +113,7 @@ class MCPServer:
             raise MCPError(f"failed to start MCP server '{self.name}': {exc}") from exc
         self._alive = True
         self._reader = threading.Thread(
-            target=self._read_loop, name=f"mcp-{self.name}", daemon=True
-        )
+            target=self._read_loop, name=f"mcp-{self.name}", daemon=True)
         self._reader.start()
 
     def stop(self) -> None:
@@ -149,12 +129,9 @@ class MCPServer:
             except Exception:
                 pass
         self._proc = None
-        self.initialized = False
 
     def is_alive(self) -> bool:
         return self._alive and self._proc is not None and self._proc.poll() is None
-
-    # ── transport ────────────────────────────────────────────────────────────
 
     def _read_loop(self) -> None:
         proc = self._proc
@@ -177,7 +154,7 @@ class MCPServer:
                 q.put(msg)
         self._alive = False
 
-    def _notify(self, method: str, params: Optional[dict] = None) -> None:
+    def notify(self, method: str, params: Optional[dict] = None) -> None:
         if self._proc is None or self._proc.stdin is None:
             raise MCPError(f"MCP server '{self.name}' not running")
         payload: dict[str, Any] = {"jsonrpc": "2.0", "method": method}
@@ -187,8 +164,8 @@ class MCPServer:
             self._proc.stdin.write(json.dumps(payload) + "\n")
             self._proc.stdin.flush()
 
-    def _request(self, method: str, params: Optional[dict] = None,
-                 timeout: Optional[float] = None) -> Any:
+    def request(self, method: str, params: Optional[dict] = None,
+                timeout: Optional[float] = None) -> Any:
         if not self.is_alive():
             raise MCPError(f"MCP server '{self.name}' is not running")
         if self._proc is None or self._proc.stdin is None:
@@ -220,6 +197,165 @@ class MCPServer:
             raise MCPError(f"MCP '{self.name}.{method}' error: "
                            f"{err.get('message', err)}")
         return msg.get("result")
+
+
+def _extract_jsonrpc(resp: Any, want_id: int) -> Optional[dict]:
+    """Pull the JSON-RPC message with id==want_id from an HTTP response,
+    handling both application/json and text/event-stream (SSE) bodies."""
+    ctype = resp.headers.get("content-type", "")
+    if "text/event-stream" in ctype:
+        for line in resp.text.splitlines():
+            line = line.strip()
+            if not line.startswith("data:"):
+                continue
+            try:
+                msg = json.loads(line[5:].strip())
+            except Exception:
+                continue
+            if isinstance(msg, dict) and msg.get("id") == want_id:
+                return msg
+        return None
+    try:
+        data = resp.json()
+    except Exception:
+        return None
+    if isinstance(data, list):           # JSON-RPC batch
+        for m in data:
+            if isinstance(m, dict) and m.get("id") == want_id:
+                return m
+        return None
+    return data if isinstance(data, dict) else None
+
+
+class _HttpTransport:
+    """JSON-RPC over MCP Streamable HTTP (a single POST endpoint).
+
+    Handles application/json and text/event-stream responses, and echoes the
+    server-issued Mcp-Session-Id header on subsequent requests.
+    """
+
+    def __init__(self, name: str, url: str, headers: dict, timeout: float) -> None:
+        self.name = name
+        self.url = url
+        self.headers = headers or {}
+        self.timeout = timeout
+        self._id = 0
+        self._lock = threading.Lock()
+        self._session_id: Optional[str] = None
+        self._started = False
+
+    def start(self) -> None:
+        self._started = True
+
+    def stop(self) -> None:
+        self._started = False
+        self._session_id = None
+
+    def is_alive(self) -> bool:
+        return self._started
+
+    def _post(self, payload: dict, timeout: Optional[float]) -> Any:
+        try:
+            import httpx
+        except ImportError as exc:        # pragma: no cover
+            raise MCPError("MCP HTTP transport requires httpx") from exc
+        headers = {
+            "Content-Type": "application/json",
+            "Accept": "application/json, text/event-stream",
+            **self.headers,
+        }
+        if self._session_id:
+            headers["Mcp-Session-Id"] = self._session_id
+        try:
+            resp = httpx.post(self.url, json=payload, headers=headers,
+                              timeout=timeout or self.timeout)
+        except Exception as exc:
+            raise MCPError(f"MCP HTTP '{self.name}' request failed: {exc}") from exc
+        sid = resp.headers.get("mcp-session-id")
+        if sid:
+            self._session_id = sid
+        if resp.status_code >= 400:
+            raise MCPError(f"MCP HTTP '{self.name}' returned HTTP {resp.status_code}")
+        return resp
+
+    def notify(self, method: str, params: Optional[dict] = None) -> None:
+        payload: dict[str, Any] = {"jsonrpc": "2.0", "method": method}
+        if params is not None:
+            payload["params"] = params
+        with self._lock:
+            self._post(payload, self.timeout)
+
+    def request(self, method: str, params: Optional[dict] = None,
+                timeout: Optional[float] = None) -> Any:
+        with self._lock:
+            self._id += 1
+            mid = self._id
+            payload: dict[str, Any] = {"jsonrpc": "2.0", "id": mid, "method": method}
+            if params is not None:
+                payload["params"] = params
+            resp = self._post(payload, timeout)
+        msg = _extract_jsonrpc(resp, mid)
+        if msg is None:
+            raise MCPError(f"MCP HTTP '{self.name}.{method}' returned no response")
+        if "error" in msg and msg["error"]:
+            err = msg["error"]
+            raise MCPError(f"MCP '{self.name}.{method}' error: "
+                           f"{err.get('message', err)}")
+        return msg.get("result")
+
+
+class MCPServer:
+    """A single MCP server — stdio subprocess (``command``) or Streamable HTTP
+    endpoint (``url``). Protocol logic is transport-agnostic."""
+
+    def __init__(
+        self,
+        name: str,
+        command: Optional[list[str]] = None,
+        env: Optional[dict[str, str]] = None,
+        cwd: Optional[str] = None,
+        url: Optional[str] = None,
+        headers: Optional[dict[str, str]] = None,
+        timeout: float = _DEFAULT_TIMEOUT,
+    ) -> None:
+        self.name = name
+        self.timeout = timeout
+        self._transport: Any
+        if url:
+            self.url: Optional[str] = url
+            self.command: Optional[list[str]] = None
+            self._transport = _HttpTransport(name, url, headers or {}, timeout)
+        else:
+            if not command or not isinstance(command, list):
+                raise ValueError(
+                    "MCP server needs a 'command' argv list (stdio) or a 'url' (http)")
+            self.url = None
+            self.command = command
+            self._transport = _StdioTransport(name, command, env or {}, cwd, timeout)
+        self.initialized = False
+        self.server_info: dict = {}
+        self.tools: list[MCPTool] = []
+        self.resources: list[dict] = []
+        self.prompts: list[dict] = []
+
+    # ── lifecycle / transport delegation ──────────────────────────────────────
+
+    def start(self) -> None:
+        self._transport.start()
+
+    def stop(self) -> None:
+        self._transport.stop()
+        self.initialized = False
+
+    def is_alive(self) -> bool:
+        return bool(self._transport.is_alive())
+
+    def _notify(self, method: str, params: Optional[dict] = None) -> None:
+        self._transport.notify(method, params)
+
+    def _request(self, method: str, params: Optional[dict] = None,
+                 timeout: Optional[float] = None) -> Any:
+        return self._transport.request(method, params, timeout or self.timeout)
 
     # ── handshake + capabilities ─────────────────────────────────────────────
 
@@ -332,11 +468,14 @@ class MCPManager:
     def add_server(
         self,
         name: str,
-        command: list[str],
+        command: Optional[list[str]] = None,
         env: Optional[dict[str, str]] = None,
         cwd: Optional[str] = None,
+        url: Optional[str] = None,
+        headers: Optional[dict[str, str]] = None,
     ) -> MCPServer:
-        srv = MCPServer(name=name, command=command, env=env, cwd=cwd)
+        srv = MCPServer(name=name, command=command, env=env, cwd=cwd,
+                        url=url, headers=headers)
         self._servers[name] = srv
         return srv
 
@@ -359,15 +498,25 @@ class MCPManager:
                 continue
             name = str(entry.get("name", "")).strip()
             command = entry.get("command")
-            if not name or not isinstance(command, list) or not command:
+            url = entry.get("url")
+            if name and isinstance(url, str) and url:
+                # HTTP (Streamable HTTP) server.
+                mgr.add_server(
+                    name=name,
+                    url=url,
+                    headers={str(k): str(v)
+                             for k, v in (entry.get("headers") or {}).items()},
+                )
+            elif name and isinstance(command, list) and command:
+                # stdio server.
+                mgr.add_server(
+                    name=name,
+                    command=[str(c) for c in command],
+                    env={str(k): str(v) for k, v in (entry.get("env") or {}).items()},
+                    cwd=entry.get("cwd"),
+                )
+            else:
                 logger.warning("[mcp] skipping malformed server entry: %r", entry)
-                continue
-            mgr.add_server(
-                name=name,
-                command=[str(c) for c in command],
-                env={str(k): str(v) for k, v in (entry.get("env") or {}).items()},
-                cwd=entry.get("cwd"),
-            )
         return mgr
 
     # connection ---------------------------------------------------------------

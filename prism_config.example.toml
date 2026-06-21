@@ -34,6 +34,12 @@ enabled = false
 # command = ["npx", "-y", "@modelcontextprotocol/server-github"]
 # env     = { GITHUB_PERSONAL_ACCESS_TOKEN = "ghp_..." }
 
+# Remote MCP server over Streamable HTTP (use 'url' instead of 'command'):
+# [[mcp.servers]]
+# name    = "remote"
+# url     = "https://mcp.example.com/mcp"
+# headers = { Authorization = "Bearer <token>" }
+
 # ── Voice (local STT) ─────────────────────────────────────────────────────────
 [voice]
 enabled     = false

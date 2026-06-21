@@ -197,6 +197,95 @@ class TestPrompts:
         assert "Hello, PRISM!" in out["messages"][0]["content"]["text"]
 
 
+class TestHttpTransport:
+    """End-to-end HTTP (Streamable HTTP) transport against a local mock server."""
+
+    @pytest.fixture()
+    def http_manager(self):
+        import http.server
+        import json as _json
+        import threading
+
+        tools = [{"name": "echo", "description": "echo",
+                  "inputSchema": {"type": "object",
+                                  "properties": {"text": {"type": "string"}},
+                                  "required": ["text"]}}]
+
+        class H(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def _json(self, obj, extra=None):
+                body = _json.dumps(obj).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                for k, v in (extra or {}).items():
+                    self.send_header(k, v)
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_POST(self):
+                ln = int(self.headers.get("Content-Length", "0"))
+                req = _json.loads(self.rfile.read(ln) or b"{}")
+                mid, method = req.get("id"), req.get("method")
+                if mid is None:                       # notification
+                    self.send_response(202)
+                    self.end_headers()
+                    return
+                if method == "initialize":
+                    res = {"protocolVersion": "2024-11-05",
+                           "serverInfo": {"name": "http-mock", "version": "1.0"},
+                           "capabilities": {}}
+                    self._json({"jsonrpc": "2.0", "id": mid, "result": res},
+                               extra={"Mcp-Session-Id": "sess-1"})
+                    return
+                if method == "tools/list":
+                    res = {"tools": tools}
+                elif method == "tools/call":
+                    args = (req.get("params", {}) or {}).get("arguments", {})
+                    res = {"content": [{"type": "text",
+                                        "text": str(args.get("text", ""))}]}
+                else:
+                    self._json({"jsonrpc": "2.0", "id": mid,
+                                "error": {"code": -32601, "message": "no"}})
+                    return
+                self._json({"jsonrpc": "2.0", "id": mid, "result": res})
+
+        srv = http.server.HTTPServer(("127.0.0.1", 0), H)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        mgr = MCPManager()
+        mgr.add_server("http", url=f"http://127.0.0.1:{srv.server_address[1]}/")
+        mgr.connect("http")
+        yield mgr
+        mgr.shutdown()
+        srv.shutdown()
+
+    def test_http_lists_tools(self, http_manager):
+        assert any(t["name"] == "echo" for t in http_manager.list_tools())
+
+    def test_http_calls_tool(self, http_manager):
+        assert http_manager.call_text("http", "echo", {"text": "hi http"}) == "hi http"
+
+    def test_http_status_alive(self, http_manager):
+        st = http_manager.status()[0]
+        assert st["alive"] is True and st["initialized"] is True
+
+
+class TestConfigHttp:
+    def test_from_config_url_server(self):
+        mgr = MCPManager.from_config({"mcp": {"enabled": True, "servers": [
+            {"name": "remote", "url": "https://example.com/mcp"}]}})
+        assert mgr.server_names() == ["remote"]
+
+    def test_from_config_mixed(self):
+        mgr = MCPManager.from_config({"mcp": {"enabled": True, "servers": [
+            {"name": "a", "command": ["x"]},
+            {"name": "b", "url": "https://h/mcp"},
+            {"name": "bad"}]}})
+        assert sorted(mgr.server_names()) == ["a", "b"]
+
+
 class TestChatRouting:
     """MCP tools registered as organs are reachable through the chat router."""
 
