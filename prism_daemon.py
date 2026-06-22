@@ -599,10 +599,63 @@ def _asgi_server_thread(agent, host: str, port: int):
 # Main entry point
 # ---------------------------------------------------------------------------
 
+def _build_ksa(db_path: str = "~/.prism/ksa.db"):
+    """Construct a KSAgent and register the three built-in executors.
+
+    Mirrors the bootstrap performed by ``ksa_cli._register_builtins`` so the
+    daemon-hosted agent behaves identically to the standalone CLI.  Returns
+    ``None`` if any ksa_* module fails to import; the daemon then runs with
+    KSA features disabled.
+    """
+    try:
+        from ksa_agent import KSAgent
+        from ksa_executor import (
+            FileIndexExecutor,
+            LocalSearchExecutor,
+            ShellExecutor,
+        )
+    except Exception as exc:
+        logger.warning("KSAgent modules unavailable: %s", exc)
+        return None
+
+    try:
+        ksa = KSAgent(db_path=db_path)
+        ksa.register(
+            task_name   = "file_index_stealth",
+            keywords    = ["index", "scan", "files", "directory", "folder",
+                           "stealth", "background", "quiet", "silently"],
+            executor    = FileIndexExecutor(),
+            aliases     = ["index"],
+            description = "Background file indexing without UI interference",
+        )
+        ksa.register(
+            task_name   = "local_search",
+            keywords    = ["search", "find", "locate", "grep", "query", "lookup"],
+            executor    = LocalSearchExecutor(),
+            aliases     = ["search", "find"],
+            description = "Low-priority local file/content search",
+        )
+        ksa.register(
+            task_name   = "shell_generic",
+            keywords    = ["run", "exec", "execute", "shell", "command", "bash"],
+            executor    = ShellExecutor(),
+            aliases     = ["shell"],
+            description = "Generic shell command execution",
+        )
+        return ksa
+    except Exception as exc:
+        logger.warning("KSAgent build failed: %s", exc)
+        return None
+
+
 def build_agent():
     """Construct and return a fully wired PrismAgent."""
     from prism_agent import PrismAgent
     agent = PrismAgent()
+    if getattr(agent, "_ksa", None) is None:
+        agent._ksa = _build_ksa()
+        if agent._ksa is not None:
+            logger.info("KSAgent attached (canonical ksa entry)")
     return agent
 
 
