@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-import json
 import logging
 import os
 import re
 import time
-import urllib.request
 from pathlib import Path
 from typing import Any, Optional
 
@@ -46,6 +44,7 @@ from prism_responses import (
     squad_card,
     text_card,
 )
+from prism_routing import LLMClassifier, route_intent, should_suppress
 from prism_search import PrismSearch
 from prism_service_discovery import PrismServiceDiscovery
 from prism_smart_home import PrismSmartHome
@@ -1071,107 +1070,35 @@ class PrismAgent:
         return False
 
     def _route(self, message: str) -> str:
-        lowered = message.lower()
-        for pattern, intent in self.INTENTS:
-            if re.search(pattern, lowered):
-                return intent
-        return self._llm_classify(message) or "general_chat"
+        return route_intent(message, self.INTENTS, self._llm_classify)
 
     def _should_suppress_logging(self, message: str) -> bool:
         """True when the message routes (by regex, no LLM call) to a
         constitution ``never_log`` intent (e.g. email_send / phone_call), so
         its content is kept out of conversation history, memory, and sessions."""
-        if not message or self._constitution is None:
-            return False
-        lowered = message.lower()
-        for pattern, intent in self.INTENTS:
-            if re.search(pattern, lowered):
-                try:
-                    return bool(self._constitution.is_never_log(intent))
-                except Exception:
-                    return False
-        return False
+        return should_suppress(message, self.INTENTS, self._constitution)
 
     def _llm_classify(self, message: str) -> Optional[str]:
-        """
-        Pick the closest intent label, OR return 'novel_capability' if the
-        message asks PRISM to *do* something concrete that no label covers
-        (the synthesis approval gate fires for these), OR return None to fall
-        back to general_chat for pure questions / conversation.
+        classifier = getattr(self, "_llm_classifier", None)
+        if classifier is None:
+            classifier = LLMClassifier(
+                intents=self.INTENTS,
+                router=getattr(self, "_router", None),
+                ollama_host=self._ollama_host,
+                text_model=self._text_model,
+                get_organ_intents=self._organ_intents_for_classifier,
+            )
+            self._llm_classifier = classifier
+        return classifier.classify(message)
 
-        Surfaces both the hardcoded INTENTS labels AND every loaded organ
-        (bundled + synthesized) so that organs synthesized in previous
-        sessions remain reachable through the router instead of going orphan.
-
-        Uses the router so any configured LLM backend works (Ollama, DeepSeek,
-        Claude, etc); falls back to a raw Ollama call if the router isn't
-        wired yet during agent bootstrap.
-        """
-        regex_labels = [intent for _, intent in self.INTENTS]
-        # Pull in every loaded organ so synthesized ones aren't orphaned.
-        organ_intents: dict[str, str] = {}
+    def _organ_intents_for_classifier(self) -> dict[str, str]:
         loader = getattr(self, "_organ_loader", None)
-        if loader is not None:
-            try:
-                organ_intents = loader.known_intents()
-            except Exception:
-                pass
-        # Organs that already have a regex pattern stay grouped with regex_labels.
-        organ_only = sorted(set(organ_intents) - set(regex_labels))
-        labels = sorted(set(regex_labels) | set(organ_intents))
-
-        organ_block = ""
-        if organ_only:
-            organ_lines = "\n".join(
-                f"      {i} — {organ_intents.get(i, '')[:80]}"
-                for i in organ_only[:50]
-            )
-            organ_block = (
-                "\n  - Loaded organs (prefer these when they fit; "
-                "they execute immediately):\n" + organ_lines
-            )
-
-        prompt = (
-            "You are a routing classifier. Pick ONE label that best fits the user's message.\n\n"
-            "Labels:\n"
-            "  - One of these specific intent names: " + ", ".join(labels) + "\n"
-            + organ_block +
-            "\n  - 'novel_capability' if the user is asking PRISM to DO a concrete action "
-            "(run, send, control, generate, fetch, transform, automate something) and "
-            "no specific intent above fits.\n"
-            "  - 'chat' for questions, explanations, opinions, or anything conversational "
-            "that doesn't require a tool.\n\n"
-            f"Message: {message}\n\n"
-            "Reply with ONLY the label. No quotes, no punctuation, no explanation."
-        )
-
-        result: str = ""
-        router = getattr(self, "_router", None)
-        if router is not None:
-            try:
-                raw, _ = router.call(prompt, min_capability=1, max_tokens=24)
-                result = (raw or "").strip().lower().strip("'\"`.,!?")
-            except Exception as exc:
-                logger.debug("_llm_classify via router failed: %s", exc)
-
-        if not result:
-            try:
-                payload = json.dumps({"model": self._text_model, "prompt": prompt, "stream": False}).encode()
-                request = urllib.request.Request(
-                    f"{self._ollama_host}/api/generate",
-                    data=payload,
-                    headers={"Content-Type": "application/json"},
-                )
-                with urllib.request.urlopen(request, timeout=30) as response:
-                    result = json.loads(response.read()).get("response", "").strip().lower().strip("'\"`.,!?")
-            except Exception:
-                return None
-
-        if result in labels:
-            return result
-        if result == "novel_capability":
-            return "novel_capability"
-        return None
+        if loader is None:
+            return {}
+        try:
+            return loader.known_intents()
+        except Exception:
+            return {}
 
     def _execute(self, intent: str, message: str, ctx: dict) -> PrismCard:
         info_card = handle_info_intent(self, intent, message, ctx)
