@@ -54,19 +54,27 @@ class FederationPeer:
     url: str          # e.g. "http://192.168.1.5:8742"
     last_seen: float
     sync_version: int
+    fingerprint: str = ""   # caller-supplied per-peer identity binding
 
     def to_row(self) -> tuple:
-        return (self.peer_id, self.name, self.url, self.last_seen, self.sync_version)
+        return (self.peer_id, self.name, self.url,
+                self.last_seen, self.sync_version, self.fingerprint)
 
     @classmethod
     def from_row(cls, row: tuple) -> FederationPeer:
-        peer_id, name, url, last_seen, sync_version = row
+        # Tolerate rows from before the fingerprint column was added.
+        if len(row) == 5:
+            peer_id, name, url, last_seen, sync_version = row
+            fingerprint = ""
+        else:
+            peer_id, name, url, last_seen, sync_version, fingerprint = row[:6]
         return cls(
             peer_id=peer_id,
             name=name,
             url=url,
             last_seen=last_seen or 0.0,
             sync_version=sync_version or 0,
+            fingerprint=fingerprint or "",
         )
 
 
@@ -191,13 +199,19 @@ class FederationManager:
     # Peer management
     # ------------------------------------------------------------------
 
-    def add_peer(self, peer_id: str, name: str, url: str) -> FederationPeer:
+    def add_peer(self, peer_id: str, name: str, url: str,
+                 fingerprint: str = "") -> FederationPeer:
         """Register or update a remote peer. Returns the peer record.
 
         Raises ``ValueError`` if *url* fails the SSRF guard — peers stored
         in SQLite are later fetched by ``push_pending`` with the daemon's
         own identity headers, so an attacker-supplied internal URL would
         become a live SSRF gadget.
+
+        ``fingerprint`` is an out-of-band identity string (e.g. a hash of
+        the peer's pinned cert / pubkey). When set, incoming payloads must
+        carry the same value in ``peer_fingerprint`` or the merge is
+        rejected — defence-in-depth on top of the shared HMAC secret.
         """
         from prism_ssrf import is_safe_external_url
         allow_loopback = _os.environ.get(
@@ -214,23 +228,45 @@ class FederationManager:
             url=url,
             last_seen=time.time(),
             sync_version=0,
+            fingerprint=fingerprint or "",
         )
         with self._lock:
             with sqlite3.connect(self._db, timeout=30.0) as conn:
-                # Preserve existing sync_version on update
+                # Preserve existing sync_version and (unless caller supplied
+                # a fresh one) the existing fingerprint on update.
                 existing = conn.execute(
-                    "SELECT sync_version FROM federation_peers WHERE peer_id = ?",
+                    "SELECT sync_version, peer_fingerprint"
+                    " FROM federation_peers WHERE peer_id = ?",
                     (peer_id,),
                 ).fetchone()
                 if existing:
                     peer.sync_version = existing[0]
+                    if not fingerprint:
+                        peer.fingerprint = existing[1] or ""
                 conn.execute(
                     "INSERT OR REPLACE INTO federation_peers"
-                    "(peer_id, name, url, last_seen, sync_version) VALUES (?,?,?,?,?)",
+                    "(peer_id, name, url, last_seen, sync_version, peer_fingerprint)"
+                    " VALUES (?,?,?,?,?,?)",
                     peer.to_row(),
                 )
         logger.info("FederationManager: added/updated peer %s (%s) at %s", peer_id, name, url)
         return peer
+
+    def is_known_peer(self, peer_id: str) -> bool:
+        """True if peer_id was previously registered via add_peer()."""
+        with sqlite3.connect(self._db, timeout=30.0) as conn:
+            row = conn.execute(
+                "SELECT 1 FROM federation_peers WHERE peer_id = ?", (peer_id,)
+            ).fetchone()
+        return row is not None
+
+    def _peer_fingerprint(self, peer_id: str) -> str:
+        with sqlite3.connect(self._db, timeout=30.0) as conn:
+            row = conn.execute(
+                "SELECT peer_fingerprint FROM federation_peers WHERE peer_id = ?",
+                (peer_id,),
+            ).fetchone()
+        return (row[0] if row else "") or ""
 
     def remove_peer(self, peer_id: str) -> bool:
         """Remove a peer by ID. Returns True if it existed."""
@@ -248,7 +284,7 @@ class FederationManager:
         """Return all known peers."""
         with sqlite3.connect(self._db, timeout=30.0) as conn:
             rows = conn.execute(
-                "SELECT peer_id, name, url, last_seen, sync_version"
+                "SELECT peer_id, name, url, last_seen, sync_version, peer_fingerprint"
                 " FROM federation_peers ORDER BY name"
             ).fetchall()
         return [FederationPeer.from_row(r) for r in rows]
@@ -262,7 +298,12 @@ class FederationManager:
 
         Schema
         ------
-        ``{node_id, version, vector, goals, beliefs_summary, timestamp}``
+        ``{node_id, version, vector, goals, beliefs_summary, timestamp,
+        peer_fingerprint}``
+
+        ``peer_fingerprint`` is read from ``PRISM_FEDERATION_FINGERPRINT``
+        and identifies *us* to the receiver — they validate it against the
+        value they stored when they ran ``add_peer(..., fingerprint=...)``.
         """
         version = self._vector.increment()
         self._persist_vector()
@@ -277,6 +318,8 @@ class FederationManager:
             "goals": goals,
             "beliefs_summary": beliefs,
             "timestamp": time.time(),
+            "peer_fingerprint": _os.environ.get(
+                "PRISM_FEDERATION_FINGERPRINT", "") or "",
         }
         logger.debug("FederationManager: sync payload v%d prepared", version)
         return payload
@@ -297,11 +340,46 @@ class FederationManager:
         * User-priority: if a local item has ``user_priority=True`` it is
           never overwritten by remote data.
 
+        Peer pinning
+        ------------
+        Rejects (with ``rejected_reason``) any peer_id that hasn't been
+        registered via ``add_peer``. If the registered peer has a stored
+        fingerprint, the payload's ``peer_fingerprint`` must match.
+
         Returns
         -------
         dict
-            ``{merged_count, conflicts_resolved, peer_version}``
+            ``{merged_count, conflicts_resolved, peer_version}`` on success
+            or ``{rejected: True, rejected_reason: str}`` when the peer
+            fails the pinning check.
         """
+        if not self.is_known_peer(peer_id):
+            logger.warning(
+                "FederationManager: rejecting unknown peer %s — call add_peer first",
+                peer_id,
+            )
+            return {
+                "rejected": True,
+                "rejected_reason": f"unknown peer {peer_id!r}",
+                "merged_count": 0,
+                "conflicts_resolved": 0,
+                "peer_version": 0,
+            }
+        stored_fp = self._peer_fingerprint(peer_id)
+        if stored_fp:
+            claimed_fp = str(payload.get("peer_fingerprint", "") or "")
+            if claimed_fp != stored_fp:
+                logger.warning(
+                    "FederationManager: rejecting %s — fingerprint mismatch", peer_id,
+                )
+                return {
+                    "rejected": True,
+                    "rejected_reason": "peer fingerprint mismatch",
+                    "merged_count": 0,
+                    "conflicts_resolved": 0,
+                    "peer_version": 0,
+                }
+
         remote_vector: dict[str, int] = payload.get("vector", {})
         remote_version: int = payload.get("version", 0)
         remote_ts: float = payload.get("timestamp", 0.0)
@@ -653,11 +731,12 @@ class FederationManager:
                 );
 
                 CREATE TABLE IF NOT EXISTS federation_peers (
-                    peer_id      TEXT PRIMARY KEY,
-                    name         TEXT NOT NULL,
-                    url          TEXT NOT NULL,
-                    last_seen    REAL NOT NULL DEFAULT 0,
-                    sync_version INTEGER NOT NULL DEFAULT 0
+                    peer_id          TEXT PRIMARY KEY,
+                    name             TEXT NOT NULL,
+                    url              TEXT NOT NULL,
+                    last_seen        REAL NOT NULL DEFAULT 0,
+                    sync_version     INTEGER NOT NULL DEFAULT 0,
+                    peer_fingerprint TEXT NOT NULL DEFAULT ''
                 );
                 CREATE INDEX IF NOT EXISTS ix_fp_last_seen
                     ON federation_peers(last_seen);
@@ -676,6 +755,14 @@ class FederationManager:
                     updated_at REAL NOT NULL DEFAULT 0
                 );
             """)
+            # Migration for federation_peers existing without peer_fingerprint
+            cols = {row[1] for row in conn.execute(
+                "PRAGMA table_info(federation_peers)").fetchall()}
+            if "peer_fingerprint" not in cols:
+                conn.execute(
+                    "ALTER TABLE federation_peers"
+                    " ADD COLUMN peer_fingerprint TEXT NOT NULL DEFAULT ''"
+                )
 
     # ------------------------------------------------------------------
     # Repr
