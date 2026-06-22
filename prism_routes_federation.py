@@ -42,7 +42,17 @@ _503 = JSONResponse(
 )
 
 _401 = JSONResponse(
-    {"error": "Unauthorized", "status": 401},
+    {
+        "error": "Unauthorized",
+        "status": 401,
+        "hint": (
+            "Federation auth is required by default. Configure "
+            "PRISM_FEDERATION_TOKEN (or [federation].token in "
+            "prism_config.toml) and send 'Authorization: Bearer <token>'. "
+            "For single-node / local dev, opt out with "
+            "PRISM_FEDERATION_REQUIRE_AUTH=0."
+        ),
+    },
     status_code=401,
 )
 
@@ -105,20 +115,26 @@ def _federation_config() -> dict:
 def _require_federation_auth(request: Request) -> bool:
     """Return True if the request is authorized.
 
-    Policy precedence (CEO-style): prism_config.toml [federation] sets the
-    default; PRISM_FEDERATION_* env vars override (for one-off ops).
+    Policy precedence: prism_config.toml [federation] sets the default;
+    PRISM_FEDERATION_* env vars override (for one-off ops).
 
         [federation]
-        require_auth = true        # strict mode default
+        require_auth = true        # default — see below
         token        = "secret"    # bearer token
 
-    Env overrides: PRISM_FEDERATION_TOKEN, PRISM_FEDERATION_REQUIRE_AUTH=1.
+    Env overrides: PRISM_FEDERATION_TOKEN, PRISM_FEDERATION_REQUIRE_AUTH=1
+    (or =0 to opt out).
 
     Auth modes
     ----------
-    strict   → token MUST be set AND present in every request; missing
-               config + strict = deny (misconfigured).
-    legacy   → allow when no token configured (backward-compatible default).
+    strict   (default) → a token MUST be configured AND match the request
+                         Bearer header; an unconfigured token means deny.
+                         Multi-node deployments fail-safe: misconfiguration
+                         keeps peers locked out instead of silently exposing
+                         the federation surface to anyone on the network.
+    permissive         → opt-in via require_auth=false or
+                         PRISM_FEDERATION_REQUIRE_AUTH=0. Only intended for
+                         single-node / local development.
     """
     cfg = _federation_config()
     token  = os.environ.get("PRISM_FEDERATION_TOKEN", "") or str(cfg.get("token", ""))
@@ -126,7 +142,7 @@ def _require_federation_auth(request: Request) -> bool:
     if env_strict:
         strict = env_strict in ("1", "true", "yes")
     else:
-        strict = bool(cfg.get("require_auth", False))
+        strict = bool(cfg.get("require_auth", True))
     if not token:
         return not strict
     auth_header = request.headers.get("Authorization", "")

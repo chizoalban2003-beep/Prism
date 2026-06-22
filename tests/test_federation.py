@@ -375,8 +375,13 @@ class TestPendingSync:
 
 
 @pytest.fixture()
-def client(tmp_path):
-    """TestClient wired with a real FederationManager."""
+def client(tmp_path, monkeypatch):
+    """TestClient wired with a real FederationManager.
+
+    Federation strict-auth is now on by default, so existing route tests
+    that don't care about auth must explicitly opt out here. Auth-specific
+    tests have their own fixtures below.
+    """
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
@@ -384,12 +389,83 @@ def client(tmp_path):
     from prism_federation import FederationManager
     from prism_routes_federation import router
 
+    monkeypatch.setenv("PRISM_FEDERATION_REQUIRE_AUTH", "0")
+
     fm = FederationManager(node_id="test-node", db_path=str(tmp_path / "fed.db"))
     prism_state._set_state(federation=fm)
 
     app = FastAPI()
     app.include_router(router)
     return TestClient(app)
+
+
+def _auth_app(tmp_path):
+    from fastapi import FastAPI
+
+    import prism_state
+    from prism_federation import FederationManager
+    from prism_routes_federation import router
+
+    fm = FederationManager(node_id="test-node", db_path=str(tmp_path / "fed.db"))
+    prism_state._set_state(federation=fm)
+    app = FastAPI()
+    app.include_router(router)
+    return app
+
+
+class TestFederationAuthDefault:
+    """The default posture is strict: no token configured → all writes 401."""
+
+    def test_default_denies_without_token(self, tmp_path, monkeypatch):
+        from fastapi.testclient import TestClient
+
+        # Defaults only — nothing configured, no env override
+        monkeypatch.delenv("PRISM_FEDERATION_REQUIRE_AUTH", raising=False)
+        monkeypatch.delenv("PRISM_FEDERATION_TOKEN", raising=False)
+        c = TestClient(_auth_app(tmp_path))
+
+        resp = c.get("/federation/sync")
+        assert resp.status_code == 401
+        body = resp.json()
+        assert body["status"] == 401
+        assert "PRISM_FEDERATION_TOKEN" in body.get("hint", "")
+
+    def test_token_configured_and_sent_passes(self, tmp_path, monkeypatch):
+        from fastapi.testclient import TestClient
+
+        monkeypatch.setenv("PRISM_FEDERATION_TOKEN", "secret-abc")
+        monkeypatch.delenv("PRISM_FEDERATION_REQUIRE_AUTH", raising=False)
+        c = TestClient(_auth_app(tmp_path))
+
+        resp = c.get(
+            "/federation/sync",
+            headers={"Authorization": "Bearer secret-abc"},
+        )
+        assert resp.status_code == 200
+
+    def test_token_configured_but_missing_in_request_fails(
+        self, tmp_path, monkeypatch
+    ):
+        from fastapi.testclient import TestClient
+
+        monkeypatch.setenv("PRISM_FEDERATION_TOKEN", "secret-abc")
+        monkeypatch.delenv("PRISM_FEDERATION_REQUIRE_AUTH", raising=False)
+        c = TestClient(_auth_app(tmp_path))
+
+        resp = c.get("/federation/sync")
+        assert resp.status_code == 401
+
+    def test_explicit_opt_out_allows_unauthenticated(
+        self, tmp_path, monkeypatch
+    ):
+        from fastapi.testclient import TestClient
+
+        monkeypatch.setenv("PRISM_FEDERATION_REQUIRE_AUTH", "0")
+        monkeypatch.delenv("PRISM_FEDERATION_TOKEN", raising=False)
+        c = TestClient(_auth_app(tmp_path))
+
+        resp = c.get("/federation/sync")
+        assert resp.status_code == 200
 
 
 class TestFederationAnnounceEndpoint:
