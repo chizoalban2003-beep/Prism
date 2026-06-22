@@ -154,6 +154,29 @@ class ConstitutionGuard:
         )
         return capability not in blocked
 
+    def may_synthesize_intent(self, intent: str) -> tuple[bool, str]:
+        """Return (False, matched_pattern) when the intent name matches a
+        forbidden pattern, otherwise (True, "").
+
+        Complements ``may_synthesize(capability)``: that gate refuses
+        synthesis when the intent's *declared* required capabilities are
+        forbidden, but only catches intents the constitution already
+        knows. This gate catches LLM-coined alias names (``run_shell``,
+        ``spawn_process``, etc.) before any LLM call is made.
+        """
+        patterns = (
+            self._data
+            .get("absolute_limits", {})
+            .get("never_synthesize_intent_patterns", [])
+        )
+        needle = (intent or "").lower()
+        for pat in patterns:
+            if not isinstance(pat, str) or not pat:
+                continue
+            if pat.lower() in needle:
+                return False, pat
+        return True, ""
+
     def max_synthesis_per_session(self) -> int:
         return int(
             self._data.get("absolute_limits", {})

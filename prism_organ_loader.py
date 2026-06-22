@@ -513,9 +513,17 @@ class OrganLoader:
             return False
 
         # L1 constitution: block synthesis of forbidden capabilities
+        # and intent-name patterns (catches LLM-coined aliases like
+        # "run_shell" that the capability table wouldn't know).
         try:
             from prism_constitution import get_guard
             guard = get_guard()
+            allowed, pattern = guard.may_synthesize_intent(intent)
+            if not allowed:
+                logger.warning(
+                    "[organ_loader] Synthesis blocked for %s — intent name "
+                    "matches forbidden pattern %r", intent, pattern)
+                return False
             required = guard.required_capabilities(intent)
             blocked = [c for c in required if not guard.may_synthesize(c)]
             if blocked:

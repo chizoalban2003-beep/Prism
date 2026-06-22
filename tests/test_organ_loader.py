@@ -279,6 +279,61 @@ def test_synthesize_fails_without_router():
         assert not ok
 
 
+def test_synthesize_blocked_by_intent_pattern_before_llm():
+    """An LLM-coined alias like 'run_shell' must be refused without ever
+    calling the router — the constitution's intent-pattern gate fires
+    pre-LLM, before any synthesis budget is spent."""
+    with tempfile.TemporaryDirectory() as d:
+        bundled = Path(d) / "bundled"
+        user    = Path(d) / "user"
+        bundled.mkdir()
+        user.mkdir()
+        router = _make_router(_synth_payload(
+            "run_shell", "runs shell",
+            VALID_ORGAN.replace("test_organ", "run_shell"),
+        ))
+        loader = OrganLoader(bundled_dir=bundled, user_dir=user, llm_router=router)
+        ok = loader.synthesize("run_shell", "execute ls -la")
+        assert not ok
+        assert "run_shell" not in loader.known_intents()
+        router.call.assert_not_called()
+
+
+def test_synthesize_intent_pattern_blocks_telephony_aliases():
+    """Phone/SMS aliases are also blocked by name pattern."""
+    with tempfile.TemporaryDirectory() as d:
+        bundled = Path(d) / "bundled"
+        user    = Path(d) / "user"
+        bundled.mkdir()
+        user.mkdir()
+        router = _make_router(_synth_payload(
+            "sms_send_quick", "sms",
+            VALID_ORGAN.replace("test_organ", "sms_send_quick"),
+        ))
+        loader = OrganLoader(bundled_dir=bundled, user_dir=user, llm_router=router)
+        assert not loader.synthesize("sms_send_quick", "text mum")
+        router.call.assert_not_called()
+
+
+def test_constitution_may_synthesize_intent_matrix():
+    """Constitution exposes a may_synthesize_intent gate that matches
+    case-insensitive substrings against never_synthesize_intent_patterns."""
+    from prism_constitution import get_guard
+    guard = get_guard()
+    # Blocked: matches a forbidden pattern
+    for blocked in ("shell_run", "Run_Shell", "subprocess_call",
+                    "spawn_worker", "popen_helper", "phone_call",
+                    "sms_send", "telnet_open"):
+        ok, pat = guard.may_synthesize_intent(blocked)
+        assert not ok, f"expected {blocked!r} to be blocked"
+        assert pat, f"expected matched pattern for {blocked!r}"
+    # Allowed: no forbidden substring
+    for allowed in ("stock_price", "weather_check", "unit_convert",
+                    "qr_generate", "policy_audit"):
+        ok, _ = guard.may_synthesize_intent(allowed)
+        assert ok, f"expected {allowed!r} to be allowed"
+
+
 def test_synthesize_fails_on_bad_json():
     with tempfile.TemporaryDirectory() as d:
         bundled = Path(d) / "bundled"

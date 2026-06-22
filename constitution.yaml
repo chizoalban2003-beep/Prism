@@ -49,6 +49,24 @@ absolute_limits:
     - frontend_mutate
     - smart_home
     - mechanical_actuate
+  # Intent name patterns that may never be synthesized. The capability gate
+  # above blocks intents that the constitution already maps to a forbidden
+  # capability (e.g. shell_run → subprocess), but an LLM that coins a novel
+  # intent name like "run_shell" or "spawn_process" would slip past it —
+  # the cap table only knows the names listed in capability_requirements.
+  # These patterns are matched as case-insensitive substrings on the intent.
+  never_synthesize_intent_patterns:
+    - shell
+    - subprocess
+    - popen
+    - spawn
+    - exec_cmd
+    - system_cmd
+    - sudo
+    - telnet
+    - phone_call
+    - sms_send
+    - dial_
   data_retention_days: 90
   # These intents must never be logged to conversation history
   never_log_intents:
