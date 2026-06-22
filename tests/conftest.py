@@ -99,7 +99,7 @@ def offline_llm(monkeypatch):
     handle = _OfflineLLM()
 
     # --- LLMRouter: discover/best/call ---------------------------------
-    from prism_llm_router import LLMRouter, LLMOption
+    from prism_llm_router import LLMOption, LLMRouter
 
     stub_option = LLMOption(
         provider="stdlib", model="stdlib", endpoint="",

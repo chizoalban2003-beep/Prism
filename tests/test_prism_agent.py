@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 from prism_agent import PrismAgent
 from prism_responses import PrismCard
 
