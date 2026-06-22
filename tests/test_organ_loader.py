@@ -321,6 +321,111 @@ def test_synthesize_fails_on_llm_error():
         assert not ok
 
 
+# ── Synthesis quarantine ──────────────────────────────────────────────────────
+
+def test_synthesize_quarantine_writes_to_quarantine_dir():
+    """quarantine=True writes to organs.quarantine/ and does NOT register."""
+    with tempfile.TemporaryDirectory() as d:
+        bundled = Path(d) / "bundled"
+        user    = Path(d) / "user"
+        bundled.mkdir()
+        user.mkdir()
+        router = _make_router(_synth_payload(
+            "stock_price", "stock price",
+            VALID_ORGAN.replace("test_organ", "stock_price"),
+        ))
+        loader = OrganLoader(bundled_dir=bundled, user_dir=user, llm_router=router)
+        ok = loader.synthesize("stock_price", "AAPL?", quarantine=True)
+        assert ok
+        # Not promoted yet — not in user dir, not registered
+        assert not (user / "stock_price.py").exists()
+        assert "stock_price" not in loader.known_intents()
+        # Landed in quarantine with metadata sidecar
+        quar = user.parent / "organs.quarantine"
+        assert (quar / "stock_price.py").exists()
+        assert (quar / "stock_price.meta.json").exists()
+
+
+def test_list_quarantined_returns_metadata():
+    with tempfile.TemporaryDirectory() as d:
+        bundled = Path(d) / "bundled"
+        user    = Path(d) / "user"
+        bundled.mkdir()
+        user.mkdir()
+        router = _make_router(_synth_payload(
+            "stock_price", "stock price",
+            VALID_ORGAN.replace("test_organ", "stock_price"),
+        ))
+        loader = OrganLoader(bundled_dir=bundled, user_dir=user, llm_router=router)
+        loader.synthesize("stock_price", "AAPL?", quarantine=True)
+        entries = loader.list_quarantined()
+        assert len(entries) == 1
+        assert entries[0]["intent"] == "stock_price"
+        assert "code_preview" in entries[0]
+        assert "source_message" in entries[0]
+
+
+def test_promote_quarantined_installs_and_registers():
+    with tempfile.TemporaryDirectory() as d:
+        bundled = Path(d) / "bundled"
+        user    = Path(d) / "user"
+        bundled.mkdir()
+        user.mkdir()
+        router = _make_router(_synth_payload(
+            "stock_price", "stock price",
+            VALID_ORGAN.replace("test_organ", "stock_price"),
+        ))
+        loader = OrganLoader(bundled_dir=bundled, user_dir=user, llm_router=router)
+        loader.synthesize("stock_price", "AAPL?", quarantine=True)
+        promoted = loader.promote_quarantined("stock_price")
+        assert promoted
+        assert (user / "stock_price.py").exists()
+        assert "stock_price" in loader.known_intents()
+        # Quarantine cleaned up
+        quar = user.parent / "organs.quarantine"
+        assert not (quar / "stock_price.py").exists()
+
+
+def test_promote_rejects_tampered_quarantine():
+    """If the quarantined file is edited to be unsafe, promote must reject it."""
+    with tempfile.TemporaryDirectory() as d:
+        bundled = Path(d) / "bundled"
+        user    = Path(d) / "user"
+        bundled.mkdir()
+        user.mkdir()
+        router = _make_router(_synth_payload(
+            "stock_price", "stock price",
+            VALID_ORGAN.replace("test_organ", "stock_price"),
+        ))
+        loader = OrganLoader(bundled_dir=bundled, user_dir=user, llm_router=router)
+        loader.synthesize("stock_price", "AAPL?", quarantine=True)
+        # Tamper: overwrite quarantined file with unsafe code
+        quar = user.parent / "organs.quarantine"
+        (quar / "stock_price.py").write_text(UNSAFE_ORGAN)
+        ok = loader.promote_quarantined("stock_price")
+        assert not ok
+        assert not (user / "stock_price.py").exists()
+        assert "stock_price" not in loader.known_intents()
+
+
+def test_discard_quarantined_removes_files():
+    with tempfile.TemporaryDirectory() as d:
+        bundled = Path(d) / "bundled"
+        user    = Path(d) / "user"
+        bundled.mkdir()
+        user.mkdir()
+        router = _make_router(_synth_payload(
+            "stock_price", "stock price",
+            VALID_ORGAN.replace("test_organ", "stock_price"),
+        ))
+        loader = OrganLoader(bundled_dir=bundled, user_dir=user, llm_router=router)
+        loader.synthesize("stock_price", "AAPL?", quarantine=True)
+        assert loader.discard_quarantined("stock_price")
+        assert loader.list_quarantined() == []
+        # Idempotent: discarding again returns False
+        assert not loader.discard_quarantined("stock_price")
+
+
 # ── LOGIC_REGISTRY injection ──────────────────────────────────────────────────
 
 def test_new_organ_added_to_logic_registry():

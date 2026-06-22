@@ -133,6 +133,85 @@ class TestSyncPayload:
         assert p2["version"] > p1["version"]
 
 
+class TestPeerPinning:
+    """Defence-in-depth: even with valid HMAC, unknown peer_ids are rejected."""
+
+    def test_merge_rejects_unknown_peer(self, tmp_path):
+        fm = _manager(tmp_path)
+        # Note: no add_peer call
+        payload = {
+            "node_id": "rogue",
+            "version": 1,
+            "vector": {"rogue": 1},
+            "goals": [],
+            "beliefs_summary": {},
+            "timestamp": time.time(),
+        }
+        result = fm.merge_peer_state("rogue", payload)
+        assert result.get("rejected") is True
+        assert "unknown peer" in result["rejected_reason"]
+        assert result["merged_count"] == 0
+
+    def test_merge_accepts_known_peer_without_fingerprint(self, tmp_path):
+        fm = _manager(tmp_path)
+        fm.add_peer("trusted-1", "Home", "http://10.0.0.1:8742")
+        payload = {
+            "node_id": "trusted-1",
+            "version": 1,
+            "vector": {"trusted-1": 1},
+            "goals": [],
+            "beliefs_summary": {},
+            "timestamp": time.time(),
+        }
+        result = fm.merge_peer_state("trusted-1", payload)
+        assert "rejected" not in result
+
+    def test_merge_rejects_fingerprint_mismatch(self, tmp_path):
+        fm = _manager(tmp_path)
+        fm.add_peer("pinned", "Home", "http://10.0.0.1:8742",
+                    fingerprint="sha256:abc123")
+        payload = {
+            "node_id": "pinned",
+            "version": 1,
+            "vector": {"pinned": 1},
+            "goals": [],
+            "beliefs_summary": {},
+            "timestamp": time.time(),
+            "peer_fingerprint": "sha256:WRONG",
+        }
+        result = fm.merge_peer_state("pinned", payload)
+        assert result.get("rejected") is True
+        assert "fingerprint" in result["rejected_reason"]
+
+    def test_merge_accepts_fingerprint_match(self, tmp_path):
+        fm = _manager(tmp_path)
+        fm.add_peer("pinned", "Home", "http://10.0.0.1:8742",
+                    fingerprint="sha256:abc123")
+        payload = {
+            "node_id": "pinned",
+            "version": 1,
+            "vector": {"pinned": 1},
+            "goals": [],
+            "beliefs_summary": {},
+            "timestamp": time.time(),
+            "peer_fingerprint": "sha256:abc123",
+        }
+        result = fm.merge_peer_state("pinned", payload)
+        assert "rejected" not in result
+
+    def test_is_known_peer(self, tmp_path):
+        fm = _manager(tmp_path)
+        assert not fm.is_known_peer("never-added")
+        fm.add_peer("added", "Test", "http://10.0.0.1:8742")
+        assert fm.is_known_peer("added")
+
+    def test_get_sync_payload_includes_self_fingerprint(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("PRISM_FEDERATION_FINGERPRINT", "sha256:selfid")
+        fm = _manager(tmp_path)
+        payload = fm.get_sync_payload()
+        assert payload["peer_fingerprint"] == "sha256:selfid"
+
+
 class TestMergePeerState:
     def test_merge_peer_state_increments_version(self, tmp_path):
         fm = _manager(tmp_path)
@@ -400,7 +479,10 @@ class TestFederationSyncEndpoints:
         assert vec.get("test-node", 0) >= 1
 
     def test_federation_sync_post(self, client):
-        """POST /federation/sync merges a remote payload."""
+        """POST /federation/sync merges a remote payload from a known peer."""
+        import prism_state
+        prism_state._state["federation"].add_peer(
+            "remote-x", "Test", "http://10.0.0.1:8742")
         remote_payload = {
             "node_id": "remote-x",
             "version": 7,
@@ -417,6 +499,28 @@ class TestFederationSyncEndpoints:
         data = resp.json()
         assert "merged_count" in data
         assert data["peer_version"] == 7
+
+    def test_federation_sync_post_rejects_unknown_peer(self, client):
+        """Unknown peer_ids are rejected even when HMAC is satisfied (it's off in tests)."""
+        remote_payload = {
+            "node_id": "rogue",
+            "version": 1,
+            "vector": {"rogue": 1},
+            "goals": [],
+            "beliefs_summary": {},
+            "timestamp": time.time(),
+        }
+        resp = client.post(
+            "/federation/sync",
+            json={"peer_id": "rogue", "payload": remote_payload},
+        )
+        # Route still returns 200 with rejected=True body — receiver
+        # signals "I saw you but did not merge" rather than 4xx (which
+        # would leak peer-registration state to scanners).
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data.get("rejected") is True
+        assert data["merged_count"] == 0
 
     def test_federation_sync_post_missing_peer_id(self, client):
         resp = client.post(

@@ -12,11 +12,15 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import urllib.request
 from dataclasses import dataclass, field
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# Env var checked first by from_config(); takes precedence over the toml file.
+HA_TOKEN_ENV = "PRISM_HA_TOKEN"
 
 
 @dataclass
@@ -81,10 +85,24 @@ class PrismSmartHome:
 
     @classmethod
     def from_config(cls, config: dict) -> PrismSmartHome:
+        """Build from prism_config.toml. PRISM_HA_TOKEN env var overrides the
+        ha_token field; toml-only tokens emit a one-time deprecation warning."""
         sh = config.get("smarthome", {})
+        env_token = os.environ.get(HA_TOKEN_ENV, "").strip()
+        toml_token = sh.get("ha_token", "")
+        if env_token:
+            token = env_token
+        else:
+            token = toml_token
+            if toml_token:
+                logger.warning(
+                    "[smart_home] ha_token loaded from prism_config.toml; "
+                    "prefer the %s env var so secrets stay out of on-disk config",
+                    HA_TOKEN_ENV,
+                )
         return cls(
             ha_url = sh.get("ha_url", "http://homeassistant.local:8123"),
-            token  = sh.get("ha_token", ""),
+            token  = token,
         )
 
     @property
@@ -212,7 +230,10 @@ class PrismSmartHome:
         """Return a concise overview of connected entities."""
         if not self.configured:
             return {"configured": False,
-                    "message": "Add ha_url and ha_token to prism_config.toml"}
+                    "message": (
+                        "Set ha_url in prism_config.toml and export "
+                        f"{HA_TOKEN_ENV}=<long-lived-token> in the daemon env"
+                    )}
         entities = self.get_states()
         on_count = sum(
             1 for e in entities

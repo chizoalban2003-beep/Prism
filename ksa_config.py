@@ -274,38 +274,3 @@ class KSAConfig:
             f"auto_optimise={self.auto_optimise}, "
             f"tasks={len(self.tasks)})"
         )
-
-
-# ---------------------------------------------------------------------------
-# Demo / smoke-test
-# ---------------------------------------------------------------------------
-
-if __name__ == "__main__":
-    import tempfile
-
-    print("=== KSA Config Demo ===\n")
-
-    # Default config
-    cfg = KSAConfig.load()
-    print("Default config:", cfg)
-
-    # Round-trip through JSON
-    with tempfile.NamedTemporaryFile(suffix=".json", delete=False, mode="w") as f:
-        json_path = f.name
-
-    try:
-        cfg.tasks.append(TaskConfig(
-            task_name="file_index_stealth",
-            keywords=["scan", "index", "files"],
-            aliases=["index"],
-            description="Background file indexing",
-            executor="FileIndexExecutor",
-        ))
-        cfg.save(json_path)
-
-        loaded = KSAConfig.load(json_path)
-        print("Loaded from JSON:", loaded)
-        print("Tasks:", [t.task_name for t in loaded.tasks])
-    finally:
-        os.unlink(json_path)
-        print("\nTemp file cleaned up. ✓")
