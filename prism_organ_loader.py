@@ -242,6 +242,9 @@ class OrganLoader:
     ):
         self._bundled = Path(bundled_dir) if bundled_dir else BUNDLED_DIR
         self._user    = Path(user_dir).expanduser() if user_dir else USER_DIR
+        # Quarantine: synthesised organs land here for human review before
+        # promote_quarantined() moves them into self._user and registers them.
+        self._quarantine = self._user.parent / "organs.quarantine"
         self._router  = llm_router
         # {intent: (execute_fn, organ_meta_dict)}
         self._organs:  dict[str, tuple[Callable, dict]] = {}
@@ -484,12 +487,20 @@ class OrganLoader:
     # poison these with a cached organ, or every unmapped request will hit it.
     _RESERVED_INTENTS = frozenset({"novel_capability", "general_chat", "chat"})
 
-    def synthesize(self, intent: str, message: str) -> bool:
+    def synthesize(self, intent: str, message: str, *,
+                   quarantine: bool = False) -> bool:
         """
         Ask the LLM to write a new organ for this intent, safety-check it,
         save to ~/.prism/organs/<intent>.py, and register it immediately.
 
-        Returns True if the organ was successfully synthesized and registered.
+        When ``quarantine=True``, the synthesised code lands in
+        ~/.prism/organs.quarantine/<intent>.py and is NOT registered. Use
+        list_quarantined() to inspect, promote_quarantined() to install, or
+        discard_quarantined() to drop. Promote re-runs the safety pipeline
+        so on-disk tampering between synthesis and review is caught.
+
+        Returns True if the organ was successfully synthesised (quarantined
+        or registered, depending on the flag).
         """
         if intent in self._RESERVED_INTENTS:
             logger.warning(
@@ -551,6 +562,26 @@ class OrganLoader:
                 )
                 return False
 
+        if quarantine:
+            self._quarantine.mkdir(parents=True, exist_ok=True)
+            out_path = self._quarantine / f"{intent}.py"
+            out_path.write_text(code)
+            meta_sidecar = {
+                "intent":                intent,
+                "description":           data.get("description", intent),
+                "declared_capabilities": sorted(_declared_caps),
+                "audit_gaps":            sorted(_cap_gaps),
+                "synthesised_at":        time.time(),
+                "source_message":        message[:300],
+            }
+            (self._quarantine / f"{intent}.meta.json").write_text(
+                json.dumps(meta_sidecar, indent=2))
+            logger.info(
+                "[organ_loader] Synthesised organ QUARANTINED at %s — "
+                "review and call promote_quarantined(%r) to install",
+                out_path, intent)
+            return True
+
         out_path = self._user / f"{intent}.py"
         out_path.write_text(code)
         logger.info("[organ_loader] Synthesized organ saved: %s", out_path)
@@ -575,6 +606,90 @@ class OrganLoader:
             self._index[intent]["compiled"] = compiled
             self._save_index()
         return True
+
+    # ── Quarantine API ────────────────────────────────────────────────────────
+
+    def list_quarantined(self) -> list[dict]:
+        """Return metadata for synthesised organs awaiting human review."""
+        out: list[dict] = []
+        if not self._quarantine.exists():
+            return out
+        for path in sorted(self._quarantine.glob("*.py")):
+            meta_path = path.with_suffix(".meta.json")
+            entry: dict = {"intent": path.stem, "path": str(path)}
+            if meta_path.exists():
+                try:
+                    entry.update(json.loads(meta_path.read_text()))
+                except Exception:
+                    pass
+            try:
+                entry["code_preview"] = path.read_text()[:500]
+            except Exception:
+                entry["code_preview"] = ""
+            out.append(entry)
+        return out
+
+    def promote_quarantined(self, intent: str) -> bool:
+        """Move a quarantined organ into the user dir and register it.
+
+        Re-runs the AST safety check on the on-disk content so any
+        tampering between synthesis and review is rejected.
+        """
+        if intent in self._RESERVED_INTENTS:
+            logger.warning(
+                "[organ_loader] Refusing to promote reserved intent %r", intent)
+            return False
+        quar_path = self._quarantine / f"{intent}.py"
+        meta_path = quar_path.with_suffix(".meta.json")
+        if not quar_path.exists():
+            return False
+        try:
+            code = quar_path.read_text()
+        except Exception as exc:
+            logger.warning(
+                "[organ_loader] Cannot read quarantined %s: %s", intent, exc)
+            return False
+        safe, reason = _is_safe(code, strict=True)
+        if not safe:
+            logger.warning(
+                "[organ_loader] Promote blocked — quarantined %s now unsafe: %s",
+                intent, reason)
+            return False
+        out_path = self._user / f"{intent}.py"
+        out_path.write_text(code)
+        compiled = self._compile_organ(out_path)
+        fn = self._load_file(out_path, trusted=True)
+        if fn is None:
+            out_path.unlink(missing_ok=True)
+            return False
+        description = intent
+        if meta_path.exists():
+            try:
+                meta_data = json.loads(meta_path.read_text())
+                description = meta_data.get("description", intent)
+            except Exception:
+                pass
+        self._register(intent, fn,
+                       {"intent": intent, "description": description, "version": "1.0"},
+                       source="user")
+        if intent in self._index:
+            self._index[intent]["compiled"] = compiled
+            self._save_index()
+        quar_path.unlink(missing_ok=True)
+        if meta_path.exists():
+            meta_path.unlink(missing_ok=True)
+        logger.info("[organ_loader] Promoted quarantined organ: %s", intent)
+        return True
+
+    def discard_quarantined(self, intent: str) -> bool:
+        """Drop a quarantined organ without installing it."""
+        quar_path = self._quarantine / f"{intent}.py"
+        meta_path = quar_path.with_suffix(".meta.json")
+        existed = quar_path.exists()
+        quar_path.unlink(missing_ok=True)
+        if meta_path.exists():
+            meta_path.unlink(missing_ok=True)
+        return existed
 
     def install_bundle(self, intent: str, code: str) -> bool:
         """
