@@ -22,9 +22,7 @@ def test_always_has_app():
     assert any(option.execution_type == "app_install" for option in result.options)
 
 
-@pytest.mark.slow
-@pytest.mark.timeout(120)
-def test_urgent_prefers_fast():
+def test_urgent_prefers_fast(offline_llm):
     finder = ToolFinder(collaborator=PrismCollaborator())
 
     result = finder.find(
@@ -39,9 +37,7 @@ def test_urgent_prefers_fast():
     assert result.recommended.execution_type in {"aggregator", "phone"}
 
 
-@pytest.mark.slow
-@pytest.mark.timeout(120)
-def test_no_budget_prefers_free():
+def test_no_budget_prefers_free(offline_llm):
     finder = ToolFinder(collaborator=PrismCollaborator())
 
     result = finder.find(

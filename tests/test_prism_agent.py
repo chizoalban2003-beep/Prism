@@ -33,7 +33,5 @@ def test_chat_never_raises():
         assert isinstance(PrismAgent().chat(message), PrismCard)
 
 
-@pytest.mark.slow
-@pytest.mark.timeout(120)
-def test_chat_returns_card():
+def test_chat_returns_card(offline_llm):
     assert isinstance(PrismAgent().chat("plan my day"), PrismCard)

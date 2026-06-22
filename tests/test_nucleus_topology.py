@@ -391,9 +391,7 @@ class TestAgentTopologyIntegration:
             agent._bud_mgr.decommission(h)
             assert "_bud_id" not in h.scoped_ctx
 
-    @pytest.mark.slow
-    @pytest.mark.timeout(120)
-    def test_multiple_tasks_end_to_end(self):
+    def test_multiple_tasks_end_to_end(self, offline_llm):
         """Smoke-test 10 diverse tasks — all return a PrismCard, never raise."""
         from prism_responses import PrismCard
         agent = self._make_agent()
