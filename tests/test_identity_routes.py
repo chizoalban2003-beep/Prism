@@ -36,7 +36,10 @@ def clean_onboarding_file():
 
 
 @pytest.fixture
-def client():
+def client(monkeypatch):
+    # Federation strict-auth is on by default; these tests pre-date that
+    # change and exercise route bodies, not auth. Opt out explicitly.
+    monkeypatch.setenv("PRISM_FEDERATION_REQUIRE_AUTH", "0")
     from prism_asgi import app
     return TestClient(app)
 
