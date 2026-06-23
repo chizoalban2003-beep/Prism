@@ -170,10 +170,9 @@ class PrismAgent:
                 getattr(self, '_device', None), '_registry', None),
         )
         self._chat_history: list[dict] = []
-        self._perception: Optional[PrismPerception] = None
-        try:
+        def _build_perception():
             cfg = self._config.get("agent", {}) if hasattr(self, '_config') and self._config else {}
-            self._perception = PrismPerception.setup(
+            p = PrismPerception.setup(
                 enable_voice     = cfg.get("enable_voice", False),
                 enable_screen    = cfg.get("enable_screen", False),
                 enable_typing    = cfg.get("enable_typing", True),
@@ -181,33 +180,32 @@ class PrismAgent:
                 enable_biometric = cfg.get("enable_biometric", True),
                 on_voice_command = self.chat,
             )
-            self._perception.start()
-        except Exception as e:
-            logger.warning("PrismPerception not available: %s", e)
-            self._perception = None
-        try:
-            self._proactive = PrismProactive(
-                on_event=self._handle_proactive_event)
+            p.start()
+            return p
+        self._perception: Optional[PrismPerception] = safe_init(
+            "PrismPerception", _build_perception, logger=logger)
+
+        def _build_proactive():
+            proactive = PrismProactive(on_event=self._handle_proactive_event)
             triggers = build_default_triggers(
                 perception    = self._perception,
                 policy_engine = self._policy,
                 task_queue    = self._queue,
             )
             for t in triggers:
-                self._proactive.register(t)
-            self._proactive.start()
-        except Exception as e:
-            logger.warning("PrismProactive not available: %s", e)
-            self._proactive = None
+                proactive.register(t)
+            proactive.start()
+            return proactive
+        self._proactive = safe_init(
+            "PrismProactive", _build_proactive, logger=logger)
 
         # KineticEngine — compound personal signal aggregator
         # Wires perception → torque accumulation → proactive action windows
-        self._kinetic: Optional[Any] = None
-        try:
+        def _build_kinetic():
             from prism_kinetic_engine import KineticEngine
             from prism_routes_kinetic import get_or_set_engine
-            self._kinetic = KineticEngine.for_prism()
-            get_or_set_engine(self._kinetic)
+            engine = KineticEngine.for_prism()
+            get_or_set_engine(engine)
             if self._proactive is not None:
                 import time as _time
                 def _on_kinetic_action(window: Any) -> None:
@@ -215,30 +213,29 @@ class PrismAgent:
                     self._proactive.schedule(
                         window.to_proactive_message(), fire_at,
                         trigger_id=f"kinetic_{window.window_id}")
-                self._kinetic.on_action(_on_kinetic_action)
-            # Wire kinetic into the perception fuser for real-time signal ingestion
-            if self._kinetic is not None and self._perception is not None:
+                engine.on_action(_on_kinetic_action)
+            if self._perception is not None:
                 fuser = getattr(self._perception, '_fuser', None)
                 if fuser is not None:
-                    fuser._kinetic = self._kinetic
-            logger.info("KineticEngine ready (%d levers)", len(self._kinetic._levers))
-        except Exception as e:
-            logger.warning("KineticEngine not available: %s", e)
-            self._kinetic = None
+                    fuser._kinetic = engine
+            logger.info("KineticEngine ready (%d levers)", len(engine._levers))
+            return engine
+        self._kinetic: Optional[Any] = safe_init(
+            "KineticEngine", _build_kinetic, logger=logger)
 
         # Surgical ML Assembler — task-profiling algorithm compiler
-        self._ml_assembler: Optional[Any] = None
-        try:
+        def _build_ml_assembler():
             from prism_ml_assembler import MLAssembler
             from prism_routes_ml import get_or_set_assembler as _set_asm
-            self._ml_assembler = MLAssembler(
+            asm = MLAssembler(
                 llm_router=self._router,
                 outcome_tracker=getattr(self, "_outcome_tracker", None),
             )
-            _set_asm(self._ml_assembler)
+            _set_asm(asm)
             logger.info("MLAssembler ready")
-        except Exception as e:
-            logger.warning("MLAssembler not available: %s", e)
+            return asm
+        self._ml_assembler: Optional[Any] = safe_init(
+            "MLAssembler", _build_ml_assembler, logger=logger)
 
         self._search = PrismSearch.from_config(self._config)
         self._push   = PrismPush.from_config(self._config)
@@ -278,20 +275,18 @@ class PrismAgent:
         # external MCP servers and expose their tools as organs. Disabled
         # unless [mcp].enabled is set in prism_config.toml, so this is a no-op
         # for the default install and for tests.
-        self._mcp: Optional[Any] = None
-        try:
+        def _build_mcp():
             import prism_mcp
-            self._mcp = prism_mcp.MCPManager.from_config(self._config)
-            prism_mcp.set_manager(self._mcp)
-            if self._mcp.server_names():
-                self._mcp.connect_all()
+            mcp = prism_mcp.MCPManager.from_config(self._config)
+            prism_mcp.set_manager(mcp)
+            if mcp.server_names():
+                mcp.connect_all()
                 _n = prism_mcp.register_mcp_organs(
-                    self._organ_loader, self._mcp, router=self._router)
+                    self._organ_loader, mcp, router=self._router)
                 logger.info("MCP: registered %d tool(s) from %d server(s)",
-                            _n, len(self._mcp.server_names()))
-        except Exception as e:
-            logger.warning("MCP init failed: %s", e)
-            self._mcp = None
+                            _n, len(mcp.server_names()))
+            return mcp
+        self._mcp: Optional[Any] = safe_init("MCP", _build_mcp, logger=logger)
 
         # L1 Constitution guard + Bud execution manager
         def _build_constitution_bud():
@@ -313,25 +308,24 @@ class PrismAgent:
         )
 
         # HorizonPlanner — cross-session long-horizon goal persistence
-        self._horizon: Optional[Any] = None
-        try:
+        def _build_horizon():
             from prism_horizon import HorizonPlanner
-            self._horizon = HorizonPlanner(
+            planner = HorizonPlanner(
                 llm_router = self._router,
                 task_queue = self._queue,
                 push       = self._push,
             )
-            triggered = self._horizon.on_session_start()
+            triggered = planner.on_session_start()
             if triggered:
                 logger.info(
                     "HorizonPlanner: %d goal(s) triggered at startup: %s",
                     len(triggered), triggered,
                 )
-        except Exception as e:
-            logger.warning("HorizonPlanner not available: %s", e)
-            self._horizon = None
+            return planner
+        self._horizon: Optional[Any] = safe_init(
+            "HorizonPlanner", _build_horizon, logger=logger)
 
-        if hasattr(self, '_horizon') and self._horizon and hasattr(self, '_chain') and self._chain:
+        if self._horizon and hasattr(self, '_chain') and self._chain:
             self._horizon._chain = self._chain
 
         # OrganBus — LLM-mediated inter-engine communication bus
@@ -346,43 +340,39 @@ class PrismAgent:
             "OrganBus", _build_organ_bus, logger=logger)
 
         # PrismSoul — living identity document
-        try:
+        def _build_soul():
             from prism_soul import PrismSoul
-            self._soul = PrismSoul(llm_router=self._router)
+            soul = PrismSoul(llm_router=self._router)
             if self._organ_bus is not None:
-                self._soul.register_with_bus(self._organ_bus)
-            # Back-patch soul into chain (chain is constructed before soul)
+                soul.register_with_bus(self._organ_bus)
             if hasattr(self, '_chain'):
-                self._chain._soul = self._soul
-            if not self._soul.has_seed():
+                self._chain._soul = soul
+            if not soul.has_seed():
                 logger.info("PrismSoul: no soul seed found — run identity ceremony to personalise")
             else:
                 logger.info("PrismSoul: loaded (%d beliefs, %d lenses)",
-                            len(self._soul.list_beliefs()),
-                            len(self._soul.list_lenses()))
-        except Exception as e:
-            logger.warning("PrismSoul not available: %s", e)
-            self._soul = None
+                            len(soul.list_beliefs()),
+                            len(soul.list_lenses()))
+            return soul
+        self._soul: Optional[Any] = safe_init(
+            "PrismSoul", _build_soul, logger=logger)
 
         # Living user model — persona, crystalliser, narrative
-        self._persona: Any = None
-        self._crystalliser: Any = None
-        self._narrative: Any = None
-        try:
+        def _build_living_model():
             from prism_crystalliser import PrismCrystalliser
             from prism_narrative import PrismNarrative
             from prism_persona import PrismPersona
-            self._persona = PrismPersona()
-            self._crystalliser = PrismCrystalliser(
-                persona=self._persona,
+            persona = PrismPersona()
+            crystalliser = PrismCrystalliser(
+                persona=persona,
                 memory=getattr(self, '_memory', None),
                 outcome_tracker=getattr(self, '_outcome_tracker', None),
                 calibration=getattr(self, '_calibration', None),
                 llm_router=self._router,
                 ml_assembler=getattr(self, '_ml_assembler', None),
             )
-            self._narrative = PrismNarrative(
-                persona=self._persona,
+            narrative = PrismNarrative(
+                persona=persona,
                 memory=getattr(self, '_memory', None),
                 outcome_tracker=getattr(self, '_outcome_tracker', None),
                 calibration=getattr(self, '_calibration', None),
@@ -390,11 +380,13 @@ class PrismAgent:
                 llm_router=self._router,
             )
             logger.info("Living user model ready (persona, crystalliser, narrative)")
-        except Exception as e:
-            logger.warning("Living user model not available: %s", e)
-            self._persona = None
-            self._crystalliser = None
-            self._narrative = None
+            return persona, crystalliser, narrative
+        _living = safe_init("Living user model", _build_living_model, logger=logger)
+        self._persona: Any
+        self._crystalliser: Any
+        self._narrative: Any
+        self._persona, self._crystalliser, self._narrative = (
+            _living if _living else (None, None, None))
 
         # OutcomeTracker — closes the learning loop
         def _build_outcome_tracker():
@@ -434,20 +426,19 @@ class PrismAgent:
             "ContextManager", _build_context_manager, logger=logger)
 
         # ProactiveBusWatcher — connect OrganBus signals to proactive triggers
-        try:
-            if self._organ_bus is not None and getattr(self, '_proactive', None) is not None:
-                from prism_proactive_bus_watcher import ProactiveBusWatcher
-                self._bus_watcher = ProactiveBusWatcher(
-                    proactive = self._proactive,
-                    organ_bus = self._organ_bus,
-                )
-                self._bus_watcher.register()
-                logger.info("ProactiveBusWatcher registered")
-            else:
-                self._bus_watcher = None
-        except Exception as e:
-            logger.warning("ProactiveBusWatcher not available: %s", e)
-            self._bus_watcher = None
+        def _build_bus_watcher():
+            if self._organ_bus is None or getattr(self, '_proactive', None) is None:
+                return None
+            from prism_proactive_bus_watcher import ProactiveBusWatcher
+            watcher = ProactiveBusWatcher(
+                proactive = self._proactive,
+                organ_bus = self._organ_bus,
+            )
+            watcher.register()
+            logger.info("ProactiveBusWatcher registered")
+            return watcher
+        self._bus_watcher = safe_init(
+            "ProactiveBusWatcher", _build_bus_watcher, logger=logger)
 
         # PrismReflection — weekly meta-learning loop
         self._reflection = safe_init_class(
@@ -492,21 +483,24 @@ class PrismAgent:
             "ChainOrchestrator", _build_orchestrator, logger=logger)
 
         # Advanced proactive triggers — registered after all dependencies exist
-        if getattr(self, '_proactive', None) is not None:
-            try:
-                advanced = build_advanced_triggers(
-                    organ_loader = getattr(self, '_organ_loader', None),
-                    router       = self._router,
-                    calendar     = getattr(self, '_calendar', None),
-                    persona      = getattr(self, '_persona', None),
-                    horizon      = getattr(self, '_horizon', None),
-                    config       = self._config,
-                )
-                for t in advanced:
-                    self._proactive.register(t)
-                logger.info("Advanced proactive triggers registered: %d", len(advanced))
-            except Exception as e:
-                logger.warning("Advanced proactive triggers failed: %s", e)
+        def _register_advanced_triggers():
+            if getattr(self, '_proactive', None) is None:
+                return None
+            advanced = build_advanced_triggers(
+                organ_loader = getattr(self, '_organ_loader', None),
+                router       = self._router,
+                calendar     = getattr(self, '_calendar', None),
+                persona      = getattr(self, '_persona', None),
+                horizon      = getattr(self, '_horizon', None),
+                config       = self._config,
+            )
+            for t in advanced:
+                self._proactive.register(t)
+            logger.info("Advanced proactive triggers registered: %d", len(advanced))
+            return advanced
+        safe_init(
+            "Advanced proactive triggers",
+            _register_advanced_triggers, logger=logger)
 
         # Final pass: re-apply all back-patches in one explicit place so the
         # dependency graph is always consistent regardless of construction order.
