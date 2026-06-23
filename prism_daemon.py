@@ -718,11 +718,40 @@ def main():
             agent._soul = soul
             if hasattr(agent, '_chain'):
                 agent._chain._soul = soul
+            logger.info("Identity ceremony complete — PRISM personalised.")
 
     elif not getattr(getattr(agent, '_soul', None), 'has_seed', lambda: True)():
         logger.info(
-            "No soul seed found. Run `python3 prism_daemon.py --ceremony` to personalise PRISM."
+            "No soul seed found — PRISM will run with a default identity. "
+            "Run `python3 prism_daemon.py --ceremony` to personalise."
         )
+    else:
+        logger.info("Identity seed loaded — PRISM ready.")
+
+    # LLM reachability check — surface a clear message at startup so a fresh
+    # user without Ollama installed knows about the --setup-llm wizard
+    # instead of silently degrading to no-LLM mode.
+    try:
+        from prism_setup_llm import _test_ollama
+        _llm_cfg = getattr(agent, '_config', {}).get('llm', {}) or {}
+        _ollama_host = _llm_cfg.get('ollama_host', 'http://localhost:11434')
+        _has_api_key = bool(_llm_cfg.get('claude_api_key') or _llm_cfg.get('openai_api_key')
+                            or os.environ.get('ANTHROPIC_API_KEY')
+                            or os.environ.get('OPENAI_API_KEY'))
+        _ollama_ok, _models = _test_ollama(_ollama_host)
+        if _ollama_ok:
+            logger.info("LLM: Ollama reachable at %s (%d model(s))", _ollama_host, len(_models))
+        elif _has_api_key:
+            logger.info("LLM: Ollama unreachable; using configured API key fallback.")
+        else:
+            logger.warning(
+                "LLM: Ollama unreachable at %s and no Claude/OpenAI key configured. "
+                "Reasoning will degrade. Run `python3 prism_daemon.py --setup-llm` "
+                "for an interactive wizard.",
+                _ollama_host,
+            )
+    except Exception as _exc:
+        logger.debug("LLM reachability check skipped: %s", _exc)
 
     # Background workers
     workers = [

@@ -1,5 +1,6 @@
 # PRISM example configuration.
-# Copy to `prism_config.toml` (next to prism_agent.py) and edit. Everything is
+# Copy to `~/.prism/prism_config.toml` (preferred — survives reinstalls) or
+# `prism_config.toml` next to prism_agent.py, then edit. Everything is
 # optional — PRISM runs locally with no config, degrading gracefully when a
 # section is absent. Secrets can also be supplied via environment variables.
 

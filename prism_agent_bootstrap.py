@@ -5,10 +5,11 @@ Pure config-loading helpers extracted from ``PrismAgent.__init__``.
 
 Two functions:
 
-* :func:`load_toml_config` — reads ``prism_config.toml`` from the package
-  directory. Returns ``{}`` when no ``tomllib``/``tomli`` parser is
-  available, when the file is missing, or when the parse fails. Never
-  raises.
+* :func:`load_toml_config` — reads ``prism_config.toml``. Tries
+  ``~/.prism/prism_config.toml`` first (the documented user-config
+  location) and falls back to the path passed in. Returns ``{}`` when
+  no ``tomllib``/``tomli`` parser is available, when the file is
+  missing, or when the parse fails. Never raises.
 * :func:`build_llm_config` — merges the ``[llm]`` section over the
   default key set, honours an explicit ``claude_api_key`` argument, and
   falls back to ``ANTHROPIC_API_KEY`` / ``OPENAI_API_KEY`` environment
@@ -28,7 +29,12 @@ from typing import Any, Callable, Mapping, Optional
 
 
 def load_toml_config(path: Path) -> dict:
-    """Load a TOML config file. Returns ``{}`` on any failure."""
+    """Load a TOML config file. Returns ``{}`` on any failure.
+
+    Tries ``~/.prism/prism_config.toml`` first (the location documented
+    in QUICKSTART) and falls back to ``path``. This lets the user keep
+    config out of the source tree without breaking repo-local setups.
+    """
     try:
         import tomllib  # Python 3.11+
     except ImportError:
@@ -36,11 +42,14 @@ def load_toml_config(path: Path) -> dict:
             import tomli as tomllib  # type: ignore[no-redef]
         except ImportError:
             return {}
-    try:
-        with open(path, "rb") as fh:
-            return tomllib.load(fh)
-    except Exception:
-        return {}
+    user_path = Path.home() / ".prism" / "prism_config.toml"
+    for candidate in (user_path, path):
+        try:
+            with open(candidate, "rb") as fh:
+                return tomllib.load(fh)
+        except Exception:
+            continue
+    return {}
 
 
 def build_llm_config(
