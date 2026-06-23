@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import logging
-import os
 import re
 import time
 from pathlib import Path
 from typing import Any, Optional
 
 from domain_configs import ALL_DOMAINS, DomainDecisionModel
+from prism_agent_bootstrap import build_llm_config, load_toml_config
 from prism_autonomous import PrismAutonomous
 from prism_browser_agent import PrismBrowserAgent
 from prism_calendar import PrismCalendar
@@ -96,22 +96,7 @@ class PrismAgent:
         self._claude_key = claude_api_key
 
         # Load config early so all subsequent setup can use it
-        self._config = {}
-        self._user = "default"
-        try:
-            import tomllib  # Python 3.11+
-        except ImportError:
-            try:
-                import tomli as tomllib  # type: ignore[no-redef]
-            except ImportError:
-                tomllib = None  # type: ignore[assignment]
-        if tomllib:
-            _config_path = Path(__file__).parent / "prism_config.toml"
-            try:
-                with open(_config_path, "rb") as f:
-                    self._config = tomllib.load(f)
-            except Exception:
-                pass
+        self._config = load_toml_config(Path(__file__).parent / "prism_config.toml")
 
         # Overlay user-edited settings.db on top of TOML so the chat-driven
         # setup-form card can configure integrations without file edits.
@@ -125,28 +110,11 @@ class PrismAgent:
 
         self._user = self._config.get("user", {}).get("name", "default")
 
-        # Build LLMRouter from local prism_config.toml [llm] section.
-        # Populate all expected keys with defaults so the router config
-        # has a consistent shape even when no [llm] section is present.
-        _llm_cfg: dict[str, Any] = {
-            "preferred":      "",
-            "fallback":       [],
-            "ollama_host":    "http://localhost:11434",
-            "claude_api_key": "",
-            "openai_api_key": "",
-        }
-        _llm_cfg.update(self._config.get("llm", {}))
-        if self._claude_key:
-            _llm_cfg["claude_api_key"] = self._claude_key
-        # Env vars override config keys when those are empty
-        if not _llm_cfg.get("claude_api_key"):
-            _llm_cfg["claude_api_key"] = os.environ.get("ANTHROPIC_API_KEY", "")
-        if not _llm_cfg.get("openai_api_key"):
-            _llm_cfg["openai_api_key"] = os.environ.get("OPENAI_API_KEY", "")
+        _llm_cfg = build_llm_config(self._config, claude_api_key=self._claude_key)
         self._router = LLMRouter(
-            preferred   = _llm_cfg.get("preferred", ""),
-            fallback    = _llm_cfg.get("fallback", []),
-            ollama_host = _llm_cfg.get("ollama_host", "http://localhost:11434"),
+            preferred   = _llm_cfg["preferred"],
+            fallback    = _llm_cfg["fallback"],
+            ollama_host = _llm_cfg["ollama_host"],
             config      = _llm_cfg,
         )
 
@@ -349,15 +317,6 @@ class PrismAgent:
             autonomous    = self._autonomous,
             memory        = self._memory,
         )
-
-        # Re-construct email/calendar/smarthome with the real config now that
-        # prism_config.toml has been loaded.  The initial construction above
-        # used {} so these modules default to "unconfigured"; this pass wires
-        # any credentials the user has provided in prism_config.toml.
-        if self._config:
-            self._smarthome = PrismSmartHome.from_config(self._config)
-            self._email     = PrismEmail.from_config(self._config)
-            self._calendar  = PrismCalendar.from_config(self._config)
 
         # HorizonPlanner — cross-session long-horizon goal persistence
         self._horizon: Optional[Any] = None
