@@ -29,6 +29,7 @@ from prism_contacts import PrismContacts
 from prism_device_agent import PrismDeviceAgent
 from prism_email import PrismEmail
 from prism_goal_intents import handle_goal_intent
+from prism_identity_learning import build_identity_learning
 from prism_info_intents import handle_info_intent
 from prism_instructions import PrismInstructions
 from prism_intents import INTENTS as _ROUTING_INTENTS
@@ -315,68 +316,27 @@ class PrismAgent:
         self._organ_bus = safe_init(
             "OrganBus", _build_organ_bus, logger=logger)
 
-        # PrismSoul — living identity document
-        def _build_soul():
-            from prism_soul import PrismSoul
-            soul = PrismSoul(llm_router=self._router)
-            if self._organ_bus is not None:
-                soul.register_with_bus(self._organ_bus)
-            if hasattr(self, '_chain'):
-                self._chain._soul = soul
-            if not soul.has_seed():
-                logger.info("PrismSoul: no soul seed found — run identity ceremony to personalise")
-            else:
-                logger.info("PrismSoul: loaded (%d beliefs, %d lenses)",
-                            len(soul.list_beliefs()),
-                            len(soul.list_lenses()))
-            return soul
-        self._soul: Optional[Any] = safe_init(
-            "PrismSoul", _build_soul, logger=logger)
-
-        # Living user model — persona, crystalliser, narrative
-        def _build_living_model():
-            from prism_crystalliser import PrismCrystalliser
-            from prism_narrative import PrismNarrative
-            from prism_persona import PrismPersona
-            persona = PrismPersona()
-            crystalliser = PrismCrystalliser(
-                persona=persona,
-                memory=getattr(self, '_memory', None),
-                outcome_tracker=getattr(self, '_outcome_tracker', None),
-                calibration=getattr(self, '_calibration', None),
-                llm_router=self._router,
-                ml_assembler=getattr(self, '_ml_assembler', None),
-            )
-            narrative = PrismNarrative(
-                persona=persona,
-                memory=getattr(self, '_memory', None),
-                outcome_tracker=getattr(self, '_outcome_tracker', None),
-                calibration=getattr(self, '_calibration', None),
-                soul=getattr(self, '_soul', None),
-                llm_router=self._router,
-            )
-            logger.info("Living user model ready (persona, crystalliser, narrative)")
-            return persona, crystalliser, narrative
-        _living = safe_init("Living user model", _build_living_model, logger=logger)
-        self._persona: Any
-        self._crystalliser: Any
-        self._narrative: Any
-        self._persona, self._crystalliser, self._narrative = (
-            _living if _living else (None, None, None))
-
-        # OutcomeTracker — closes the learning loop
-        def _build_outcome_tracker():
-            from prism_outcome_tracker import OutcomeTracker
-            tracker = OutcomeTracker(
-                soul    = getattr(self, '_soul', None),
-                horizon = getattr(self, '_horizon', None),
-            )
-            if hasattr(self, '_chain'):
-                self._chain._outcome_tracker = tracker
-            logger.info("OutcomeTracker ready")
-            return tracker
-        self._outcome_tracker: Optional[Any] = safe_init(
-            "OutcomeTracker", _build_outcome_tracker, logger=logger)
+        # Identity & learning cluster — soul, outcome_tracker, persona,
+        # crystalliser, narrative, reflection. Ordering inside the factory
+        # builds outcome_tracker before the persona block so crystalliser
+        # receives a real tracker at construction (the old order back-patched
+        # it later via _wire_backpatches).
+        _id_learn = build_identity_learning(
+            router       = self._router,
+            organ_bus    = self._organ_bus,
+            chain        = getattr(self, '_chain', None),
+            horizon      = getattr(self, '_horizon', None),
+            memory       = self._memory,
+            calibration  = self._calibration,
+            ml_assembler = getattr(self, '_ml_assembler', None),
+            logger       = logger,
+        )
+        self._soul:            Optional[Any] = _id_learn.soul
+        self._outcome_tracker: Optional[Any] = _id_learn.outcome_tracker
+        self._persona:         Any           = _id_learn.persona
+        self._crystalliser:    Any           = _id_learn.crystalliser
+        self._narrative:       Any           = _id_learn.narrative
+        self._reflection                     = _id_learn.reflection
 
         # PlanTelemetry — per-step status for DailyPlans, feeds re-plan signal
         self._last_plan_id: Optional[str] = None
@@ -384,10 +344,9 @@ class PrismAgent:
             "PlanTelemetry", "prism_plan_telemetry", "get_plan_telemetry",
             logger=logger, info_on_success="PlanTelemetry ready")
 
-        # Wire living model dependencies now that outcome_tracker exists.
-        # All cross-component back-patches are consolidated in _wire_backpatches()
-        # and called again at the end of __init__ to ensure nothing is missed even
-        # if construction order changes.
+        # Apply cross-cluster back-patches (chain ↔ outcome_tracker, kinetic,
+        # ml_assembler). _wire_backpatches is idempotent and called again at
+        # the end of __init__ to catch the orchestrator wiring.
         self._wire_backpatches()
 
         # ContextManager — work/personal/focus context switching
@@ -415,18 +374,6 @@ class PrismAgent:
             return watcher
         self._bus_watcher = safe_init(
             "ProactiveBusWatcher", _build_bus_watcher, logger=logger)
-
-        # PrismReflection — weekly meta-learning loop
-        self._reflection = safe_init_class(
-            "PrismReflection", "prism_reflection", "PrismReflection",
-            outcome_tracker = getattr(self, '_outcome_tracker', None),
-            soul            = getattr(self, '_soul', None),
-            horizon         = getattr(self, '_horizon', None),
-            llm_router      = self._router,
-            auto_apply      = False,
-            logger          = logger,
-            info_on_success = "PrismReflection ready",
-        )
 
         # Budget — CEO-style governance over LLM spend.
         # PRISM (the manager) checks itself before spending the user's money.
