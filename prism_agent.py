@@ -22,6 +22,7 @@ from prism_chat_context import (
     setup_required_short_circuit,
 )
 from prism_chat_graph_bridge import mirror_turn_to_graph, recall_from_graph
+from prism_chat_tiers import TierDispatcher
 from prism_composer import PrismComposer
 from prism_contacts import PrismContacts
 from prism_device_agent import PrismDeviceAgent
@@ -803,89 +804,18 @@ class PrismAgent:
 
             attach_persona(context, getattr(self, '_persona', None))
 
-            # 8. Route intent and execute
-            # Tier 0:   orchestrator    — conditional / multi-domain / cross-session
-            # Tier 0.5: expert chain    — research / evaluation-heavy
-            # Tier 1:   general chain   — adaptive multi-step
-            # Tier 2:   static composer — known multi-step, predictable
-            # Tier 3:   single intent   — direct
-            msg_ln = len((message or "").split())
-            msg_lw = (message or "").lower()
+            # 8. Pre-tier short-circuit + tiered routing
+            initial_card = setup_required_short_circuit(
+                message or "", self._calendar, self._email)
+            card = self._tier_dispatcher().dispatch(
+                message or "", context, initial_card=initial_card)
 
-            # Pre-tier short-circuit: setup card when the user asks about an
-            # unconfigured service (calendar / email).
-            card = setup_required_short_circuit(message or "", self._calendar, self._email)
-
-            def _bad_card(c) -> bool:
-                """True when a chain/orchestrator returned a raw dict or planner noise."""
-                if c is None:
-                    return False
-                b = getattr(c, 'body', '') or ''
-                return b.startswith('{') or 'replanned' in b or b.startswith('[{')
-
-            # Tier 0: orchestrator
-            orch = getattr(self, '_orchestrator', None)
-            if card is None and orch and message and orch.should_orchestrate(message):
-                try:
-                    card = orch.orchestrate(message, self._execute, context)
-                    if _bad_card(card):
-                        card = None
-                except Exception as e:
-                    logger.debug("Orchestrator failed: %s", e)
-                    card = None
-
-            # Tier 0: expert chain — for research/evaluation-heavy requests
-            EXPERT_SIGNALS = [
-                "research", "analyse", "analyze", "figure out",
-                "decide", "best way", "should i", "compare",
-                "comprehensive", "investigate", "evaluate",
-            ]
-            use_expert = (card is None and message and msg_ln > 5
-                          and any(s in msg_lw for s in EXPERT_SIGNALS))
-
-            if use_expert:
-                try:
-                    card = self._chain_expert.run(
-                        message, self._execute, context)
-                    if _bad_card(card):
-                        card = None
-                except Exception as e:
-                    logger.debug("Expert chain failed: %s", e)
-                    card = None
-
-            # Tier 1: general chain — adaptive multi-step
-            if card is None and message and msg_ln > 5 and self._chain.should_chain(message):
-                try:
-                    card = self._chain.run(message, self._execute, context)
-                    if _bad_card(card):
-                        card = None
-                except Exception as e:
-                    logger.debug("Chain failed: %s", e)
-                    card = None
-
-            # Tier 2: static composition
-            if card is None and message and msg_ln > 6 and self._composer.should_compose(message):
-                try:
-                    plan = self._composer.decompose(message)
-                    if plan:
-                        card = self._composer.execute(plan, self._execute, context)
-                    if _bad_card(card):
-                        card = None
-                except Exception as e:
-                    logger.debug("Composer failed: %s", e)
-                    card = None
-
-            # Tier 3: single intent
-            if card is None:
-                intent = self._route(message or "")
-                card   = self._execute(intent, message or "", context)
-
-            # 8. Store response in history (skip for never-log intents)
+            # 9. Store response in history (skip for never-log intents)
             if hasattr(card, 'body') and card.body and not suppress_log:
                 self._chat_history.append(
                     {"role": "assistant", "content": card.body[:500]})
 
-            # 9. Memory ingestion for response
+            # 10. Memory ingestion for response
             if self._memory and card.body and not suppress_log:
                 try:
                     _aid = self._memory.ingest_conversation("assistant", card.body)
@@ -963,6 +893,20 @@ class PrismAgent:
             return loader.known_intents()
         except Exception:
             return {}
+
+    def _tier_dispatcher(self) -> TierDispatcher:
+        dispatcher = getattr(self, "_tier_dispatcher_cache", None)
+        if dispatcher is None:
+            dispatcher = TierDispatcher(
+                orchestrator=getattr(self, "_orchestrator", None),
+                chain_expert=self._chain_expert,
+                chain=self._chain,
+                composer=self._composer,
+                execute=self._execute,
+                route=self._route,
+            )
+            self._tier_dispatcher_cache = dispatcher
+        return dispatcher
 
     def _execute(self, intent: str, message: str, ctx: dict) -> PrismCard:
         info_card = handle_info_intent(self, intent, message, ctx)
