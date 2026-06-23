@@ -15,6 +15,12 @@ from prism_calibration import PrismCalibration
 from prism_chain import PrismChain
 from prism_chain_expert import PrismChainExpert
 from prism_chain_theory import InterceptorPolicy
+from prism_chat_context import (
+    attach_memory_recall,
+    attach_perception,
+    attach_persona,
+    setup_required_short_circuit,
+)
 from prism_chat_graph_bridge import mirror_turn_to_graph, recall_from_graph
 from prism_composer import PrismComposer
 from prism_contacts import PrismContacts
@@ -41,7 +47,6 @@ from prism_responses import (
     plan_card,
     prediction_card,
     risk_card,
-    setup_required_card,
     squad_card,
     text_card,
 )
@@ -776,41 +781,27 @@ class PrismAgent:
                     self._chat_history = self._chat_history[-20:]
 
             # 5. Perception context
-            if self._perception:
-                percept_state = self._perception.current_context()
-                context["perception"] = percept_state.to_factor_updates()
-                context["perception_summary"] = percept_state.summary
+            attach_perception(context, self._perception)
 
-            # 6. Memory context
+            # 6. Memory context — flat first, then graph recall, then mirror this turn
             if self._memory and message:
-                try:
-                    mem_results = self._memory.search(message, top_n=3)
-                    if mem_results:
-                        context["memory_context"] = [
-                            {"title": r.entry.title, "excerpt": r.excerpt,
-                             "source": r.entry.source, "score": round(r.score, 3)}
-                            for r in mem_results
-                        ]
-                    # Also recall from the durable conversation graph (run before
-                    # this turn is mirrored, so it surfaces *past* turns, not the
-                    # current one). Flat semantic results stay primary.
-                    self._graph_recall(message, context)
-                    if not suppress_log:
+                attach_memory_recall(context, self._memory, message)
+                # Recall from the durable conversation graph BEFORE mirroring
+                # this turn, so it surfaces *past* turns, not the current one.
+                self._graph_recall(message, context)
+                if not suppress_log:
+                    try:
                         _uid = self._memory.ingest_conversation("user", message)
                         self._mirror_turn_to_graph("user", message, _uid)
-                except Exception:
-                    pass
+                    except Exception:
+                        pass
 
             # 7. Inject active context into the request context dict
             if getattr(self, '_context_manager', None) is not None:
                 self._context_manager.inject_into_chain_ctx(context)
                 self._context_manager.inject_into_chain(self._chain)
 
-            # Persona context for chain injection
-            context["persona_context"] = (
-                self._persona.build_context()
-                if getattr(self, '_persona', None) is not None else ""
-            )
+            attach_persona(context, getattr(self, '_persona', None))
 
             # 8. Route intent and execute
             # Tier 0:   orchestrator    — conditional / multi-domain / cross-session
@@ -818,74 +809,12 @@ class PrismAgent:
             # Tier 1:   general chain   — adaptive multi-step
             # Tier 2:   static composer — known multi-step, predictable
             # Tier 3:   single intent   — direct
-            card   = None
             msg_ln = len((message or "").split())
             msg_lw = (message or "").lower()
 
-            # Pre-tier short-circuit: if the user is clearly asking about a
-            # service whose [section] in prism_config.toml is empty, return
-            # the actionable setup card now. Skips four tiers of planning
-            # that would otherwise either fail at runtime or have the LLM
-            # apologise for missing access. Triggered only for unambiguous
-            # service references; anything else falls through normally.
-            if msg_lw and not getattr(self._calendar, "configured", False) and any(
-                k in msg_lw for k in (
-                    "my calendar", "my schedule", "my agenda",
-                    "calendar today", "calendar tomorrow",
-                    "schedule today", "agenda today",
-                    "my meetings", "my appointments", "my events today",
-                )):
-                card = setup_required_card(
-                    service        = "Calendar",
-                    why            = (
-                        "PRISM can't fetch events or schedule anything until you connect "
-                        "a calendar. iCal URL is the simplest provider."
-                    ),
-                    config_section = "calendar",
-                    snippet        = (
-                        'provider = "ical_url"          # or "google" or "caldav"\n'
-                        'ical_url = "webcal://..."      # paste your private iCal feed URL\n'
-                        '# google_token = ""            # OAuth2 token  (provider="google")\n'
-                        '# caldav_url   = ""            # CalDAV server (provider="caldav")'
-                    ),
-                    steps = [
-                        "Google Calendar → Settings → 'Integrate calendar' → copy the Secret iCal address",
-                        "Paste that URL above as ical_url",
-                        "Restart PRISM: pkill -f prism_daemon && python3 -m prism_daemon &",
-                        "Ask 'what is on my calendar today?' again",
-                    ],
-                    docs_url = "https://support.google.com/calendar/answer/37648",
-                )
-            if card is None and msg_lw and not getattr(self._email, "configured", False) and any(
-                k in msg_lw for k in (
-                    "my email", "my emails", "my inbox", "my mailbox",
-                    "check my mail", "check my inbox",
-                    "any new emails", "unread emails",
-                )):
-                card = setup_required_card(
-                    service        = "Email",
-                    why            = (
-                        "PRISM needs IMAP credentials to read or send mail. For Gmail use "
-                        "an App Password (NOT your normal password) — 2FA must already be on."
-                    ),
-                    config_section = "email",
-                    snippet        = (
-                        'provider  = "gmail"\n'
-                        'address   = "you@gmail.com"\n'
-                        'imap_host = "imap.gmail.com"\n'
-                        'imap_port = 993\n'
-                        'password  = "xxxx xxxx xxxx xxxx"   # 16-char App Password\n'
-                        'max_fetch = 20'
-                    ),
-                    steps = [
-                        "Open https://myaccount.google.com/apppasswords",
-                        "Generate an App Password labeled 'PRISM' and copy the 16-char code",
-                        "Paste it above as password",
-                        "Restart PRISM: pkill -f prism_daemon && python3 -m prism_daemon &",
-                        "Ask 'check my emails' again",
-                    ],
-                    docs_url = "https://support.google.com/accounts/answer/185833",
-                )
+            # Pre-tier short-circuit: setup card when the user asks about an
+            # unconfigured service (calendar / email).
+            card = setup_required_short_circuit(message or "", self._calendar, self._email)
 
             def _bad_card(c) -> bool:
                 """True when a chain/orchestrator returned a raw dict or planner noise."""
