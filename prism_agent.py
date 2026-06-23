@@ -301,6 +301,8 @@ class PrismAgent:
             return guard, BudManager(constitution_guard=guard)
         _const_bud = safe_init(
             "Constitution/BudManager", _build_constitution_bud, logger=logger)
+        self._constitution: Optional[Any]
+        self._bud_mgr: Optional[Any]
         self._constitution, self._bud_mgr = _const_bud if _const_bud else (None, None)
         self._chain_expert = PrismChainExpert(
             llm_router    = self._router,
@@ -333,13 +335,14 @@ class PrismAgent:
             self._horizon._chain = self._chain
 
         # OrganBus — LLM-mediated inter-engine communication bus
+        self._organ_bus: Optional[Any] = None
         def _build_organ_bus():
             from prism_organ_bus import OrganBus
             bus = OrganBus(llm_router=self._router)
             self._organ_bus = bus
             self._register_organ_subscriptions()
             return bus
-        self._organ_bus: Optional[Any] = safe_init(
+        self._organ_bus = safe_init(
             "OrganBus", _build_organ_bus, logger=logger)
 
         # PrismSoul — living identity document
