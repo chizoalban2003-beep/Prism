@@ -13,13 +13,9 @@ from prism_agent_bootstrap import (
     safe_init,
     safe_init_class,
 )
-from prism_autonomous import PrismAutonomous
 from prism_browser_agent import PrismBrowserAgent
 from prism_calendar import PrismCalendar
 from prism_calibration import PrismCalibration
-from prism_chain import PrismChain
-from prism_chain_expert import PrismChainExpert
-from prism_chain_theory import InterceptorPolicy
 from prism_chat_context import (
     attach_memory_recall,
     attach_perception,
@@ -27,8 +23,8 @@ from prism_chat_context import (
     setup_required_short_circuit,
 )
 from prism_chat_graph_bridge import mirror_turn_to_graph, recall_from_graph
+from prism_chat_subsystems import build_chat_subsystems
 from prism_chat_tiers import TierDispatcher
-from prism_composer import PrismComposer
 from prism_contacts import PrismContacts
 from prism_device_agent import PrismDeviceAgent
 from prism_email import PrismEmail
@@ -39,7 +35,6 @@ from prism_intents import INTENTS as _ROUTING_INTENTS
 from prism_llm_router import LLMRouter
 from prism_memory import PrismMemory
 from prism_organ_dispatch import dispatch_organ
-from prism_organ_loader import OrganLoader
 from prism_pa_intents import handle_pa_intent
 from prism_perception import PrismPerception
 from prism_planner import PrismPlanner
@@ -245,31 +240,19 @@ class PrismAgent:
         self._task_mgr     = PrismTasks.from_config(self._config)
         self._calibration  = PrismCalibration()
         self._last_decision: dict = {}
-        self._autonomous = PrismAutonomous(
-            llm_router   = self._router,
-            device_agent = self._device,
-            policy_engine= self._policy,
+        _chat_subs = build_chat_subsystems(
+            router       = self._router,
+            policy       = self._policy,
             push         = self._push,
             task_queue   = self._queue,
+            device_agent = self._device,
+            memory       = self._memory,
         )
-        self._composer = PrismComposer(
-            llm_router    = self._router,
-            policy_engine = self._policy,
-            push          = self._push,
-            task_queue    = self._queue,
-        )
-        self._chain = PrismChain(
-            llm_router         = self._router,
-            policy_engine      = self._policy,
-            push               = self._push,
-            autonomous         = self._autonomous,
-            memory             = self._memory,
-            interceptor_policy = InterceptorPolicy(),
-            # soul omitted — PrismSoul is built ~70 lines later and
-            # back-patched via _wire_backpatches(); passing it here is a no-op.
-        )
-        self._organ_loader = OrganLoader(llm_router=self._router)
-        self._chain._organ_loader = self._organ_loader
+        self._autonomous   = _chat_subs.autonomous
+        self._composer     = _chat_subs.composer
+        self._chain        = _chat_subs.chain
+        self._organ_loader = _chat_subs.organ_loader
+        self._chain_expert = _chat_subs.chain_expert
 
         # MCP (Model Context Protocol) client — connect to any configured
         # external MCP servers and expose their tools as organs. Disabled
@@ -299,13 +282,6 @@ class PrismAgent:
         self._constitution: Optional[Any]
         self._bud_mgr: Optional[Any]
         self._constitution, self._bud_mgr = _const_bud if _const_bud else (None, None)
-        self._chain_expert = PrismChainExpert(
-            llm_router    = self._router,
-            policy_engine = self._policy,
-            push          = self._push,
-            autonomous    = self._autonomous,
-            memory        = self._memory,
-        )
 
         # HorizonPlanner — cross-session long-horizon goal persistence
         def _build_horizon():
