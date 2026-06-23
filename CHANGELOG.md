@@ -8,6 +8,28 @@ version bumps.
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-06-24
+
+Packaging hotfix. v0.2.0's wheel was missing 25 root-level modules from
+`pyproject.toml`'s `py-modules` list — including ones the daemon imports
+at boot (`prism_agent_bootstrap`, `prism_mesh`, `prism_mcp`,
+`prism_identity_learning`, `prism_perception_cluster`,
+`prism_chat_subsystems`, `prism_routes_mesh`, `prism_routes_mcp`) and the
+brand-new `prism_agent_registry` / `prism_routes_agents` that v0.2.0
+shipped. Editable installs and run-from-clone setups were unaffected, but
+`pip install prism-platform @ git+…@v0.2.0 && prism` died with
+`ModuleNotFoundError: prism_agent_bootstrap`. CI never caught it because
+the test suite runs against the working tree, not the built wheel.
+
+### Fixed
+- All 25 missing modules added to `py-modules` in `pyproject.toml`.
+  Pure-pip installs of the daemon now boot.
+
+### Added
+- `tests/test_packaging.py` — static guard that diffs `*.py` in the repo
+  root against `py-modules` and fails the suite if any root-level module
+  isn't packaged. Catches this exact regression class going forward.
+
 ## [0.2.0] — 2026-06-23
 
 A substantial minor release. PRISM grew an MCP client, a capability-aware
@@ -351,7 +373,8 @@ actual decisions.
 - `prism_device_agent.open_app` / `install_package` validate input
   against a strict shape and reject path-traversal / scheme tricks.
 
-[Unreleased]: https://github.com/chizoalban2003-beep/Prism/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/chizoalban2003-beep/Prism/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/chizoalban2003-beep/Prism/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/chizoalban2003-beep/Prism/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/chizoalban2003-beep/Prism/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/chizoalban2003-beep/Prism/compare/v0.1.1...v0.1.2

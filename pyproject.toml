@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "prism-platform"
-version = "0.2.0"
+version = "0.2.1"
 description = "Local personal AI assistant — decides, plans, executes"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -193,6 +193,31 @@ py-modules = [
     "prism_routes_sessions",
     "prism_session_manager",
     "prism_tray",
+    "prism_agent_bootstrap",
+    "prism_agent_registry",
+    "prism_budget",
+    "prism_chat_context",
+    "prism_chat_graph_bridge",
+    "prism_chat_subsystems",
+    "prism_chat_tiers",
+    "prism_goal_intents",
+    "prism_identity_learning",
+    "prism_info_intents",
+    "prism_intents",
+    "prism_mcp",
+    "prism_mesh",
+    "prism_organ_dispatch",
+    "prism_organ_pack",
+    "prism_organ_planner",
+    "prism_pa_intents",
+    "prism_perception_cluster",
+    "prism_plan_telemetry",
+    "prism_routes_agents",
+    "prism_routes_mcp",
+    "prism_routes_mesh",
+    "prism_routing",
+    "prism_settings_store",
+    "prism_unknown_handler",
 ]
 
 [tool.pytest.ini_options]
