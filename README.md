@@ -113,7 +113,7 @@ PRISM's execution model is a Nucleus-Organ topology with three-layer security:
 └───────────────────────────┬─────────────────────────────────────┘
                             │ hot-swappable at runtime
               ┌─────────────▼─────────────────────────────┐
-              │  ORGAN LAYER  (35 bundled + user/LLM)     │
+              │  ORGAN LAYER  (37 bundled + user/LLM)     │
               │  Each organ declares capabilities manifest │
               │  internet_read/write · filesystem_r/w      │
               │  subprocess · telephony · system_ui        │
@@ -205,7 +205,7 @@ User input (chat / voice / CLI / REST API)
     │  AdaptiveFulcrum.observe() ← online learn     │
     └────────────────────────────────────────────────┘
 
-Organ Layer — 35 bundled organs, extensible at runtime:
+Organ Layer — 37 bundled organs, extensible at runtime:
   ┌──────────────────────────────────────────────────────────────┐
   │  OrganLoader (prism_organ_loader.py)                         │
   │  Discovers organs from ./organs/ (bundled) and              │
@@ -253,7 +253,7 @@ PRISM's REST API runs on **FastAPI + uvicorn** (ASGI) — not the Python stdlib 
 - **True concurrent requests** — uvicorn's event loop handles all connections simultaneously; no thread-per-connection serialisation
 - **Real token streaming** — `/stream/chat` SSE yields tokens as they arrive; `/ws/chat` WebSocket provides bidirectional multi-turn chat over a persistent connection
 - **Non-blocking LLM I/O** — `prism_llm_router.py` exposes `async_call()` and `async_call_stream()` using httpx, with automatic fallback to `asyncio.to_thread(call())` when httpx is absent
-- **193+ routes + 1 WebSocket across 21 FastAPI router modules** — `prism_routes_predict`, `prism_routes_analytics`, `prism_routes_agent`, `prism_routes_chain`, `prism_routes_core`, `prism_routes_horizon`, `prism_routes_infra`, `prism_routes_integrations`, `prism_routes_media`, `prism_routes_sensors`, `prism_routes_ui`, `prism_routes_mobile`, `prism_routes_users`, `prism_routes_federation`, `prism_routes_identity`, `prism_routes_perception`, `prism_routes_causality`, `prism_routes_sessions`, `prism_routes_kinetic`, `prism_routes_ml`
+- **213 routes + 1 WebSocket across 23 FastAPI router modules** — `prism_routes_predict`, `prism_routes_analytics`, `prism_routes_agent`, `prism_routes_chain`, `prism_routes_core`, `prism_routes_horizon`, `prism_routes_infra`, `prism_routes_integrations`, `prism_routes_media`, `prism_routes_sensors`, `prism_routes_ui`, `prism_routes_mobile`, `prism_routes_users`, `prism_routes_federation`, `prism_routes_identity`, `prism_routes_perception`, `prism_routes_causality`, `prism_routes_sessions`, `prism_routes_kinetic`, `prism_routes_ml`, `prism_routes_ide`, `prism_routes_mcp`, `prism_routes_mesh`
 - **CORS** — all origins allowed at the ASGI middleware layer (appropriate for 127.0.0.1-only binding)
 
 ```
@@ -407,6 +407,89 @@ GET `/metrics?window_s=300` returns the full JSON report. A canary run is schedu
 | Φ_melt crystallization engine | `prism_phase.py` (`CrystallizationEngine`) | Working — hardware telemetry + soul contradiction rate → Φ scalar → CRYSTAL/STABLE/VISCOUS/LIQUID phases; VEAX deltas and model hints per phase |
 | Phase-aware LLM routing | `prism_llm_router.py` | Working — LIQUID phase prefers cloud/fastest provider; CRYSTAL prefers local; backward-compatible try/except guard |
 | Phase feedback loop | `prism_shadow_pipeline.py` | Working — after each commit cycle, Φ_melt computed; if should_melt() → VEAX deltas applied; closes hardware-pressure→VEAX loop |
+
+---
+
+## New since v0.1.3
+
+Major capability landings on the `[Unreleased]` track since the v0.1.3 patch. All ship behind the same L1→L2→L3 governance model as the rest of PRISM.
+
+### CEO/manager governance — surfaces the user actually touches
+
+PRISM is now organised around five surfaces the user interacts with — **permissions, instructions, policy, budget, and plug-ins** — with the manager (PRISM) doing the operational work. Bridges landed across 2026-06-18 → 2026-06-19 to align the codebase with this model:
+
+- **Budget primitive** (`prism_budget.py`) — daily / monthly USD ceilings on LLM spend; soft warning bands; free-provider bypass; routable via the `budget_status` intent and the `[budget]` config section.
+- **Persona policy export** — what the manager learned about the user is now inspectable as policy (not opaque embeddings).
+- **Capability scope on federation** — `PRISM_FEDERATION_REQUIRE_AUTH=1` defaults to strict; peers can no longer sync any belief by default.
+- **Frontend_mutate capability gate** — `PrismCard.body` is rendered unescaped, so a new capability is detected via HTML/JS signal scan, listed as critical, and is in `never_synthesize_capabilities`.
+
+### Model Context Protocol (MCP) client
+
+PRISM is now an MCP client: it speaks both **stdio** and **Streamable HTTP** transport. Configured MCP servers expose their tools, resources, and prompts through the same chat surface as native organs.
+
+- `prism_mcp.py` — `MCPManager` orchestrates handshake, caches `tools/list`, dispatches `tools/call`; supports both transports
+- `prism_routes_mcp.py` — `GET /mcp/status`, `GET /mcp/servers`, `GET /mcp/tools`, `POST /mcp/connect`, `POST /mcp/call`
+- MCP tools are routable directly from chat: `mcp_arguments` pass through the L1/L2/L3 gate exactly like a native organ
+- Resources + prompts supported, not just tools
+
+### Portable Organ Packs
+
+Organs are no longer file-system-only. `prism_organ_pack.py` exports bundles of organs as **hash-verified JSON** for sharing between PRISM instances; imports run the same AST safety validation as on-the-fly synthesis before persistence.
+
+### Auto-pick organs + composition planner
+
+- **Auto-pick** — `_llm_classify` injects `loader.known_intents()` so a freshly synthesised organ is callable next turn; the LLM picks from the live loader, not a frozen list.
+- **DAG composition planner** (`prism_organ_planner.py`) — reads `ORGAN_META.inputs/outputs` and `composable_with()` to wire chains automatically. Foundation for PowerBI-style arrows between organs/buds.
+- **Typed I/O schemas** — `ORGAN_META.inputs/outputs` (optional, backward-compatible) declared by every shipped organ.
+
+### Capability-aware device mesh (M12a)
+
+`prism_mesh.py` adds `score_peer_for_task` + `find_capable_peer`. The `mesh_orchestrate` organ auto-routes when no peer is named and a unique peer matches the task's capability hints (browser, ffmpeg, git, image, compress, package_manager…). Ties surface a "pick a peer" prompt instead of guessing. Forwards enforce `MAX_HOPS=2` via a `_hop` counter so chained A→B→C loops self-terminate.
+
+### Denial → standing rule → LoRA training loop (M12b/c)
+
+User denials no longer just gate the runtime — they now train the model:
+
+- **Standing-rule extraction** — `PrismInstructions.classify_denial` detects "never / always / from now on / whenever" markers on the approval-card reason. `PrismAgent.record_denial` dual-writes the task-scoped retry guard **and** a broad-trigger standing rule keyed by `TRIGGER_MAP` category.
+- **DPO pair ingestion** — `PrismLoraTrainer._collect_dpo_pairs` reads both `OutcomeRecord.correction` and the PrismInstructions DB. Standing rules, task-scoped denials, and `always` rules each get a tailored prompt/chosen/rejected shape so a user's "no" actively trains the LoRA.
+
+### Plan execution telemetry (M12d)
+
+`prism_plan_telemetry.py` persists every `DailyPlan` (request, primary focus, rationale, step list) to `~/.prism/plan_telemetry.db` with per-step status and outcome-record cross-links. `PrismAgent.replan` reads the previous plan's telemetry summary, prepends it to the KDE prompt, and marks the prior plan as superseded.
+
+- `GET /plan/latest`, `GET /plan/{plan_id}`, `POST /plan/{plan_id}/step/{step_index}`
+
+### Memory durability bridge
+
+Conversation memory is now written through the WAL graph (`prism_chat_graph_bridge.py`) — every chat turn becomes a graph node with `answered_by` edges, so recall is durable across crashes via the same WAL replay path used by the rest of the memory system.
+
+### Security hardening
+
+- Federation auth defaults to **strict** (fail-safe) — was opt-in
+- **Synthesis quarantine** — newly synthesised organs land in a quarantine area until policy approves
+- **Federation peer pinning** + KSAgent daemon wiring
+- **Forbidden intent-name patterns blocked at synthesis** — `system_*`, `agent_*`, internal sentinels can't be claimed by an LLM-generated organ
+- **Constitution `never_log` privacy** — categories of intents enforced as never-logged at the routing layer
+- **Home Assistant token via env var** — no longer requires plaintext in `prism_config.toml`
+- **BudManager ctx tightened** to least privilege
+
+### Chat-path & bootstrap refactoring
+
+Internal cleanup, no user-facing API change — but worth knowing the file map if you're reading code. `PrismAgent` is significantly smaller; its initialisation and chat-path branches are now in dedicated factories:
+
+| New module | Was inside `prism_agent.py` |
+|---|---|
+| `prism_agent_bootstrap.py` | Config loading + `safe_init` wrapper |
+| `prism_identity_learning.py` | Identity + learning cluster construction |
+| `prism_perception_cluster.py` | Perception/proactive/kinetic construction |
+| `prism_chat_subsystems.py` | Chain/composer/loader/expert factory |
+| `prism_chat_context.py` | Chat-prelude helpers |
+| `prism_chat_graph_bridge.py` | WAL graph bridge for chat |
+| `prism_chat_tiers.py` | Tier 0–3 routing dispatcher |
+| `prism_routing.py` | Intent routing helpers |
+| `prism_unknown_handler.py` | Managerial-PA synthesis fallback |
+| `prism_organ_dispatch.py` | L1→L2→L3 organ execution gate |
+| `prism_goal_intents.py` / `prism_pa_intents.py` / `prism_info_intents.py` | Intent handler groupings |
 
 ---
 
@@ -1221,7 +1304,7 @@ PRISM's organ system is the execution backbone of the personal assistant layer. 
 
 To have PRISM synthesise a new organ: say **"build me an organ that does X"** or **"I need a tool that fetches my Strava runs"**. The LLM generates a complete organ file, the AST safety visitor validates it, and it persists to `~/.prism/organs/` for reuse in all future sessions.
 
-### All 35 bundled organs
+### All 37 bundled organs
 
 | Intent | Module | Risk | Approval | Description |
 |---|---|---|---|---|
@@ -1260,6 +1343,8 @@ To have PRISM synthesise a new organ: say **"build me an organ that does X"** or
 | `policy_update` | `organs/policy_update.py` | low | no | Update a live organ's policy at runtime |
 | `canary_check` | `organs/canary_check.py` | low | no | Synthetic pipeline health probe — measures write→WAL→commit latency and ρ |
 | `veax_control` | `organs/veax_control.py` | low | no | Read or update the VEAX spectrum vector (show/preset/NL tuning) |
+| `mesh_register` | `organs/mesh_register.py` | medium | yes | Register a peer PRISM device for capability-aware mesh routing |
+| `mesh_orchestrate` | `organs/mesh_orchestrate.py` | high | yes | Forward a task to a peer device — auto-routes by capability when no peer named (`MAX_HOPS=2`) |
 
 ### ORGAN_META — capability manifest
 
@@ -1375,14 +1460,15 @@ PRISM/
 │   ├── ksa_jarvis.py           Jarvis — artifact memory + learning
 │   ├── ksa_router.py           MasterFulcrum intent router
 │   ├── ksa_fixes.py            LiveWeightInjector, GroundTruthOptimizer
+│   ├── ksa_optimizer.py        Iterative fulcrum tuning + adaptive thresholds
 │   ├── ksa_cli.py              CLI entry point
 │   └── ksa_config.py           Config loader
 │
 ├── KDE platform
 │   ├── kde_agent.py            KDEAgent — unified sports + domain agent
-│   ├── prism_asgi.py           FastAPI/ASGI server — 132 async routes on :8742
+│   ├── prism_asgi.py           FastAPI/ASGI server — 213 async routes + 1 WebSocket on :8742
 │   ├── prism_state.py          Shared dependency-injection state for ASGI routes
-│   ├── prism_routes_*.py       18 FastAPI router modules (predict/agent/chain/users/federation/identity/perception/causality/…)
+│   ├── prism_routes_*.py       23 FastAPI router modules (predict/analytics/agent/chain/core/horizon/infra/integrations/media/sensors/ui/mobile/users/federation/identity/perception/causality/sessions/kinetic/ml/ide/mcp/mesh)
 │   ├── prism_multi_user.py     Multi-user registry + household bus
 │   ├── prism_mobile_sync.py    Mobile client sync + HMAC token auth + health data ingestion
 │   ├── prism_federation.py     Federated mesh — peer discovery, Lamport clock, state merge
@@ -1417,7 +1503,7 @@ PRISM/
 │   ├── prism_chat.py           Local chat interface and UI payloads
 │   ├── prism_responses.py      Response formatting helpers
 │   ├── prism_perception.py     Perceptual context engine — time, location, device state; BiometricVEAXBridge
-   ├── prism_phase.py          Φ_melt CrystallizationEngine — hardware telemetry + soul contradictions → VEAX phases
+│   ├── prism_phase.py          Φ_melt CrystallizationEngine — hardware telemetry + soul contradictions → VEAX phases
 │   ├── prism_memory.py         Short- and long-term memory store
 │   ├── prism_planner.py        Goal decomposition and multi-step planning
 │   ├── prism_llm_router.py     LLM routing (Ollama / Claude API / OpenAI-compat)
@@ -1443,7 +1529,10 @@ PRISM/
 │   ├── prism_horizon.py        Cross-session long-horizon goal persistence (SQLite)
 │   ├── prism_outcome_tracker.py Bayesian belief updates from task outcomes
 │   ├── prism_organ_bus.py          LLM-mediated pub/sub bus between PRISM logic engines
-│   ├── prism_organ_bus_experiment.py  Experimental organ bus extensions
+│   ├── prism_organ_loader.py       Discovers/loads/synthesises organs; AST safety + capability auditor
+│   ├── prism_organ_dispatch.py     L1→L2→L3 organ execution gate (extracted from PrismAgent._execute)
+│   ├── prism_organ_pack.py         Portable Organ Pack share format — hash-verified JSON export/import
+│   ├── prism_organ_planner.py      DAG composition planner — wires organs via typed ORGAN_META I/O schemas
 │   └── organs/                 Bundled organ modules
 │       ├── Communications
 │       │   ├── email_send.py           Send email — LLM-parsed, contact-resolved, approval-gated
@@ -1481,10 +1570,13 @@ PRISM/
 │       │   ├── meeting_brief.py        Pre-meeting brief from calendar details
 │       │   ├── task_reminder.py        Surface overdue/due-today tasks; add new reminders
 │       │   └── github_issue.py         Create or list GitHub issues via REST API
-│       └── Policy & Meta
-│           ├── policy_audit.py         Query the policy audit log (SQLite)
-│           ├── policy_inspect.py       Dump ORGAN_POLICY for every loaded organ
-│           └── policy_update.py        Update a live organ's policy at runtime
+│       ├── Policy & Meta
+│       │   ├── policy_audit.py         Query the policy audit log (SQLite)
+│       │   ├── policy_inspect.py       Dump ORGAN_POLICY for every loaded organ
+│       │   └── policy_update.py        Update a live organ's policy at runtime
+│       └── Mesh routing
+│           ├── mesh_register.py        Register a peer PRISM device for capability-aware routing
+│           └── mesh_orchestrate.py     Forward task to a peer (auto-routes when peer omitted)
 │
 ├── Personal assistant
 │   ├── prism_email.py          IMAP/SMTP email reader and sender
@@ -1504,8 +1596,18 @@ PRISM/
 │   ├── prism_tool_finder.py    Alternative execution path discovery
 │   ├── prism_collaborator.py   Claude/Ollama research + tool synthesis
 │   ├── prism_executor_agent.py Agentic execution with tool registry + sandboxing
-│   ├── prism_instructions.py   Standing instructions — rules taught once, applied always
+│   ├── prism_instructions.py   Standing instructions — rules taught once + denial→rule extraction (M12b)
+│   ├── prism_unknown_handler.py Managerial-PA fallback — synthesis-approval card or cached tool reuse
+│   ├── prism_routing.py        Intent routing helpers — regex sweep + LLM classifier; constitution never_log filter
+│   ├── prism_plan_telemetry.py Per-step plan execution telemetry; links steps to outcome records (M12d)
+│   ├── prism_budget.py         CEO-style USD ceilings on LLM spend — daily/monthly, free-provider bypass
 │   └── prism_service_discovery.py Universal handler for unknown services
+│
+├── Interop & mesh
+│   ├── prism_mcp.py                Model Context Protocol client — stdio + Streamable HTTP transport
+│   ├── prism_mesh.py               Device mesh — capability-aware peer scoring + hop-limited forward
+│   ├── prism_lora_registry.py      Registry for personal LoRA adapters
+│   └── prism_lora_trainer.py       DPO pair ingestion from denials + standing rules (M12c)
 │
 ├── Sport task executors
 │   ├── sport_executor.py       Video analysis, highlight reel, reports
@@ -1671,9 +1773,9 @@ All major capabilities are implemented and tested. The table below is the author
 | Token refresh for Google OAuth | **Working** | Auto-refresh via `google_creds.json` — stores `access_token`, `refresh_token`, `client_id`, `client_secret`, `expiry` |
 | Nucleus-Organ topology | **Working** | L1 Constitution → L2 ORGAN_POLICY → L3 BudManager three-layer security gate |
 | LogicPolicy chain loop | **Working** | risk/caps/L1-verdict injected into chain state after every step |
-| Organ capability manifests | **Working** | All 35 organs declare capability type; BudManager scopes ctx to declared caps only |
+| Organ capability manifests | **Working** | All 37 organs declare capability type; BudManager scopes ctx to declared caps only |
 | Horizon goals | `prism_horizon.py` | **Working** — cross-session goal watching; say "watch for X when Y" in chat |
-| Organ library | `organs/` + `~/.prism/organs/` | **Working** — 35 bundled organs; user-creatable; LLM-synthesisable on demand |
+| Organ library | `organs/` + `~/.prism/organs/` | **Working** — 37 bundled organs; user-creatable; LLM-synthesisable on demand; portable Organ Pack import/export via `prism_organ_pack` |
 | Identity layer | `prism_soul.py` | Working — belief graph, user-defined lenses, stated vs observed delta, LLM context injection |
 | Identity ceremony | `prism_identity_ceremony.py` | Working — 7-question LLM-facilitated onboarding, heuristic fallback; web ceremony at `/identity/onboard` |
 | Identity dashboard | `prism_routes_identity.py` | Working — visual phase, traits, beliefs, growth, tensions at `/identity/dashboard` (HTML at `/identity/ui`) |

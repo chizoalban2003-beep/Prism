@@ -8,6 +8,104 @@ version bumps.
 
 ## [Unreleased]
 
+### Chat-path & agent bootstrap refactoring (2026-06-22 → 06-23)
+
+`PrismAgent.__init__` and `_execute` were both growing past comfortable.
+The bulk of construction and chat-path branching is now in dedicated
+factories so the nucleus reads top-to-bottom and so testing can target
+one cluster at a time. No user-facing API change.
+
+#### Changed
+- `prism_agent_bootstrap.py` extracted: TOML loading, LLM config build,
+  and a `safe_init()` wrapper that fail-softs any single init site.
+- `prism_identity_learning.py`, `prism_perception_cluster.py`,
+  `prism_chat_subsystems.py` extracted: three factories that build the
+  identity/learning, perception/proactive/kinetic, and
+  chain/composer/loader/expert clusters with their cross-wires inline.
+- `prism_chat_context.py`, `prism_chat_graph_bridge.py`,
+  `prism_chat_tiers.py`, `prism_routing.py`, `prism_unknown_handler.py`,
+  `prism_organ_dispatch.py` extracted: chat-prelude, WAL graph bridge,
+  Tier 0–3 dispatcher, intent routing, managerial-PA synthesis
+  fallback, and the L1→L2→L3 organ execution gate.
+- `prism_goal_intents.py`, `prism_pa_intents.py`,
+  `prism_info_intents.py` extracted: themed intent handler groupings
+  pulled out of `_execute`.
+- Ten remaining init sites swept onto `safe_init`; dead phase H
+  removed.
+
+### Model Context Protocol (MCP) client (2026-06-20)
+
+PRISM is now an MCP client. Configured MCP servers expose their tools,
+resources, and prompts through the same chat surface as native organs.
+
+#### Added
+- `prism_mcp.py` — `MCPManager` orchestrates handshake, caches
+  `tools/list`, dispatches `tools/call`. Supports both **stdio** and
+  **Streamable HTTP** transports.
+- `prism_routes_mcp.py` — `GET /mcp/status`, `GET /mcp/servers`,
+  `GET /mcp/tools`, `POST /mcp/connect`, `POST /mcp/call`.
+- MCP tools routable directly from chat; `mcp_arguments` pass through
+  the L1/L2/L3 gate exactly like a native organ.
+- Resources + prompts supported, not just tools.
+
+### CEO/manager governance bridges (2026-06-18 → 06-19)
+
+Thirteen bridges over two days aligning the codebase with the
+CEO/manager mental model: the only surfaces the user touches are
+**permissions, instructions, policy, budget, and plug-ins**.
+
+#### Added
+- **Budget primitive.** `prism_budget.py` enforces daily/monthly USD
+  ceilings on LLM spend with soft warning bands; free-provider bypass.
+  Routable via the `budget_status` intent and the `[budget]` config
+  section.
+- **Persona policy export.** What the manager learned about the user
+  is now inspectable as policy rather than opaque embeddings.
+- **DAG composition planner.** `prism_organ_planner.py` reads
+  `ORGAN_META.inputs/outputs` and `composable_with()` to wire chains
+  automatically — the foundation for PowerBI-style arrows between
+  organs and buds.
+- **Typed organ I/O schemas.** `ORGAN_META.inputs/outputs` declared by
+  every shipped organ (optional, backward-compatible).
+- **Portable Organ Packs.** `prism_organ_pack.py` exports bundles of
+  organs as hash-verified JSON for sharing; imports run the same AST
+  safety validation as on-the-fly synthesis.
+- **Auto-pick organs.** `_llm_classify` injects `loader.known_intents()`
+  so a freshly synthesised organ is callable next turn; the LLM picks
+  from the live loader, not a frozen list.
+- **Routable synthesised organs.** Same mechanism for synthesis output.
+- **Mechanical-scope capability gates.** Foundation for chaining
+  Twilio/smart-home organs with software organs.
+- **`frontend_mutate` capability gate.** `PrismCard.body` is rendered
+  unescaped, so a new capability is detected via HTML/JS signal scan,
+  listed as critical, and added to `never_synthesize_capabilities`.
+
+### Security hardening (2026-06-18 → 06-22)
+
+#### Added
+- Federation auth defaults to **strict** (fail-safe). Was opt-in
+  via `PRISM_FEDERATION_REQUIRE_AUTH=1`.
+- Federation **peer pinning** + KSAgent daemon wiring.
+- **Synthesis quarantine**: newly synthesised organs land in a
+  quarantine area until policy approves.
+- **Forbidden intent-name patterns blocked at synthesis** — `system_*`,
+  `agent_*`, and reserved router sentinels can no longer be claimed by
+  an LLM-generated organ.
+- Constitution **`never_log` privacy** enforced at the routing layer.
+- Home Assistant token now sourceable via env var; no longer requires
+  plaintext in `prism_config.toml`.
+
+#### Changed
+- BudManager ctx tightened to **least privilege** — only keys declared
+  by the organ's capability manifest are visible during execution.
+
+### Memory durability bridge (2026-06-20)
+
+Conversation memory is now written through the WAL graph
+(`prism_chat_graph_bridge.py`). Every chat turn becomes a graph node
+with an `answered_by` edge, so recall is durable across crashes via
+the same WAL replay path used by the rest of the memory system.
+
 ### M12 — SIAM-aligned learning + routing wave (2026-06-17)
 
 Four directions that close feedback loops PRISM was missing: plan
