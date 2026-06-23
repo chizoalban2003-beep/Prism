@@ -68,10 +68,13 @@ sample_rate = 16000
 # from_number = "+1..."
 
 # ── Federation (multi-node sync) ──────────────────────────────────────────────
-# Harden multi-node deployments: require a bearer token and HMAC-sign payloads.
-[federation]
-require_auth = true
-# token      = "<shared-secret>"        # or env PRISM_FEDERATION_TOKEN
+# Single-node setups: leave commented out — auth is off by default and the
+# server binds to 127.0.0.1, so the federation surface isn't exposed.
+# Multi-node deployments: flip require_auth to true AND set a token, OR set
+# the PRISM_FEDERATION_TOKEN env var. Misconfigured strict mode fails closed.
+# [federation]
+# require_auth = true
+# token        = "<shared-secret>"      # or env PRISM_FEDERATION_TOKEN
 # HMAC signing: set env PRISM_FEDERATION_HMAC_SECRET=<secret>
 
 # ── Mobile sync ───────────────────────────────────────────────────────────────

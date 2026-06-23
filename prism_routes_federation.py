@@ -119,22 +119,22 @@ def _require_federation_auth(request: Request) -> bool:
     PRISM_FEDERATION_* env vars override (for one-off ops).
 
         [federation]
-        require_auth = true        # default — see below
-        token        = "secret"    # bearer token
+        require_auth = false       # default — single-node / local
+        token        = "secret"    # bearer token (only checked when strict)
 
     Env overrides: PRISM_FEDERATION_TOKEN, PRISM_FEDERATION_REQUIRE_AUTH=1
     (or =0 to opt out).
 
     Auth modes
     ----------
-    strict   (default) → a token MUST be configured AND match the request
-                         Bearer header; an unconfigured token means deny.
-                         Multi-node deployments fail-safe: misconfiguration
-                         keeps peers locked out instead of silently exposing
-                         the federation surface to anyone on the network.
-    permissive         → opt-in via require_auth=false or
-                         PRISM_FEDERATION_REQUIRE_AUTH=0. Only intended for
-                         single-node / local development.
+    permissive (default) → no token required. Single-node and local-dev
+                           setups bind to 127.0.0.1 anyway, so the
+                           federation surface is not exposed.
+    strict               → opt-in via [federation].require_auth=true (or
+                           PRISM_FEDERATION_REQUIRE_AUTH=1). A token MUST
+                           be configured AND match the request Bearer
+                           header; an unconfigured token means deny.
+                           Multi-node deployments should always run strict.
     """
     cfg = _federation_config()
     token  = os.environ.get("PRISM_FEDERATION_TOKEN", "") or str(cfg.get("token", ""))
@@ -142,7 +142,7 @@ def _require_federation_auth(request: Request) -> bool:
     if env_strict:
         strict = env_strict in ("1", "true", "yes")
     else:
-        strict = bool(cfg.get("require_auth", True))
+        strict = bool(cfg.get("require_auth", False))
     if not token:
         return not strict
     auth_header = request.headers.get("Authorization", "")

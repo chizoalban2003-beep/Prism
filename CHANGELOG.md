@@ -8,6 +8,51 @@ version bumps.
 
 ## [Unreleased]
 
+## [0.2.2] — 2026-06-24
+
+Second packaging+UX hotfix surfaced during live install testing of v0.2.1.
+v0.2.1 closed the root-module gap but `organs/` was still missing from
+the wheel — 40+ bundled organs (including the `gdrive_search` /
+`notion_query` / `dropbox_fetch` document-store organs and the new
+`agents_inventory`) never reached pip installs. Also caught a stale
+config-path default in `LLMRouter.from_config` that silently stranded
+user config at the daemon level, and a first-run UX issue where the
+default federation auth posture logged an ERROR-level boot message on
+single-node setups (the dominant use case).
+
+### Fixed
+- **`organs/` package now ships in the wheel.** `pyproject.toml` declares
+  `packages = ["organs"]` and the directory carries an `__init__.py`. The
+  organ loader still uses file-based imports (unchanged), so the empty
+  `__init__` is purely a setuptools handshake.
+- **`LLMRouter.from_config` default path corrected** from
+  `~/.prism/config.toml` to `~/.prism/prism_config.toml` — matching what
+  `prism_agent_bootstrap.load_toml_config` actually reads. The two
+  defaults had silently disagreed since the bootstrap fix in v0.2.0, so
+  the daemon-level router (used by `GET /agents`) saw an empty config
+  even when the user-config file was correctly populated.
+- **Daemon reuses `PrismAgent._router` instead of constructing a parallel
+  one.** `_state["llm_router"]` and `agent._router` now agree on what's
+  configured, so `/agents` no longer under-reports providers.
+
+### Changed
+- **Federation auth default flipped to permissive** for single-node /
+  local-first runs (the dominant use case — server binds to 127.0.0.1
+  anyway). Multi-node deployments must opt in to strict mode via
+  `[federation].require_auth = true` and a token. The boot-time
+  advisory drops from ERROR to INFO when permissive. Existing strict
+  deployments are unaffected as long as they had `require_auth = true`
+  explicitly set (the example config now documents this as the
+  multi-node escape hatch).
+
+### Added
+- `tests/test_packaging.py` extended:
+  - asserts `organs` is declared in `[tool.setuptools].packages`
+  - asserts every `organs/*.py` exposes `ORGAN_META` and `execute()`
+    (so a packaging miss can't hide behind silent loader-skips)
+  - asserts `LLMRouter.from_config` default path matches the bootstrap
+    loader's
+
 ## [0.2.1] — 2026-06-24
 
 Packaging hotfix. v0.2.0's wheel was missing 25 root-level modules from
@@ -373,7 +418,8 @@ actual decisions.
 - `prism_device_agent.open_app` / `install_package` validate input
   against a strict shape and reject path-traversal / scheme tricks.
 
-[Unreleased]: https://github.com/chizoalban2003-beep/Prism/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/chizoalban2003-beep/Prism/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/chizoalban2003-beep/Prism/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/chizoalban2003-beep/Prism/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/chizoalban2003-beep/Prism/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/chizoalban2003-beep/Prism/compare/v0.1.2...v0.1.3

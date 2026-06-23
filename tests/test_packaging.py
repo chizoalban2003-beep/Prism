@@ -66,3 +66,51 @@ def test_pyproject_is_valid_toml():
     data = tomllib.loads(text)
     assert data["project"]["name"] == "prism-platform"
     assert re.match(r"^\d+\.\d+\.\d+", data["project"]["version"])
+
+
+def test_organs_package_is_declared():
+    """v0.2.1 only declared py-modules (root files), so the `organs/`
+    directory — 40+ bundled organs including the document-store organs and
+    `agents_inventory` — was silently dropped from the wheel. Guard against
+    repeating that.
+    """
+    text = (REPO_ROOT / "pyproject.toml").read_text()
+    data = tomllib.loads(text)
+    packages = data["tool"]["setuptools"].get("packages", [])
+    assert "organs" in packages, (
+        "pyproject.toml [tool.setuptools] must declare `packages = ['organs', ...]` "
+        "or the bundled organs are excluded from the built wheel."
+    )
+    assert (REPO_ROOT / "organs" / "__init__.py").exists(), (
+        "organs/__init__.py is required for setuptools to treat the "
+        "directory as a package and copy it into the wheel."
+    )
+
+
+def test_organ_files_have_required_metadata():
+    """Every bundled organ must expose ORGAN_META and an execute() callable
+    — or the loader silently skips it, which masks packaging regressions.
+    """
+    organ_dir = REPO_ROOT / "organs"
+    organ_files = sorted(p for p in organ_dir.glob("*.py") if p.stem != "__init__")
+    assert organ_files, "organs/ directory is empty — something is very wrong"
+    bad: list[str] = []
+    for p in organ_files:
+        src = p.read_text()
+        if "ORGAN_META" not in src or "def execute" not in src:
+            bad.append(p.name)
+    assert not bad, f"organs missing ORGAN_META or execute(): {bad}"
+
+
+def test_llm_router_from_config_default_path():
+    """v0.2.0/0.2.1 shipped `from_config(config_path='~/.prism/config.toml')`
+    while the bootstrap loader read `~/.prism/prism_config.toml`. The two
+    defaults silently disagreed, so the daemon-level router saw no
+    user config and `/agents` under-reported LLM providers.
+    """
+    src = (REPO_ROOT / "prism_llm_router.py").read_text()
+    assert '"~/.prism/prism_config.toml"' in src, (
+        "LLMRouter.from_config default path must match "
+        "prism_agent_bootstrap.load_toml_config (~/.prism/prism_config.toml). "
+        "A stale default silently strands user config."
+    )

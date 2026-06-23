@@ -412,11 +412,19 @@ def _build_asgi_state(agent) -> dict:
     except Exception:
         pass
 
-    try:
-        from prism_llm_router import LLMRouter
-        state["llm_router"] = LLMRouter.from_config()
-    except Exception:
-        pass
+    # Reuse the agent's own router so the daemon-level state and the agent
+    # agree on which LLM is preferred. Creating a second router from a stale
+    # config path (the old default was ``~/.prism/config.toml``) made
+    # ``/agents`` under-report providers configured at the agent level.
+    router = getattr(agent, "_router", None)
+    if router is None:
+        try:
+            from prism_llm_router import LLMRouter
+            router = LLMRouter.from_config()
+        except Exception:
+            router = None
+    if router is not None:
+        state["llm_router"] = router
 
     try:
         from prism_task_queue import TaskQueue
@@ -774,32 +782,33 @@ def main():
     # Durability: replay WAL, then run the shadow pipeline under the watchdog.
     _graph, _pipeline, _watchdog = _start_durability(agent)
 
-    # Federation security advisory. strict auth is now the default, so the
-    # only thing left to flag is the absence of a configured token (routes
-    # will 401 until one is set) or an explicit opt-out for local/dev runs.
+    # Federation security advisory. Default is permissive (single-node /
+    # local-first is the dominant use case). Multi-node deployments must
+    # opt in to strict auth by setting [federation].require_auth = true (or
+    # PRISM_FEDERATION_REQUIRE_AUTH=1) AND configuring a token.
     import os as _os
     _fed_cfg = (getattr(agent, "_config", {}) or {}).get("federation", {}) or {}
     _env_strict_raw = _os.environ.get("PRISM_FEDERATION_REQUIRE_AUTH", "")
     if _env_strict_raw:
         _fed_strict = _env_strict_raw in ("1", "true", "yes")
     else:
-        _fed_strict = bool(_fed_cfg.get("require_auth", True))
+        _fed_strict = bool(_fed_cfg.get("require_auth", False))
     _fed_token = bool(
         _os.environ.get("PRISM_FEDERATION_TOKEN")
         or _fed_cfg.get("token")
     )
     if _fed_strict and not _fed_token:
         logger.error(
-            "Federation strict-auth default is on but no token is configured "
+            "Federation strict-auth is enabled but no token is configured "
             "— every /federation/* request will 401. Set PRISM_FEDERATION_TOKEN"
             " (or [federation].token in prism_config.toml), or opt out with "
-            "PRISM_FEDERATION_REQUIRE_AUTH=0 for single-node / local dev."
+            "PRISM_FEDERATION_REQUIRE_AUTH=0."
         )
     elif not _fed_strict:
-        logger.warning(
-            "Federation auth explicitly disabled (permissive mode). "
-            "Only safe for single-node / local development — multi-node "
-            "deployments must keep auth enabled and set a token."
+        logger.info(
+            "Federation auth disabled (single-node default). Multi-node "
+            "deployments should set [federation].require_auth=true and a "
+            "token in prism_config.toml."
         )
     if not _os.environ.get("PRISM_FEDERATION_HMAC_SECRET"):
         logger.warning(

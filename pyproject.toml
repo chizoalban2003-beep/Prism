@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "prism-platform"
-version = "0.2.1"
+version = "0.2.2"
 description = "Local personal AI assistant — decides, plans, executes"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -45,6 +45,7 @@ ksa = "ksa_cli:main"
 
 [tool.setuptools]
 license-files = ["LICENSE"]
+packages = ["organs"]
 py-modules = [
     "artifact_store",
     "daily_workflow",

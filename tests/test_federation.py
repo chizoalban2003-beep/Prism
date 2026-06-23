@@ -414,13 +414,26 @@ def _auth_app(tmp_path):
 
 
 class TestFederationAuthDefault:
-    """The default posture is strict: no token configured → all writes 401."""
+    """The default posture is permissive (single-node / local-first). Multi-node
+    deployments opt in to strict via [federation].require_auth=true.
+    """
 
-    def test_default_denies_without_token(self, tmp_path, monkeypatch):
+    def test_default_allows_without_token(self, tmp_path, monkeypatch):
         from fastapi.testclient import TestClient
 
         # Defaults only — nothing configured, no env override
         monkeypatch.delenv("PRISM_FEDERATION_REQUIRE_AUTH", raising=False)
+        monkeypatch.delenv("PRISM_FEDERATION_TOKEN", raising=False)
+        c = TestClient(_auth_app(tmp_path))
+
+        resp = c.get("/federation/sync")
+        assert resp.status_code == 200
+
+    def test_strict_denies_without_token(self, tmp_path, monkeypatch):
+        from fastapi.testclient import TestClient
+
+        # Explicit opt-in to strict mode, but no token configured.
+        monkeypatch.setenv("PRISM_FEDERATION_REQUIRE_AUTH", "1")
         monkeypatch.delenv("PRISM_FEDERATION_TOKEN", raising=False)
         c = TestClient(_auth_app(tmp_path))
 

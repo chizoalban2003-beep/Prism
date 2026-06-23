@@ -127,9 +127,16 @@ class LLMRouter:
         self._speculative_pipeline: Any | None = None
 
     @classmethod
-    def from_config(cls, config_path: str = "~/.prism/config.toml",
+    def from_config(cls, config_path: str = "~/.prism/prism_config.toml",
                     claude_api_key: str = "") -> LLMRouter:
-        """Load LLM preferences from prism_config.toml [llm] section."""
+        """Load LLM preferences from prism_config.toml [llm] section.
+
+        Default path matches ``prism_agent_bootstrap.load_toml_config`` so
+        the daemon-level router agrees with the PrismAgent's router on
+        which provider is preferred. The legacy default was
+        ``~/.prism/config.toml`` (singular ``config``), which silently
+        loaded nothing and made ``/agents`` under-report LLMs.
+        """
         try:
             import tomllib
             from pathlib import Path
