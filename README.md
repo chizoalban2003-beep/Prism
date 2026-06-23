@@ -113,7 +113,7 @@ PRISM's execution model is a Nucleus-Organ topology with three-layer security:
 └───────────────────────────┬─────────────────────────────────────┘
                             │ hot-swappable at runtime
               ┌─────────────▼─────────────────────────────┐
-              │  ORGAN LAYER  (40 bundled + user/LLM)     │
+              │  ORGAN LAYER  (41 bundled + user/LLM)     │
               │  Each organ declares capabilities manifest │
               │  internet_read/write · filesystem_r/w      │
               │  subprocess · telephony · system_ui        │
@@ -205,7 +205,7 @@ User input (chat / voice / CLI / REST API)
     │  AdaptiveFulcrum.observe() ← online learn     │
     └────────────────────────────────────────────────┘
 
-Organ Layer — 40 bundled organs, extensible at runtime:
+Organ Layer — 41 bundled organs, extensible at runtime:
   ┌──────────────────────────────────────────────────────────────┐
   │  OrganLoader (prism_organ_loader.py)                         │
   │  Discovers organs from ./organs/ (bundled) and              │
@@ -462,6 +462,16 @@ User denials no longer just gate the runtime — they now train the model:
 ### Memory durability bridge
 
 Conversation memory is now written through the WAL graph (`prism_chat_graph_bridge.py`) — every chat turn becomes a graph node with `answered_by` edges, so recall is durable across crashes via the same WAL replay path used by the rest of the memory system.
+
+### Unified agent registry
+
+PRISM already manages four agent surfaces (LLM providers, organs, MCP servers, mesh peers) via separate per-surface registries. The unified registry is a read-only aggregator that answers *"what agents do I have?"* in one schema:
+
+- **`prism_agent_registry.inventory()`** — pure aggregator pulling from `LLMRouter.status_summary()`, `OrganLoader._organs`, `MCPManager.status()`/`list_tools()`, and `PrismMesh.list_peers()`. Each entry normalises to `{kind, name, status, capabilities[], ...}`. One broken source returns empty rather than poisoning the rest.
+- **`GET /agents?capability=…`** — HTTP surface (`prism_routes_agents.py`). Optional `capability` filter is a case-insensitive substring match across the merged `capabilities` list.
+- **`agents_inventory` organ** — chat-routable. Asking *"what agents do you have?"* or *"agents for internet_write"* renders a sectioned card grouped by kind.
+
+The aggregator does not make routing decisions — it answers *what exists*, not *what to use*. Capability-aware routing across LLM / MCP / mesh remains the LLM router + mesh `find_capable_peer` + MCP `find_tool`'s job.
 
 ### Document store integrations
 
@@ -1314,7 +1324,7 @@ PRISM's organ system is the execution backbone of the personal assistant layer. 
 
 To have PRISM synthesise a new organ: say **"build me an organ that does X"** or **"I need a tool that fetches my Strava runs"**. The LLM generates a complete organ file, the AST safety visitor validates it, and it persists to `~/.prism/organs/` for reuse in all future sessions.
 
-### All 40 bundled organs
+### All 41 bundled organs
 
 | Intent | Module | Risk | Approval | Description |
 |---|---|---|---|---|
@@ -1358,6 +1368,7 @@ To have PRISM synthesise a new organ: say **"build me an organ that does X"** or
 | `gdrive_search` | `organs/gdrive_search.py` | low | no | Search Google Drive for files by name or full-text content (OAuth2 access token) |
 | `notion_query` | `organs/notion_query.py` | low | no | Search a Notion workspace for pages and databases (integration token) |
 | `dropbox_fetch` | `organs/dropbox_fetch.py` | low | no | Search Dropbox for files via `files/search_v2` API |
+| `agents_inventory` | `organs/agents_inventory.py` | low | no | Unified view of every agent surface — LLM providers, organs, MCP servers, mesh peers |
 
 ### ORGAN_META — capability manifest
 
@@ -1586,7 +1597,8 @@ PRISM/
 │       ├── Policy & Meta
 │       │   ├── policy_audit.py         Query the policy audit log (SQLite)
 │       │   ├── policy_inspect.py       Dump ORGAN_POLICY for every loaded organ
-│       │   └── policy_update.py        Update a live organ's policy at runtime
+│       │   ├── policy_update.py        Update a live organ's policy at runtime
+│       │   └── agents_inventory.py     Unified view of every agent (LLM/organ/MCP/peer)
 │       ├── Mesh routing
 │       │   ├── mesh_register.py        Register a peer PRISM device for capability-aware routing
 │       │   └── mesh_orchestrate.py     Forward task to a peer (auto-routes when peer omitted)
@@ -1790,9 +1802,9 @@ All major capabilities are implemented and tested. The table below is the author
 | Token refresh for Google OAuth | **Working** | Auto-refresh via `google_creds.json` — stores `access_token`, `refresh_token`, `client_id`, `client_secret`, `expiry` |
 | Nucleus-Organ topology | **Working** | L1 Constitution → L2 ORGAN_POLICY → L3 BudManager three-layer security gate |
 | LogicPolicy chain loop | **Working** | risk/caps/L1-verdict injected into chain state after every step |
-| Organ capability manifests | **Working** | All 40 organs declare capability type; BudManager scopes ctx to declared caps only |
+| Organ capability manifests | **Working** | All 41 organs declare capability type; BudManager scopes ctx to declared caps only |
 | Horizon goals | `prism_horizon.py` | **Working** — cross-session goal watching; say "watch for X when Y" in chat |
-| Organ library | `organs/` + `~/.prism/organs/` | **Working** — 40 bundled organs; user-creatable; LLM-synthesisable on demand; portable Organ Pack import/export via `prism_organ_pack` |
+| Organ library | `organs/` + `~/.prism/organs/` | **Working** — 41 bundled organs; user-creatable; LLM-synthesisable on demand; portable Organ Pack import/export via `prism_organ_pack` |
 | Identity layer | `prism_soul.py` | Working — belief graph, user-defined lenses, stated vs observed delta, LLM context injection |
 | Identity ceremony | `prism_identity_ceremony.py` | Working — 7-question LLM-facilitated onboarding, heuristic fallback; web ceremony at `/identity/onboard` |
 | Identity dashboard | `prism_routes_identity.py` | Working — visual phase, traits, beliefs, growth, tensions at `/identity/dashboard` (HTML at `/identity/ui`) |

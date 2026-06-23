@@ -191,6 +191,7 @@ if _FASTAPI_AVAILABLE:
     # ── Include all routers ───────────────────────────────────────────────
 
     from prism_routes_agent import router as agent_router
+    from prism_routes_agents import router as agents_router
     from prism_routes_analytics import router as analytics_router
     from prism_routes_causality import router as causality_router
     from prism_routes_chain import router as chain_router
@@ -238,6 +239,7 @@ if _FASTAPI_AVAILABLE:
     app.include_router(ml_router)
     app.include_router(mesh_router)
     app.include_router(mcp_router)
+    app.include_router(agents_router)
 
     # ── Built-in routes (kept from Phase 1) ──────────────────────────────
 
