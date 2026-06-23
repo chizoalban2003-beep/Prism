@@ -8,6 +8,56 @@ version bumps.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-06-23
+
+A substantial minor release. PRISM grew an MCP client, a capability-aware
+device mesh, three document-workspace organs (Drive / Notion / Dropbox),
+a unified read-only registry that aggregates every agent surface (LLM /
+organ / MCP / mesh), a CEO/manager governance bridge layer, and a
+near-total init-path refactor — all on the same L1 → L2 → L3 gate.
+
+### Added
+- **Unified agent registry.** `prism_agent_registry.inventory()` pulls
+  from `LLMRouter.status_summary()`, `OrganLoader._organs`,
+  `MCPManager.status()`/`list_tools()`, and `PrismMesh.list_peers()` and
+  normalises every entry to `{kind, name, status, capabilities[], …}`.
+  Exposed via `GET /agents?capability=…` (`prism_routes_agents.py`) and
+  via the `agents_inventory` chat-routable organ. The aggregator is
+  read-only — it answers *what exists*, not *what to use*.
+- **Document store integrations.** Three new `internet_read` organs —
+  `gdrive_search` (Drive v3 files API, OAuth2 token), `notion_query`
+  (Notion v1 search API, integration token), `dropbox_fetch` (Dropbox
+  `files/search_v2`, app token). Token resolution falls back to
+  env vars (`GDRIVE_TOKEN`, `NOTION_TOKEN`, `DROPBOX_TOKEN`); missing
+  tokens render a setup card instead of raising.
+
+### Changed
+- **Cross-component wiring moved inline.** `PrismAgent._wire_backpatches`
+  consolidation method removed. Each cross-cluster back-patch
+  (`chain → soul`, `chain → persona`, `chain → organ_loader`,
+  `horizon → chain`, `outcome_tracker ↔ crystalliser`, `outcome_tracker
+  → kinetic`, `ml_assembler → tracker`, `orchestrator → persona`) now
+  lives inside the factory closure that constructs the second-to-arrive
+  component. -45 LOC in `prism_agent.py`; dependency graph readable
+  from the construction site.
+- **Config resolution aligns with docs.** `load_toml_config` now tries
+  `~/.prism/prism_config.toml` first (the location documented in
+  QUICKSTART and the architecture diagram) and falls back to the path
+  passed in. `prism_config.example.toml` updated to recommend the
+  user-config location — survives reinstalls.
+
+### Fixed
+- **First-run logs are deterministic.** The daemon now emits one of
+  three explicit lines at startup — *"Identity ceremony complete"*,
+  *"No soul seed found — running with default identity"*, or
+  *"Identity seed loaded"* — so a non-developer no longer sees the
+  ambiguous "No soul seed found" and assumes PRISM is broken.
+- **LLM reachability check at startup.** Probes the configured Ollama
+  host (4 s timeout) and surfaces *reachable*, *API-key fallback in
+  use*, or *unreachable-and-no-key with a pointer to
+  `python3 prism_daemon.py --setup-llm`*. The daemon previously
+  silently degraded to no-LLM mode if Ollama wasn't installed.
+
 ### Chat-path & agent bootstrap refactoring (2026-06-22 → 06-23)
 
 `PrismAgent.__init__` and `_execute` were both growing past comfortable.
@@ -301,7 +351,8 @@ actual decisions.
 - `prism_device_agent.open_app` / `install_package` validate input
   against a strict shape and reject path-traversal / scheme tricks.
 
-[Unreleased]: https://github.com/chizoalban2003-beep/Prism/compare/v0.1.3...HEAD
+[Unreleased]: https://github.com/chizoalban2003-beep/Prism/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/chizoalban2003-beep/Prism/compare/v0.1.3...v0.2.0
 [0.1.3]: https://github.com/chizoalban2003-beep/Prism/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/chizoalban2003-beep/Prism/compare/v0.1.1...v0.1.2
 [0.1.1]: https://github.com/chizoalban2003-beep/Prism/compare/v0.1.0...v0.1.1
