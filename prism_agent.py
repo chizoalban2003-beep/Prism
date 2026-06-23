@@ -15,6 +15,7 @@ from prism_calibration import PrismCalibration
 from prism_chain import PrismChain
 from prism_chain_expert import PrismChainExpert
 from prism_chain_theory import InterceptorPolicy
+from prism_chat_graph_bridge import mirror_turn_to_graph, recall_from_graph
 from prism_composer import PrismComposer
 from prism_contacts import PrismContacts
 from prism_device_agent import PrismDeviceAgent
@@ -982,82 +983,16 @@ class PrismAgent:
             return text_card(f"Something went wrong: {exc}", "Error")
 
     def _graph_recall(self, message: str, context: dict) -> None:
-        """Merge durable memory-graph hits into ``context['memory_context']``.
-
-        Surfaces past conversation turns that live in the WAL-backed graph but
-        may not be in flat semantic recall. Flat results stay primary (they have
-        real semantic scores); graph hits are appended, de-duplicated, capped.
-        Best-effort; no-op without an attached graph.
-        """
-        graph = getattr(self, "_memory_graph", None)
-        if graph is None or not message:
-            return
-        try:
-            q_tokens = set(re.findall(r"[a-z0-9]{3,}", message.lower()))
-            if not q_tokens:
-                return
-            existing = context.get("memory_context", []) or []
-            seen = {(e.get("excerpt", "") or "")[:100] for e in existing}
-            # Rank stored observation turns by keyword overlap with the query
-            # (the graph's own search is a naive full-string substring match).
-            scored: list[tuple[int, Any, str]] = []
-            for node in graph.query_nodes(node_type="observation", limit=50):
-                content = (getattr(node, "value", {}) or {}).get("content", "")
-                if not content:
-                    continue
-                overlap = len(q_tokens & set(re.findall(r"[a-z0-9]{3,}", content.lower())))
-                if overlap:
-                    scored.append((overlap, node, content))
-            scored.sort(key=lambda x: x[0], reverse=True)
-            for _overlap, node, content in scored[:5]:
-                key = content[:100]
-                if key in seen:
-                    continue
-                seen.add(key)
-                existing.append({
-                    "title": content[:60] or getattr(node, "node_id", "memory"),
-                    "excerpt": content[:300],
-                    "source": (node.value or {}).get("source", getattr(node, "node_type", "graph")),
-                    "score": 0.5,
-                })
-            if existing:
-                context["memory_context"] = existing[:5]
-        except Exception:
-            pass
+        recall_from_graph(getattr(self, "_memory_graph", None), message, context)
 
     def _mirror_turn_to_graph(self, role: str, content: str, entry_id) -> None:
-        """Mirror a conversation turn into the WAL-backed memory graph.
-
-        PrismMemory (flat SQLite) stays the recall store; this additionally
-        records the turn as a durable graph node so the hot→WAL→cold pipeline
-        (replay_wal / commit_pending / watchdog) actually protects conversation
-        memory and the Ψ/Dm durability metrics reflect real activity. Without
-        this bridge the chaos-tested durability stack ran but had nothing to
-        commit. Best-effort; a no-op when no graph is attached (e.g. when
-        PrismAgent runs outside the daemon, which is what sets _memory_graph).
-        """
-        graph = getattr(self, "_memory_graph", None)
-        if graph is None or not entry_id or not content:
-            return
-        try:
-            from prism_memory_graph import GraphEdge, GraphNode
-            node_id = f"conv_{entry_id}"
-            graph.write_node(GraphNode(
-                node_id=node_id,
-                node_type="observation",
-                value={"role": role, "content": content[:2000],
-                       "source": "conversation"},
-            ))
-            if role == "user":
-                self._last_user_turn_node = node_id
-            elif role == "assistant":
-                prev = getattr(self, "_last_user_turn_node", None)
-                if prev:
-                    graph.write_edge(GraphEdge(
-                        src=prev, dst=node_id, relation="answered_by"))
-                    self._last_user_turn_node = None
-        except Exception:
-            pass
+        self._last_user_turn_node = mirror_turn_to_graph(
+            getattr(self, "_memory_graph", None),
+            role,
+            content,
+            entry_id,
+            getattr(self, "_last_user_turn_node", None),
+        )
 
     def _request_approval(self, task: str, reason: str) -> bool:
         """
