@@ -15,11 +15,14 @@ learning loop:
 
 The original ``PrismAgent.__init__`` built these in an order that left
 Crystalliser holding ``outcome_tracker=None`` at construction (it was
-back-patched later via ``_wire_backpatches``). This factory reorders
-construction so OutcomeTracker exists *before* the persona block, which
-breaks that cycle for the in-cluster wiring. Cross-cluster back-patches
-(chain, kinetic, ml_assembler, orchestrator) still run via
-``_wire_backpatches`` on the agent — this module does not touch them.
+back-patched later via a now-removed ``_wire_backpatches`` method). This
+factory reorders construction so OutcomeTracker exists *before* the
+persona block. It also accepts ``kinetic`` and ``ml_assembler`` so the
+bi-directional / cross-cluster wires (``outcome_tracker._crystalliser``,
+``outcome_tracker._kinetic``, ``ml_assembler._tracker``,
+``chain._persona``) can be patched inside the closure that constructed
+the second half of each pair — keeping wiring intent next to the
+component it concerns.
 
 Every component is wrapped in :func:`safe_init` from
 ``prism_agent_bootstrap`` so any single failure leaves the others
@@ -55,6 +58,7 @@ def build_identity_learning(
     memory:       Any,
     calibration:  Any,
     ml_assembler: Any,
+    kinetic:      Any,
     logger:       logging.Logger,
 ) -> IdentityLearningCluster:
     """Build the identity & learning cluster. Each member is independent
@@ -83,6 +87,10 @@ def build_identity_learning(
         tracker = OutcomeTracker(soul=soul, horizon=horizon)
         if chain is not None:
             chain._outcome_tracker = tracker
+        if kinetic is not None:
+            tracker._kinetic = kinetic
+        if ml_assembler is not None:
+            ml_assembler._tracker = tracker
         logger.info("OutcomeTracker ready")
         return tracker
     outcome_tracker = safe_init(
@@ -93,6 +101,8 @@ def build_identity_learning(
         from prism_narrative import PrismNarrative
         from prism_persona import PrismPersona
         persona = PrismPersona()
+        if chain is not None:
+            chain._persona = persona
         crystalliser = PrismCrystalliser(
             persona         = persona,
             memory          = memory,
@@ -101,6 +111,8 @@ def build_identity_learning(
             llm_router      = router,
             ml_assembler    = ml_assembler,
         )
+        if outcome_tracker is not None:
+            outcome_tracker._crystalliser = crystalliser
         narrative = PrismNarrative(
             persona         = persona,
             memory          = memory,
