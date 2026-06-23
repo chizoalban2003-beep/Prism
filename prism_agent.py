@@ -37,9 +37,9 @@ from prism_llm_router import LLMRouter
 from prism_memory import PrismMemory
 from prism_organ_dispatch import dispatch_organ
 from prism_pa_intents import handle_pa_intent
-from prism_perception import PrismPerception
+from prism_perception_cluster import build_perception_cluster
 from prism_planner import PrismPlanner
-from prism_proactive import PrismProactive, build_advanced_triggers, build_default_triggers
+from prism_proactive import build_advanced_triggers
 from prism_push import PrismPush
 from prism_responses import (
     PrismCard,
@@ -166,58 +166,21 @@ class PrismAgent:
                 getattr(self, '_device', None), '_registry', None),
         )
         self._chat_history: list[dict] = []
-        def _build_perception():
-            cfg = self._config.get("agent", {}) if hasattr(self, '_config') and self._config else {}
-            p = PrismPerception.setup(
-                enable_voice     = cfg.get("enable_voice", False),
-                enable_screen    = cfg.get("enable_screen", False),
-                enable_typing    = cfg.get("enable_typing", True),
-                enable_system    = cfg.get("enable_system", True),
-                enable_biometric = cfg.get("enable_biometric", True),
-                on_voice_command = self.chat,
-            )
-            p.start()
-            return p
-        self._perception: Optional[PrismPerception] = safe_init(
-            "PrismPerception", _build_perception, logger=logger)
 
-        def _build_proactive():
-            proactive = PrismProactive(on_event=self._handle_proactive_event)
-            triggers = build_default_triggers(
-                perception    = self._perception,
-                policy_engine = self._policy,
-                task_queue    = self._queue,
-            )
-            for t in triggers:
-                proactive.register(t)
-            proactive.start()
-            return proactive
-        self._proactive = safe_init(
-            "PrismProactive", _build_proactive, logger=logger)
-
-        # KineticEngine — compound personal signal aggregator
-        # Wires perception → torque accumulation → proactive action windows
-        def _build_kinetic():
-            from prism_kinetic_engine import KineticEngine
-            from prism_routes_kinetic import get_or_set_engine
-            engine = KineticEngine.for_prism()
-            get_or_set_engine(engine)
-            if self._proactive is not None:
-                import time as _time
-                def _on_kinetic_action(window: Any) -> None:
-                    fire_at = _time.time() + 2.0  # slight delay so context is ready
-                    self._proactive.schedule(
-                        window.to_proactive_message(), fire_at,
-                        trigger_id=f"kinetic_{window.window_id}")
-                engine.on_action(_on_kinetic_action)
-            if self._perception is not None:
-                fuser = getattr(self._perception, '_fuser', None)
-                if fuser is not None:
-                    fuser._kinetic = engine
-            logger.info("KineticEngine ready (%d levers)", len(engine._levers))
-            return engine
-        self._kinetic: Optional[Any] = safe_init(
-            "KineticEngine", _build_kinetic, logger=logger)
+        # Perception / Proactive / Kinetic — awareness layer. The factory
+        # builds all three and threads the perception↔kinetic↔proactive
+        # wiring in one named place.
+        _perc = build_perception_cluster(
+            config             = self._config,
+            policy             = self._policy,
+            task_queue         = self._queue,
+            on_voice_command   = self.chat,
+            on_proactive_event = self._handle_proactive_event,
+            logger             = logger,
+        )
+        self._perception = _perc.perception
+        self._proactive  = _perc.proactive
+        self._kinetic    = _perc.kinetic
 
         # Surgical ML Assembler — task-profiling algorithm compiler
         def _build_ml_assembler():
