@@ -20,9 +20,11 @@ keep config-shape decisions out of the constructor.
 """
 from __future__ import annotations
 
+import importlib
+import logging
 import os
 from pathlib import Path
-from typing import Any, Mapping, Optional
+from typing import Any, Callable, Mapping, Optional
 
 
 def load_toml_config(path: Path) -> dict:
@@ -73,3 +75,53 @@ def build_llm_config(
     if not cfg.get("openai_api_key"):
         cfg["openai_api_key"] = env.get("OPENAI_API_KEY", "")
     return cfg
+
+
+def safe_init(
+    label: str,
+    builder: Callable[[], Any],
+    *,
+    logger: logging.Logger,
+) -> Optional[Any]:
+    """Call ``builder()`` and return its result; on any exception log
+    ``"<label> not available: <exc>"`` at WARNING level and return ``None``.
+
+    Used to collapse the try/import/construct/warn/None pattern that
+    repeats throughout ``PrismAgent.__init__``. Pass the agent's own
+    logger so warnings retain their original origin in log streams.
+    """
+    try:
+        return builder()
+    except Exception as exc:
+        logger.warning("%s not available: %s", label, exc)
+        return None
+
+
+def safe_init_class(
+    label: str,
+    module_path: str,
+    attr: str,
+    *args: Any,
+    logger: logging.Logger,
+    info_on_success: Optional[str] = None,
+    **kwargs: Any,
+) -> Optional[Any]:
+    """Import ``module_path``, look up ``attr`` on it, call with the given
+    arguments, and return the result. Logs a WARNING and returns ``None``
+    on any failure (import error, missing attribute, constructor exception).
+
+    When ``info_on_success`` is supplied and the call succeeds, logs that
+    string at INFO level — handy for the "X ready" pattern. Builders that
+    need to compute the success message from the constructed instance
+    should use :func:`safe_init` with a closure instead.
+    """
+    try:
+        mod = importlib.import_module(module_path)
+        target = getattr(mod, attr)
+        result = target(*args, **kwargs)
+    except Exception as exc:
+        logger.warning("%s not available: %s", label, exc)
+        return None
+    if info_on_success:
+        logger.info(info_on_success)
+    return result

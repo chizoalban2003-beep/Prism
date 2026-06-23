@@ -7,7 +7,12 @@ from pathlib import Path
 from typing import Any, Optional
 
 from domain_configs import ALL_DOMAINS, DomainDecisionModel
-from prism_agent_bootstrap import build_llm_config, load_toml_config
+from prism_agent_bootstrap import (
+    build_llm_config,
+    load_toml_config,
+    safe_init,
+    safe_init_class,
+)
 from prism_autonomous import PrismAutonomous
 from prism_browser_agent import PrismBrowserAgent
 from prism_calendar import PrismCalendar
@@ -131,20 +136,13 @@ class PrismAgent:
         )
 
         # PolicyEngine — resource allocation + per-action approval policy
-        try:
-            from prism_policy import PolicyEngine
-            self._policy = PolicyEngine()
-        except Exception as e:
-            logger.warning("PolicyEngine not available: %s", e)
-            self._policy = None
+        self._policy = safe_init_class(
+            "PolicyEngine", "prism_policy", "PolicyEngine", logger=logger)
 
         # PrismCollaborator — external research/synthesis bridge
-        try:
-            from prism_collaborator import PrismCollaborator
-            self._collaborator = PrismCollaborator(router=self._router)
-        except Exception as e:
-            logger.warning("PrismCollaborator not available: %s", e)
-            self._collaborator = None
+        self._collaborator = safe_init_class(
+            "PrismCollaborator", "prism_collaborator", "PrismCollaborator",
+            router=self._router, logger=logger)
 
         self._device = PrismDeviceAgent.setup(
             policy_engine = self._policy,
@@ -152,12 +150,9 @@ class PrismAgent:
             collaborator  = self._collaborator,
             user          = self._user,
         )
-        self._memory: Optional[PrismMemory] = None
-        try:
-            self._memory = PrismMemory(ollama_host=ollama_host)
-        except Exception as e:
-            logger.warning("PrismMemory not available: %s", e)
-            self._memory = None
+        self._memory: Optional[PrismMemory] = safe_init_class(
+            "PrismMemory", "prism_memory", "PrismMemory",
+            ollama_host=ollama_host, logger=logger)
         self._tts   = PrismTTS.setup()
         self._voice = PrismVoice.from_config(self._config)
         # Config is loaded above — construct with real config directly
@@ -299,17 +294,14 @@ class PrismAgent:
             self._mcp = None
 
         # L1 Constitution guard + Bud execution manager
-        self._constitution: Optional[Any] = None
-        self._bud_mgr: Optional[Any] = None
-        try:
+        def _build_constitution_bud():
             from prism_bud_manager import BudManager
             from prism_constitution import ConstitutionGuard
-            self._constitution = ConstitutionGuard()
-            self._bud_mgr = BudManager(constitution_guard=self._constitution)
-        except Exception as e:
-            logger.warning("Constitution/BudManager not available: %s", e)
-            self._constitution = None
-            self._bud_mgr = None
+            guard = ConstitutionGuard()
+            return guard, BudManager(constitution_guard=guard)
+        _const_bud = safe_init(
+            "Constitution/BudManager", _build_constitution_bud, logger=logger)
+        self._constitution, self._bud_mgr = _const_bud if _const_bud else (None, None)
         self._chain_expert = PrismChainExpert(
             llm_router    = self._router,
             policy_engine = self._policy,
@@ -341,14 +333,14 @@ class PrismAgent:
             self._horizon._chain = self._chain
 
         # OrganBus — LLM-mediated inter-engine communication bus
-        self._organ_bus: Optional[Any] = None
-        try:
+        def _build_organ_bus():
             from prism_organ_bus import OrganBus
-            self._organ_bus = OrganBus(llm_router=self._router)
+            bus = OrganBus(llm_router=self._router)
+            self._organ_bus = bus
             self._register_organ_subscriptions()
-        except Exception as e:
-            logger.warning("OrganBus not available: %s", e)
-            self._organ_bus = None
+            return bus
+        self._organ_bus: Optional[Any] = safe_init(
+            "OrganBus", _build_organ_bus, logger=logger)
 
         # PrismSoul — living identity document
         try:
@@ -402,30 +394,24 @@ class PrismAgent:
             self._narrative = None
 
         # OutcomeTracker — closes the learning loop
-        self._outcome_tracker: Optional[Any] = None
-        try:
+        def _build_outcome_tracker():
             from prism_outcome_tracker import OutcomeTracker
-            self._outcome_tracker = OutcomeTracker(
+            tracker = OutcomeTracker(
                 soul    = getattr(self, '_soul', None),
                 horizon = getattr(self, '_horizon', None),
             )
             if hasattr(self, '_chain'):
-                self._chain._outcome_tracker = self._outcome_tracker
+                self._chain._outcome_tracker = tracker
             logger.info("OutcomeTracker ready")
-        except Exception as e:
-            logger.warning("OutcomeTracker not available: %s", e)
-            self._outcome_tracker = None
+            return tracker
+        self._outcome_tracker: Optional[Any] = safe_init(
+            "OutcomeTracker", _build_outcome_tracker, logger=logger)
 
         # PlanTelemetry — per-step status for DailyPlans, feeds re-plan signal
-        self._plan_telemetry: Optional[Any] = None
         self._last_plan_id: Optional[str] = None
-        try:
-            from prism_plan_telemetry import get_plan_telemetry
-            self._plan_telemetry = get_plan_telemetry()
-            logger.info("PlanTelemetry ready")
-        except Exception as e:
-            logger.warning("PlanTelemetry not available: %s", e)
-            self._plan_telemetry = None
+        self._plan_telemetry: Optional[Any] = safe_init_class(
+            "PlanTelemetry", "prism_plan_telemetry", "get_plan_telemetry",
+            logger=logger, info_on_success="PlanTelemetry ready")
 
         # Wire living model dependencies now that outcome_tracker exists.
         # All cross-component back-patches are consolidated in _wire_backpatches()
@@ -434,15 +420,15 @@ class PrismAgent:
         self._wire_backpatches()
 
         # ContextManager — work/personal/focus context switching
-        try:
+        def _build_context_manager():
             from prism_context_profile import ContextManager
-            self._context_manager = ContextManager()
+            cm = ContextManager()
             if hasattr(self, '_chain'):
-                self._context_manager.inject_into_chain(self._chain)
-            logger.info("ContextManager ready (active: %s)", self._context_manager.active_id)
-        except Exception as e:
-            logger.warning("ContextManager not available: %s", e)
-            self._context_manager = None
+                cm.inject_into_chain(self._chain)
+            logger.info("ContextManager ready (active: %s)", cm.active_id)
+            return cm
+        self._context_manager = safe_init(
+            "ContextManager", _build_context_manager, logger=logger)
 
         # ProactiveBusWatcher — connect OrganBus signals to proactive triggers
         try:
@@ -461,35 +447,30 @@ class PrismAgent:
             self._bus_watcher = None
 
         # PrismReflection — weekly meta-learning loop
-        try:
-            from prism_reflection import PrismReflection
-            self._reflection = PrismReflection(
-                outcome_tracker = getattr(self, '_outcome_tracker', None),
-                soul            = getattr(self, '_soul', None),
-                horizon         = getattr(self, '_horizon', None),
-                llm_router      = self._router,
-                auto_apply      = False,
-            )
-            logger.info("PrismReflection ready")
-        except Exception as e:
-            logger.warning("PrismReflection not available: %s", e)
-            self._reflection = None
+        self._reflection = safe_init_class(
+            "PrismReflection", "prism_reflection", "PrismReflection",
+            outcome_tracker = getattr(self, '_outcome_tracker', None),
+            soul            = getattr(self, '_soul', None),
+            horizon         = getattr(self, '_horizon', None),
+            llm_router      = self._router,
+            auto_apply      = False,
+            logger          = logger,
+            info_on_success = "PrismReflection ready",
+        )
 
         # Budget — CEO-style governance over LLM spend.
         # PRISM (the manager) checks itself before spending the user's money.
-        try:
-            from prism_budget import from_config as _budget_from_config
-            self._budget = _budget_from_config(self._config)
-            logger.info("PrismBudget ready: daily=$%.2f", self._budget.daily_usd)
-        except Exception as e:
-            logger.warning("PrismBudget not available: %s", e)
-            self._budget = None
+        def _build_budget():
+            from prism_budget import from_config
+            budget = from_config(self._config)
+            logger.info("PrismBudget ready: daily=$%.2f", budget.daily_usd)
+            return budget
+        self._budget = safe_init("PrismBudget", _build_budget, logger=logger)
 
         # ChainOrchestrator — prefrontal cortex for multi-step coordination
-        self._orchestrator: Optional[Any] = None
-        try:
+        def _build_orchestrator():
             from prism_orchestrator import ChainOrchestrator
-            self._orchestrator = ChainOrchestrator(
+            orch = ChainOrchestrator(
                 chain           = getattr(self, '_chain', None),
                 organ_loader    = getattr(self, '_organ_loader', None),
                 outcome_tracker = getattr(self, '_outcome_tracker', None),
@@ -497,15 +478,15 @@ class PrismAgent:
                 router          = self._router,
                 soul            = getattr(self, '_soul', None),
             )
-            self._orchestrator._persona = getattr(self, '_persona', None)
+            orch._persona = getattr(self, '_persona', None)
             # Resume any graphs that were paused waiting on horizon goals
-            resumed = self._orchestrator.resume_waiting(self._execute, {})
+            resumed = orch.resume_waiting(self._execute, {})
             if resumed:
                 logger.info("ChainOrchestrator: %d paused graph(s) resumed", len(resumed))
             logger.info("ChainOrchestrator ready")
-        except Exception as e:
-            logger.warning("ChainOrchestrator not available: %s", e)
-            self._orchestrator = None
+            return orch
+        self._orchestrator: Optional[Any] = safe_init(
+            "ChainOrchestrator", _build_orchestrator, logger=logger)
 
         # Advanced proactive triggers — registered after all dependencies exist
         if getattr(self, '_proactive', None) is not None:
