@@ -277,6 +277,13 @@ INTENTS: list[tuple[str, str]] = [
     # "what is X" catch-all doesn't grab "what is on my screen". Only
     # entries unique to this position remain below.
     (r"(?:set|start|create) (?:a )?timer|timer (?:for|of)|countdown", "timer_set"),
+    (r"(?:flip|toss) (?:a |me )?coin|coin\s+(?:flip|toss)|"
+     r"(?:roll|throw) (?:a |me )?(?:die|dice|d\d+)|"
+     r"\broll\s+\d*d\d+\b|"
+     r"(?:pick|choose|give me) (?:a )?random (?:number|integer)|"
+     r"random number (?:between|from)|"
+     r"random (?:choice|pick) (?:from|between|of)",
+     "random_pick"),
     (r"(?:play|pause|skip|next|previous|volume|stop) (?:music|spotify|song|track|playback)",
      "spotify_control"),
     (r"(?:generate|create|make|qr) (?:a )?qr (?:code)?|qr code for", "qr_generate"),
