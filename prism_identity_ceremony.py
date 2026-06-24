@@ -169,31 +169,50 @@ class IdentityCeremony:
             except Exception as e:
                 logger.warning("LLM extraction failed: %s — falling back to heuristics", e)
 
-        # Heuristics fallback
-        # Collect all answers into sentences
-        all_text = " ".join(self._answers.values())
-        sentences = re.split(r"[.!?;]", all_text)
-        sentences = [s.strip() for s in sentences if len(s.strip()) > 10]
+        # Heuristics fallback — extract per question key so a separator-less
+        # answer doesn't collapse into a single giant string. Each ceremony
+        # question maps to a soul-seed field semantically:
+        #   values     → stated_values
+        #   success    → stated_goals  ("a year from now... what will be different")
+        #   boundaries → stated_constraints
+        # Anything else (identity/decisions/obstacles/misunderstand) feeds
+        # initial_beliefs.
+        def _phrases(key: str, *, min_len: int = 5,
+                     limit: int = 6) -> list[str]:
+            text = self._answers.get(key, "") or ""
+            parts = re.split(r"[,;.!?\n]", text)
+            seen: set[str] = set()
+            out: list[str] = []
+            for p in parts:
+                p = p.strip()
+                if len(p) < min_len or p.lower() in seen:
+                    continue
+                seen.add(p.lower())
+                out.append(p)
+                if len(out) >= limit:
+                    break
+            return out
 
-        stated_values = sentences[:4] if sentences else ["authenticity", "growth", "clarity"]
-        stated_goals = sentences[4:7] if len(sentences) > 4 else ["make progress in key areas"]
-        stated_constraints = sentences[7:9] if len(sentences) > 7 else ["respect my privacy"]
+        stated_values = _phrases("values", limit=6) or [
+            "authenticity", "growth", "clarity",
+        ]
+        stated_goals = _phrases("success", limit=4) or [
+            "make progress in key areas",
+        ]
+        stated_constraints = _phrases("boundaries", limit=3) or [
+            "respect my privacy",
+        ]
 
         # Build a few initial beliefs from the answers
         initial_beliefs = []
-        values_answer = self._answers.get("values", "")
-        if values_answer:
-            for phrase in re.split(r"[,;]", values_answer)[:4]:
-                phrase = phrase.strip()
-                if len(phrase) > 5:
-                    initial_beliefs.append({"text": phrase, "belief_type": "value", "confidence": 0.7})
-
-        obstacles_answer = self._answers.get("obstacles", "")
-        if obstacles_answer:
-            for phrase in re.split(r"[,;.]", obstacles_answer)[:3]:
-                phrase = phrase.strip()
-                if len(phrase) > 5:
-                    initial_beliefs.append({"text": phrase, "belief_type": "pattern", "confidence": 0.6})
+        for phrase in _phrases("values", limit=4):
+            initial_beliefs.append({
+                "text": phrase, "belief_type": "value", "confidence": 0.7,
+            })
+        for phrase in _phrases("obstacles", limit=3):
+            initial_beliefs.append({
+                "text": phrase, "belief_type": "pattern", "confidence": 0.6,
+            })
 
         suggested_lenses = [
             {"name": "Focus", "description": "Track depth of focused work sessions"},
