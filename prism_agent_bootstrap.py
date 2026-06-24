@@ -28,12 +28,29 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Optional
 
 
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Recursively overlay ``override`` onto ``base`` without mutating either.
+
+    Nested dicts are merged key-by-key; everything else is replaced. Used
+    so a user config that only sets ``[llm]`` doesn't wipe out the repo
+    config's ``[agent]`` / ``[budget]`` / etc. sections.
+    """
+    out: dict = dict(base)
+    for k, v in override.items():
+        if isinstance(v, dict) and isinstance(out.get(k), dict):
+            out[k] = _deep_merge(out[k], v)
+        else:
+            out[k] = v
+    return out
+
+
 def load_toml_config(path: Path) -> dict:
     """Load a TOML config file. Returns ``{}`` on any failure.
 
-    Tries ``~/.prism/prism_config.toml`` first (the location documented
-    in QUICKSTART) and falls back to ``path``. This lets the user keep
-    config out of the source tree without breaking repo-local setups.
+    Loads the repo-local ``path`` as the base, then deep-merges the user's
+    ``~/.prism/prism_config.toml`` on top of it so a user file that only
+    sets ``[llm]`` keeps the repo's ``[agent]`` / ``[budget]`` / etc.
+    sections intact. Either file may be missing; both missing returns ``{}``.
     """
     try:
         import tomllib  # Python 3.11+
@@ -42,14 +59,19 @@ def load_toml_config(path: Path) -> dict:
             import tomli as tomllib  # type: ignore[no-redef]
         except ImportError:
             return {}
-    user_path = Path.home() / ".prism" / "prism_config.toml"
-    for candidate in (user_path, path):
+
+    def _safe_load(p: Path) -> dict:
         try:
-            with open(candidate, "rb") as fh:
-                return tomllib.load(fh)
+            with open(p, "rb") as fh:
+                return tomllib.load(fh) or {}
         except Exception:
-            continue
-    return {}
+            return {}
+
+    repo_cfg = _safe_load(path)
+    user_cfg = _safe_load(Path.home() / ".prism" / "prism_config.toml")
+    if not repo_cfg and not user_cfg:
+        return {}
+    return _deep_merge(repo_cfg, user_cfg)
 
 
 def build_llm_config(
