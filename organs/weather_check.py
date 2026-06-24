@@ -32,10 +32,25 @@ def execute(intent: str, message: str, ctx: dict):
 
     from prism_responses import text_card
 
-    # Extract location from message or ctx
-    location = ctx.get("location") or message.strip() or "London"
-    words    = [w.strip(".,?!") for w in location.split() if len(w) > 2]
-    city     = words[-1] if words else "London"
+    # Extract location from message or ctx.
+    # Strip query stopwords so "what's the weather" doesn't pick "weather"
+    # as the city and get back wttr.in's fallback nonsense.
+    _STOP = {
+        "what", "whats", "how", "hows", "tell", "show", "get", "give",
+        "the", "a", "an", "is", "are", "was", "in", "for", "at", "on",
+        "today", "tonight", "tomorrow", "now", "currently", "outside",
+        "like", "right", "going", "to", "be", "and",
+        "weather", "forecast", "temperature", "temp", "climate",
+        "me", "my", "your", "our", "us", "please", "city",
+    }
+    if ctx.get("location"):
+        city = str(ctx["location"]).strip() or "London"
+    else:
+        # Drop apostrophes so "what's" / "hows" collapse to "whats"/"hows".
+        normalised = message.lower().replace("'", "").replace("\u2019", "")
+        words = [w.strip(".,?!\"") for w in normalised.split()]
+        candidates = [w for w in words if len(w) > 2 and w not in _STOP]
+        city = " ".join(candidates) if candidates else "London"
 
     url = f"https://wttr.in/{urllib.parse.quote(city)}?format=j1"
     structured: dict = {"location": city.title()}
