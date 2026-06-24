@@ -140,7 +140,11 @@ INTENTS: list[tuple[str, str]] = [
      r"what(?:'s| is) (?:the )?(?:latest|current|today)|"
      r"research|who is|where is|when (?:did|does|is)",
      "web_search"),
-    (r"(?:send|push) (?:me )?(?:a )?(?:notification|alert|reminder)|"
+    # send_push: accept "a" or "an", and an optional adjective between
+    # the article and the noun ("send me a test notification", "push me an
+    # urgent alert"). Pre-fix the regex required "notification" to follow
+    # "a " literally, so "a test notification" fell through.
+    (r"(?:send|push) (?:me )?(?:an? )?(?:\w+\s+)?(?:notification|alert|reminder)|"
      r"notify me|ping me|alert me",
      "send_push"),
     (r"(?:find|search|look up|who is|contact|call|email) (?:my )?(?:contact|person|colleague|client|friend)",
