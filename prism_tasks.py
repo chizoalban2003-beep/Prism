@@ -336,8 +336,27 @@ class PrismTasks:
                     bool(row[5]),row[6],
                     json.loads(row[7]),row[8],row[9])
 
+    # Columns the current to-do schema requires, in declaration order.
+    _EXPECTED_COLS = (
+        "id", "title", "notes", "due_date", "priority",
+        "done", "project", "tags_json", "source", "url",
+    )
+
     def _init_db(self) -> None:
         with sqlite3.connect(self._db, timeout=30.0) as c:
+            # Defensive migration: an earlier PRISM version stored the
+            # background-task queue in the same file under a `tasks` table
+            # with three columns (id, status, data_json). Users who upgrade
+            # in place still have that file, so a plain CREATE IF NOT EXISTS
+            # leaves the old schema and every INSERT crashes with
+            # "table tasks has 3 columns but 10 values were supplied".
+            existing = [
+                r[1] for r in c.execute("PRAGMA table_info(tasks)").fetchall()
+            ]
+            if existing and tuple(existing) != self._EXPECTED_COLS:
+                c.execute(
+                    "ALTER TABLE tasks RENAME TO tasks_legacy_task_queue"
+                )
             c.execute("""CREATE TABLE IF NOT EXISTS tasks(
                 id TEXT PRIMARY KEY, title TEXT, notes TEXT,
                 due_date TEXT, priority INTEGER, done INTEGER,
