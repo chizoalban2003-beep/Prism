@@ -61,6 +61,39 @@ def handle_info_intent(agent: Any, intent: str, message: str,
         return text_card("Not enough data yet.", "Growth")
 
 
+    # ── Perception snapshot — what PRISM is sensing right now ─────────
+    if intent == "current_context":
+        perception = getattr(agent, '_perception', None)
+        if perception is None:
+            return text_card(
+                "Perception engine isn't running — no fused context to report.",
+                "Current context")
+        try:
+            state = perception.current_context()
+        except Exception as exc:
+            return text_card(f"Could not fetch context: {exc}", "Current context")
+
+        ctx_lines: list[str] = []
+        ctx_lines.append(
+            f"**Summary:** {state.summary or '(no fused signals in window)'}")
+        ctx_lines.append("")
+        chans = state.active_channels or []
+        ctx_lines.append(
+            f"**Active channels ({len(chans)}):** "
+            + (", ".join(sorted(chans)) if chans else "none"))
+        if state.factors:
+            ctx_lines.append("")
+            ctx_lines.append("**Factors:**")
+            ranked = sorted(state.factors.items(),
+                            key=lambda kv: -abs(kv[1]))
+            for fid, val in ranked[:12]:
+                conf = state.confidence.get(fid, 0.0)
+                ctx_lines.append(f"  • {fid}: {val:.2f}  (conf {conf:.2f})")
+        else:
+            ctx_lines.append("")
+            ctx_lines.append("_No factors above confidence threshold yet._")
+        return text_card("\n".join(ctx_lines), "Current context")
+
     # ── Outcome / learning stats ───────────────────────────────────────
     if intent == "outcome_stats":
         tracker = getattr(agent, '_outcome_tracker', None)

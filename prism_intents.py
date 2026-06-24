@@ -52,6 +52,17 @@ INTENTS: list[tuple[str, str]] = [
     (r"identity|digital\.dna|who\.am", "identity"),
     (r"artifact|past\.decision|what\.have\.i|my artifacts", "artifacts"),
     (r"\bstatus\b|connected|device|\bsync\b", "status"),
+    # Perception / fused-context snapshot — "what's my current context",
+    # "show my context", "perception status". Placed before memory_recall
+    # so the catch-all "what's my X" pattern doesn't redirect a perception
+    # query into a memory search.
+    (r"what(?:'s| is)\s+my\s+(?:current\s+)?context|"
+     r"(?:show|tell me|describe)\s+(?:me\s+)?my\s+(?:current\s+)?context|"
+     r"^my context\??$|"
+     r"\bcurrent context\b|"
+     r"\bcontext\s+(?:right now|now)\b|"
+     r"perception\s+(?:status|state|snapshot)",
+     "current_context"),
     # Personal-fact recall — "what is my favourite colour", "do you remember
     # my partner's name". Placed after the specific my_X intents (profile,
     # narrative, growth, identity, artifacts, status) and before the generic
@@ -66,7 +77,8 @@ INTENTS: list[tuple[str, str]] = [
      r"schedule|agenda|meetings?|appointments?|events?|files?|downloads?|"
      r"documents?|desktop|pictures?|music|videos?|finances?|transactions?|"
      r"expenses?|health|steps?|sleep|hrv|heart|calories?|artifacts?|"
-     r"identity|persona|status|clipboard|contacts?|day|mind|screen))",
+     r"identity|persona|status|clipboard|contacts?|day|mind|screen|"
+     r"context))",
      "memory_recall"),
     (r"index|scan\.files|search\.code|grep|find\.file", "ksa_task"),
     (r"resize|(?:convert|compress) (?:file|image|video)|rename|move|copy|delete|create file|"

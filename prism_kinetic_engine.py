@@ -407,7 +407,7 @@ class KineticEngine:
                             v_current=0.0,
                             c_friction=c_friction,
                             delta_a=delta_a,
-                            is_crisis=crisis,
+                            is_crisis=is_crisis,
                         )
                         self._windows.append(window)
                         new_windows.append(window)
