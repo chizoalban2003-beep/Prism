@@ -1431,15 +1431,46 @@ class PrismAgent:
             logger.warning("apply_settings_change(%s) failed: %s", section, exc)
             return {"ok": False, "section": section, "error": str(exc)[:200]}
 
+    # Words that are conversational scaffolding, not topical content. Dropped
+    # from synthesised intent slugs so "encrypt this message: hello" and
+    # "encrypt the message: world" collapse to the same synth_encrypt_message
+    # intent (and reuse the same organ).
+    _SLUG_STOPWORDS = frozenset({
+        "a", "an", "the", "this", "that", "these", "those", "my", "your", "our",
+        "is", "are", "was", "were", "be", "been", "do", "does", "did",
+        "can", "could", "would", "should", "may", "might", "will",
+        "please", "kindly", "i", "you", "me", "us", "of", "to", "for", "from",
+        "with", "in", "on", "at", "by", "as", "and", "or", "but",
+        "what", "whats", "how", "hows", "why", "when", "where",
+        "some", "any", "all", "every", "no", "not", "into", "onto",
+    })
+
     def _slugify_intent(self, message: str) -> str:
         """
         Turn a free-text request into a Python-safe intent identifier suitable
-        for use as an organ file name. 'What is on my calendar today?' →
-        'synth_what_is_on_my_calendar_today'.
+        for use as an organ file name and reusable across similar phrasings.
+
+        - Drop anything after the first colon (payload, not the action).
+        - Drop URLs entirely (they're the *target*, not the capability).
+        - Drop stopwords ("this", "the", "please", ...).
+        - Keep the first 3 significant tokens.
+
+        "encrypt this message: hello"   → "synth_encrypt_message"
+        "shorten this url https://x.io" → "synth_shorten_url"
+        "what is on my calendar today?" → "synth_calendar_today"
         """
-        base = re.sub(r"[^a-z0-9_]+", "_", (message or "").lower()).strip("_")
-        base = re.sub(r"_+", "_", base)[:40] or "new_intent"
-        return f"synth_{base}"
+        text = (message or "").lower()
+        # Strip URLs first — they're per-request data, not capability. Must run
+        # before the colon split or "https:" splits the URL into garbage.
+        text = re.sub(r"https?://\S+", " ", text)
+        # Strip payload after a colon ("encrypt this message: <SECRET>").
+        text = text.split(":", 1)[0]
+        tokens = re.findall(r"[a-z0-9]+", text)
+        meaningful = [t for t in tokens if t not in self._SLUG_STOPWORDS and len(t) > 1]
+        if not meaningful:
+            meaningful = tokens or ["new_intent"]
+        slug = "_".join(meaningful[:3])[:40].strip("_") or "new_intent"
+        return f"synth_{slug}"
 
     def handle_synthesis_approval(self, params: dict, instructions: str = "") -> PrismCard:
         """
