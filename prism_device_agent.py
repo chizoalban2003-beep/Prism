@@ -363,6 +363,25 @@ def _exec_list_files(path_str: str) -> DeviceTaskResult:
     if err:
         return _fail(err)
     if not p.exists():
+        # When the missing path is a canonical user folder under $HOME
+        # (Downloads, Documents, …), explain what's actually on disk so
+        # the user can either point us at the real folder or know to
+        # create one. The bare "Path not found" message in v0.2.4 left
+        # users guessing.
+        home = Path.home()
+        try:
+            inside_home = p == home or home in p.parents
+        except Exception:
+            inside_home = False
+        if inside_home and len(p.parts) == len(home.parts) + 1:
+            hint = (
+                f"Path not found: {p}\n\n"
+                f"No directory named '{p.name}' exists in your home. "
+                f"If you want me to list a different folder, name it "
+                f"explicitly (e.g. 'list files in /tmp'). To create "
+                f"'{p.name}': mkdir -p {p}"
+            )
+            return _fail(hint)
         return _fail(f"Path not found: {p}")
     if p.is_file():
         return DeviceTaskResult(success=True, output=str(p), tool_used="stdlib")
@@ -727,12 +746,60 @@ class PrismDeviceAgent:
         "videos", "public", "templates", "home",
     }
 
+    # Map our folder slug → the XDG user-dirs key. "home" is intentionally
+    # absent because XDG has no "home" key; we short-circuit it earlier.
+    _XDG_KEYS = {
+        "downloads": "XDG_DOWNLOAD_DIR",
+        "documents": "XDG_DOCUMENTS_DIR",
+        "desktop":   "XDG_DESKTOP_DIR",
+        "pictures":  "XDG_PICTURES_DIR",
+        "music":     "XDG_MUSIC_DIR",
+        "videos":    "XDG_VIDEOS_DIR",
+        "public":    "XDG_PUBLICSHARE_DIR",
+        "templates": "XDG_TEMPLATES_DIR",
+    }
+
+    @staticmethod
+    def _xdg_user_dir(slug: str) -> Optional[str]:
+        """Read the configured XDG user-dir for ``slug`` (e.g. 'downloads').
+
+        Parses ``~/.config/user-dirs.dirs`` directly so we don't depend on
+        the ``xdg-user-dir`` binary being installed. Returns the resolved
+        absolute path when configured AND present on disk, otherwise None
+        so the caller can fall back to ``~/Folder``.
+        """
+        key = PrismDeviceAgent._XDG_KEYS.get(slug)
+        if not key:
+            return None
+        cfg = Path.home() / ".config" / "user-dirs.dirs"
+        try:
+            text = cfg.read_text()
+        except OSError:
+            return None
+        # Lines look like: XDG_DOWNLOAD_DIR="$HOME/Downloads"
+        for line in text.splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, _, v = line.partition("=")
+            if k.strip() != key:
+                continue
+            v = v.strip().strip('"').strip("'")
+            v = v.replace("$HOME", str(Path.home()))
+            if v and Path(v).is_dir():
+                return v
+            return None
+        return None
+
     @staticmethod
     def _resolve_user_folder(raw: str) -> str:
         """Normalise natural-language folder phrases to a real path.
 
         Strips leading "my "/"the " articles and maps bare common folder
-        names ("Downloads", "Documents", …) to ``~/Folder``.
+        names ("Downloads", "Documents", …) to the XDG user-dir when
+        configured (so French "Téléchargements" / German "Downloads" work),
+        falling back to ``~/Folder`` when XDG is silent. The fallback keeps
+        the legacy behaviour intact for the common case.
         """
         s = (raw or "").strip().strip("'\"")
         low = s.lower()
@@ -744,6 +811,9 @@ class PrismDeviceAgent:
         if low in PrismDeviceAgent._HOME_FOLDERS:
             if low == "home":
                 return "~"
+            xdg = PrismDeviceAgent._xdg_user_dir(low)
+            if xdg:
+                return xdg
             return f"~/{s[:1].upper()}{s[1:].lower()}"
         return s
 

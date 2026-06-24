@@ -139,6 +139,13 @@ class DecisionLever:
     activate_threshold: float = 3.0
     deactivate_threshold: float = 1.5
     dashpot_threshold: float = 10.0   # ∫τ dt required before slow signals fire
+    # Compound-signal gate: lever only accepts torque from these domains,
+    # AND can only fire when every gate domain has contributed recently.
+    # Empty tuple = ungated (legacy behaviour, accepts every signal).
+    gate_domains: tuple[str, ...] = ()
+    gate_window_sec: float = 300.0
+    # Last (timestamp, torque) per gated domain — populated in ingest().
+    domain_torque_history: dict[str, tuple[float, float]] = field(default_factory=dict)
 
 
 @dataclass
@@ -251,6 +258,7 @@ class KineticEngine:
             "Fires when health + temporal + cognitive all spike simultaneously. "
             "PRISM should act proactively: draft, reschedule, or alert.",
             activate_threshold=3.5, deactivate_threshold=1.5, dashpot_threshold=8.0,
+            gate_domains=("health", "temporal", "cognitive"),
         ))
         engine.add_lever(DecisionLever(
             "defer_decision",
@@ -258,6 +266,7 @@ class KineticEngine:
             "Fires when energy is low AND cognitive load is high. "
             "PRISM should flag that now is a bad time for irreversible choices.",
             activate_threshold=2.5, deactivate_threshold=1.0, dashpot_threshold=6.0,
+            gate_domains=("energy", "cognitive"),
         ))
         engine.add_lever(DecisionLever(
             "proactive_assist",
@@ -265,6 +274,7 @@ class KineticEngine:
             "Fires when health is good AND temporal gap exists AND tasks are pending. "
             "PRISM should surface deferred work or suggestions.",
             activate_threshold=2.0, deactivate_threshold=0.8, dashpot_threshold=5.0,
+            gate_domains=("health", "temporal"),
         ))
 
         # Cross-domain links (evidence-based defaults; updated by outcome tracker)
@@ -306,8 +316,21 @@ class KineticEngine:
             new_windows: list[ActionWindow] = []
 
             for lever in self._levers.values():
+                # Compound-signal gate — skip levers whose gate set excludes
+                # this signal's domain. Prevents one strong signal from firing
+                # every lever at once (issue #27 bug 5).
+                if lever.gate_domains and signal.domain not in lever.gate_domains:
+                    continue
+
                 lambda_eff = self._get_lambda(signal.domain)
                 torque_raw = signal.z_score * lambda_eff * signal.expected_value
+
+                # Record per-domain torque so the gate can require every
+                # gate domain to have contributed within `gate_window_sec`.
+                if lever.gate_domains:
+                    lever.domain_torque_history[signal.domain] = (
+                        time.time(), torque_raw,
+                    )
 
                 # ── Peacetime damping ────────────────────────────────────────
                 crisis = is_crisis
@@ -333,11 +356,36 @@ class KineticEngine:
                 lever.last_updated = time.time()
                 lever.torque_integral += abs(effective) * self.DASHPOT_DT
 
+                # ── Compound-domain readiness ───────────────────────────────
+                # A gated lever can only fire when every gate domain has
+                # contributed torque within `gate_window_sec`. This is the
+                # "compound" in compound-signal — one strong signal isn't
+                # enough; the multi-domain pattern must be present.
+                # Black-swan (Z≥8) bypasses this — a true crisis still
+                # alerts — but the velocity-bypass `crisis` does not, since
+                # rapid-fire from a single domain is exactly the false-fire
+                # we're trying to prevent.
+                now_ts = time.time()
+                compound_ready = True
+                if lever.gate_domains and not is_crisis:
+                    cutoff = now_ts - lever.gate_window_sec
+                    compound_ready = all(
+                        lever.domain_torque_history.get(d, (0.0, 0.0))[0] >= cutoff
+                        for d in lever.gate_domains
+                    )
+
                 # ── Hysteresis gate ──────────────────────────────────────────
                 fire = False
-                if crisis:
+                if is_crisis:
+                    # True black-swan (Z≥8): always alerts.
                     fire = True
-                elif not lever.activated and abs(lever.net_torque) >= lever.activate_threshold:
+                elif crisis and compound_ready:
+                    # Velocity-promoted crisis still respects the gate so a
+                    # single-domain rapid-fire can't masquerade as compound.
+                    fire = True
+                elif (not lever.activated
+                      and compound_ready
+                      and abs(lever.net_torque) >= lever.activate_threshold):
                     fire = lever.torque_integral >= lever.dashpot_threshold
                 elif lever.activated and abs(lever.net_torque) < lever.deactivate_threshold:
                     lever.activated = False

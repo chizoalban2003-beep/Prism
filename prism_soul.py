@@ -608,8 +608,8 @@ class PrismSoul:
         # Build components
         seed_line = ""
         if seed:
-            vals = seed.stated_values[:3]
-            goals = seed.stated_goals[:2]
+            vals = "; ".join(seed.stated_values[:3]) or "(none)"
+            goals = "; ".join(seed.stated_goals[:2]) or "(none)"
             seed_line = f"Soul: {vals} | Goals: {goals}"
 
         stated_high = sorted(
