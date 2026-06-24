@@ -235,6 +235,16 @@ class PrismInstructions:
         msg   = message.strip()
         lower = msg.lower()
 
+        # Conversational dismissals — these start with "never " but aren't rules.
+        # "never mind" was being stored as a standing instruction because the
+        # "never " prefix matched. Reject the whole family up front.
+        dismissals = {
+            "never mind", "never mind.", "nevermind", "nevermind.",
+            "never mind that", "never mind that.",
+        }
+        if lower.rstrip("!.?") in {d.rstrip(".") for d in dismissals}:
+            return None
+
         # Detection patterns.
         # "note:" was previously included here, but it overlaps with the
         # note_append intent: "note: buy milk" should land in PrismNotes,
