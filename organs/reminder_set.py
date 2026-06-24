@@ -15,22 +15,19 @@ ORGAN_POLICY = {
 
 
 def _parse_reminder(message: str) -> tuple:
-    """Return (reminder_text, delay_seconds) parsed from message."""
+    """Return (reminder_text, delay_seconds) parsed from message.
+
+    Strategy: parse time information first, strip it from the message,
+    then extract the action phrase from whatever remains. This avoids
+    the previous order-dependence where ``remind me in 30 minutes to
+    call mom`` leaked the time phrase into the reminder text.
+    """
     import datetime
     import re
 
-    text = ""
     delay = 0
+    residual = message
 
-    # Extract text after "remind me to/that" or "reminder:"
-    m = re.search(
-        r'remind\s+(?:me\s+)?(?:to|that|about)?\s*[:\s]?(.+?)(?:\s+(?:in|at|after)\s+|\s*$)',
-        message, re.IGNORECASE | re.DOTALL,
-    )
-    if m:
-        text = m.group(1).strip()
-
-    # Parse duration
     units = {
         'hour': 3600, 'hr': 3600, 'h': 3600,
         'minute': 60, 'min': 60, 'm': 60,
@@ -38,10 +35,13 @@ def _parse_reminder(message: str) -> tuple:
         'day': 86400,
     }
     duration_pattern = re.compile(
-        r'(\d+(?:\.\d+)?)\s*(days?|hours?|hrs?|minutes?|mins?|seconds?|secs?|[hms])',
+        r'(?:\b(?:in|after|for)\s+)?'
+        r'(\d+(?:\.\d+)?)\s*'
+        r'(days?|hours?|hrs?|minutes?|mins?|seconds?|secs?|[hms])\b',
         re.IGNORECASE,
     )
-    for val_str, unit in duration_pattern.findall(message):
+    for m in duration_pattern.finditer(message):
+        val_str, unit = m.group(1), m.group(2)
         unit_lower = unit.lower()
         if unit_lower in ('s', 'm', 'h'):
             unit_key = unit_lower
@@ -50,40 +50,76 @@ def _parse_reminder(message: str) -> tuple:
         else:
             unit_key = unit_lower.rstrip('s')
         delay += int(float(val_str) * units.get(unit_key, 1))
+    residual = duration_pattern.sub(' ', residual)
 
-    # Parse absolute time — "at 14:30", "at 2:30pm", "at 10am", "tomorrow at 9am"
+    # Absolute time — "at 14:30", "2:30pm", "at 10am", "3pm", "tomorrow at 9am".
+    # The "at" prefix is now optional, so bare "3pm" parses too.
     if delay == 0:
         tomorrow = re.search(r'\btomorrow\b', message, re.IGNORECASE) is not None
-        # Try "at H:MM [am/pm]"
-        at_m = re.search(r'at\s+(\d{1,2}):(\d{2})\s*(am|pm)?', message, re.IGNORECASE)
-        if at_m:
-            hour = int(at_m.group(1))
-            minute = int(at_m.group(2))
-            ampm = (at_m.group(3) or "").lower()
+        hhmm = re.search(
+            r'(?:\bat\s+)?(\d{1,2}):(\d{2})\s*(am|pm)?\b',
+            message, re.IGNORECASE,
+        )
+        bare = re.search(
+            r'(?:\bat\s+)?(\d{1,2})\s*(am|pm)\b',
+            message, re.IGNORECASE,
+        )
+        target = None
+        if hhmm:
+            hour = int(hhmm.group(1))
+            minute = int(hhmm.group(2))
+            ampm = (hhmm.group(3) or "").lower()
             if ampm == "pm" and hour < 12:
                 hour += 12
             elif ampm == "am" and hour == 12:
                 hour = 0
             now = datetime.datetime.now()
             target = datetime.datetime(now.year, now.month, now.day, hour, minute, 0)
+        elif bare:
+            hour = int(bare.group(1))
+            ampm = bare.group(2).lower()
+            if ampm == "pm" and hour < 12:
+                hour += 12
+            elif ampm == "am" and hour == 12:
+                hour = 0
+            now = datetime.datetime.now()
+            target = datetime.datetime(now.year, now.month, now.day, hour, 0, 0)
+        if target is not None:
+            now = datetime.datetime.now()
             if tomorrow or target <= now:
                 target += datetime.timedelta(days=1)
             delay = int((target - now).total_seconds())
-        else:
-            # Try "at Xam" or "at Xpm" (no minutes)
-            at_m2 = re.search(r'at\s+(\d{1,2})\s*(am|pm)', message, re.IGNORECASE)
-            if at_m2:
-                hour = int(at_m2.group(1))
-                ampm = at_m2.group(2).lower()
-                if ampm == "pm" and hour < 12:
-                    hour += 12
-                elif ampm == "am" and hour == 12:
-                    hour = 0
-                now = datetime.datetime.now()
-                target = datetime.datetime(now.year, now.month, now.day, hour, 0, 0)
-                if tomorrow or target <= now:
-                    target += datetime.timedelta(days=1)
-                delay = int((target - now).total_seconds())
+
+    # Strip absolute-time phrases from residual so they don't leak into text.
+    residual = re.sub(
+        r'(?:\bat\s+)?\d{1,2}:\d{2}\s*(?:am|pm)?\b',
+        ' ', residual, flags=re.IGNORECASE,
+    )
+    residual = re.sub(
+        r'(?:\bat\s+)?\d{1,2}\s*(?:am|pm)\b',
+        ' ', residual, flags=re.IGNORECASE,
+    )
+    residual = re.sub(r'\btomorrow\b', ' ', residual, flags=re.IGNORECASE)
+
+    # Strip the lead-in: "remind me to/that/about/of", "set a reminder for",
+    # "reminder:" etc. Whatever's left is the action.
+    text = residual
+    text = re.sub(
+        r'\bset\s+(?:a\s+|the\s+)?reminder\s+(?:for|to|about|that)?\b',
+        ' ', text, flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r'\breminder\s*[:\-]',
+        ' ', text, flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r'\bremind\s+(?:me\s+)?(?:to|that|about|of)?\b',
+        ' ', text, flags=re.IGNORECASE,
+    )
+    text = re.sub(r'\s+', ' ', text).strip(' :,-.')
+    # If a lone "to" survived from "...for 3pm to take medication"
+    # (the lead-in only matched "set a reminder for"), drop it.
+    text = re.sub(r'^(?:to|that|about|of)\s+', '', text, flags=re.IGNORECASE).strip()
 
     if not text:
         text = message.strip()
