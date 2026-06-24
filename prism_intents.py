@@ -26,7 +26,9 @@ INTENTS: list[tuple[str, str]] = [
     (r"news|headlines|top stories|latest stories|breaking news", "news_headlines"),
     (r"(?!.*\bto (?:french|spanish|german|japanese|chinese|arabic|russian|hindi|italian"
      r"|portuguese)\b)(?:plan|morning|daily|today|schedule)", "universal_plan"),
-    (r"how (?:do|can|should) i|plan (?:for|to)|strategy for|help me (?:with|plan)|"
+    (r"how (?:do|can|should) i|plan (?:for|to)|strategy for|"
+     r"help me (?:with|plan|reach|achieve|set|accomplish|hit|build|launch|"
+     r"finish|complete|start|tackle|prepare)|"
      r"what(?:'s| is) the best way|i want to|i need to|my goal is", "universal_plan"),
     (r"predict|match|fixture|vs|versus", "predict_match"),
     (r"injury risk|squad risk|squad injury|player risk|player fitness|"
@@ -179,7 +181,14 @@ INTENTS: list[tuple[str, str]] = [
      r"(?:voice|speech|microphone) (?:on|off|status|available)|"
      r"(?:transcribe|listen|record) (?:audio|voice|speech|this)",
      "voice"),
-    (r"help|what\.can|commands|options", "help"),
+    # `help` matched any string containing "help", so "help me reach a goal"
+    # got the capabilities card instead of universal_plan. Anchor to standalone
+    # forms only: "help"/"?help", "what can/do you do", explicit "commands",
+    # "options", "features".
+    (r"^\s*help\??\s*$|\bwhat (?:can|do) you do\b|"
+     r"\bgive me (?:a |an )?(?:full |complete )?overview of your capabilities\b|"
+     r"\b(?:commands|capabilities|features)\b|"
+     r"\boptions\b\?", "help"),
     # Horizon Planner — cross-session goal watching.
     # horizon_add itself is hoisted to the top of this list so trigger
     # clauses like "notify me when bitcoin drops" win against topic

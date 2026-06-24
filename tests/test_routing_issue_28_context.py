@@ -53,6 +53,40 @@ class TestMemoryRecallStillWorks:
         assert _route("what's my partner's name") == "memory_recall"
 
 
+class TestHelpVsGoalRouting:
+    """Live test: "Help me reach a goal" returned the capabilities card
+    because the help intent regex was just `r"help|..."` — anchored to
+    standalone forms now, and universal_plan picks up "help me X" with a
+    broader verb set."""
+
+    def test_what_can_you_do_routes_to_help(self):
+        assert _route("What can you do?") == "help"
+
+    def test_standalone_help_routes_to_help(self):
+        assert _route("help") == "help"
+        assert _route("help?") == "help"
+        assert _route("commands") == "help"
+
+    def test_capabilities_overview_routes_to_help(self):
+        assert _route(
+            "Give me a full overview of your capabilities"
+        ) == "help"
+
+    def test_help_me_reach_a_goal_routes_to_plan(self):
+        assert _route("Help me reach a goal") == "universal_plan"
+
+    def test_help_me_achieve_routes_to_plan(self):
+        assert _route("help me achieve great things") == "universal_plan"
+
+    def test_help_me_plan_routes_to_plan(self):
+        assert _route("help me plan: run a marathon") == "universal_plan"
+
+    def test_helpdesk_does_not_match_help(self):
+        # "helpdesk ticket" — pre-fix regex would have grabbed this; now
+        # the standalone-help anchor lets it fall through.
+        assert _route("helpdesk ticket") != "help"
+
+
 class TestContextLookaheadDefence:
     """Even with `current_context` removed, memory_recall must not grab
     "context" queries — the negative lookahead is the safety net."""
