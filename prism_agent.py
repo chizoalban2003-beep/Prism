@@ -862,7 +862,7 @@ class PrismAgent:
                 lines = [h.entry.content for h in facts[:3]]
             else:
                 lines = [f"- {h.entry.content}" for h in hits[:3]]
-            return text_card("\n".join(l for l in lines if l), "Recalled")
+            return text_card("\n".join(line for line in lines if line), "Recalled")
 
         if intent == "general_chat":
             router = getattr(self, "_router", None)
