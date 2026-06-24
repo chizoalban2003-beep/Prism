@@ -77,7 +77,18 @@ def execute(intent: str, message: str, ctx: dict):
         desc = data.get("extract", "This is a disambiguation page.")
         return text_card(f"Wikipedia — {data.get('title', topic)}\n\n{desc}", "Wikipedia")
 
-    title   = data.get("displaytitle") or data.get("title", topic)
+    # Wikipedia's REST summary returns the page title twice:
+    #   - "title"        — plain text (e.g. "Eiffel Tower")
+    #   - "displaytitle" — may contain raw HTML wrappers like
+    #     <span lang="en" dir="ltr"><span class="mw-page-title-main">…</span></span>
+    # The card renders as plaintext, so prefer the plain field. Fall back to
+    # a tag-stripped displaytitle if the plain one is missing.
+    plain_title = data.get("title")
+    if plain_title:
+        title = plain_title
+    else:
+        raw = data.get("displaytitle", topic)
+        title = re.sub(r"<[^>]+>", "", raw).strip() or topic
     extract = data.get("extract", "No summary available.")
     page_url = data.get("content_urls", {}).get("desktop", {}).get("page", "")
 
