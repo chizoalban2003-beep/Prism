@@ -52,6 +52,22 @@ INTENTS: list[tuple[str, str]] = [
     (r"identity|digital\.dna|who\.am", "identity"),
     (r"artifact|past\.decision|what\.have\.i|my artifacts", "artifacts"),
     (r"\bstatus\b|connected|device|\bsync\b", "status"),
+    # Personal-fact recall — "what is my favourite colour", "do you remember
+    # my partner's name". Placed after the specific my_X intents (profile,
+    # narrative, growth, identity, artifacts, status) and before the generic
+    # wikipedia_lookup/web_search catch-alls, so retrievable personal facts
+    # don't get redirected to an encyclopaedia. The negative lookahead lists
+    # tokens that have their own dedicated route.
+    (r"(?:what(?:'s| is| are)|tell me|do you (?:know|remember)|recall|"
+     r"what did i (?:say|tell you) about)\s+(?:about\s+)?my\b"
+     r"(?!\s+(?:profile|narrative|growth|week|month|tasks?|todos?|to-?do|"
+     r"budget|spend|polic|limit|instructions?|rules?|standing|horizon|"
+     r"organs?|feedback|inbox|mailbox|email|mail|messages?|calendar|"
+     r"schedule|agenda|meetings?|appointments?|events?|files?|downloads?|"
+     r"documents?|desktop|pictures?|music|videos?|finances?|transactions?|"
+     r"expenses?|health|steps?|sleep|hrv|heart|calories?|artifacts?|"
+     r"identity|persona|status|clipboard|contacts?|day|mind|screen))",
+     "memory_recall"),
     (r"index|scan\.files|search\.code|grep|find\.file", "ksa_task"),
     (r"resize|(?:convert|compress) (?:file|image|video)|rename|move|copy|delete|create file|"
      r"find file|search (?:in|for)|read file|list files|"

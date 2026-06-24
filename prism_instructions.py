@@ -1,6 +1,7 @@
 """Standing instruction store — persistent rules taught once, applied to every relevant request."""
 from __future__ import annotations
 
+import re
 import sqlite3
 import time
 from dataclasses import dataclass, field
@@ -175,6 +176,56 @@ class PrismInstructions:
                           "WHERE id=?", (iid,))
         return f"Standing instructions from the user (follow these):\n{rules}"
 
+    # Imperative prefixes that are pure markers — strip them so the stored
+    # rule reads as the rule itself ("be brief"), not the meta-command
+    # ("remember that be brief"). `always`/`never`/`whenever`/`every time`
+    # are NOT stripped because they carry the rule's quantifier.
+    _STRIPPABLE_PREFIXES = (
+        "remember that ",
+        "remember: ",
+        "remember:",
+        "from now on, ",
+        "from now on ",
+        "make sure to ",
+        "make sure ",
+        "don't forget to ",
+        "don't forget ",
+        "note: ",
+        "note:",
+        "rule: ",
+        "rule:",
+    )
+
+    # "my X is Y" — captures the asserted personal fact. Used to ingest
+    # statements like "remember that my favourite colour is blue" into
+    # PrismMemory as a retrievable entry, not just a standing rule.
+    _FACT_RE = re.compile(
+        r"^(?:please\s+)?(?:remember(?:\s+that)?\s+)?my\s+(?P<key>[a-z][\w\s'-]{1,60}?)"
+        r"\s+(?:is|are|=)\s+(?P<value>.+?)[.!]?$",
+        re.IGNORECASE,
+    )
+
+    @classmethod
+    def parse_fact(cls, message: str) -> Optional[tuple[str, str]]:
+        """Extract ``(key, value)`` from a personal-fact statement.
+
+        Matches "remember that my favourite colour is blue" → ("favourite
+        colour", "blue"). Returns ``None`` when the message isn't a "my X
+        is Y" assertion. Used by the chat prelude to seed PrismMemory so
+        the later "what is my favourite colour?" question can recall the
+        answer.
+        """
+        if not message:
+            return None
+        m = cls._FACT_RE.match(message.strip())
+        if not m:
+            return None
+        key   = m.group("key").strip()
+        value = m.group("value").strip()
+        if not key or not value:
+            return None
+        return key, value
+
     def parse_from_chat(self, message: str) -> Optional[Instruction]:
         """
         Detect and store instructions from natural language.
@@ -193,6 +244,22 @@ class PrismInstructions:
         if not is_instruction:
             return None
 
+        # Personal facts ("remember that my X is Y") belong in PrismMemory,
+        # not the standing-rule store — let the agent handle them.
+        if self.parse_fact(msg) is not None:
+            return None
+
+        # Strip pure imperative prefixes so the stored rule reads as the
+        # rule, not the meta-command. We do this on the original-case msg
+        # (case-insensitively) so capitalisation in the rule body survives.
+        rule_text = msg
+        if rule_text.lower().startswith("please "):
+            rule_text = rule_text[len("please "):]
+        for pfx in self._STRIPPABLE_PREFIXES:
+            if rule_text.lower().startswith(pfx):
+                rule_text = rule_text[len(pfx):].lstrip()
+                break
+
         # Infer trigger from content
         trigger = "always"
         for cat, keywords in self.TRIGGER_MAP.items():
@@ -200,7 +267,7 @@ class PrismInstructions:
                 trigger = cat
                 break
 
-        return self.add(msg, trigger)
+        return self.add(rule_text or msg, trigger)
 
     def _init_db(self) -> None:
         with sqlite3.connect(self._db, timeout=30.0) as c:

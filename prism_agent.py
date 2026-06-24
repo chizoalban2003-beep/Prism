@@ -529,6 +529,26 @@ class PrismAgent:
                     f"✓ Remembered: {stored_instruction.text}",
                     "Instruction stored")
 
+            # 1b. Check for a personal-fact assertion ("my X is Y") — these
+            # belong in PrismMemory, not the standing-rule store, so the
+            # later "what is my X" recall can find them.
+            fact = self._instructions.parse_fact(message or "")
+            if fact and self._memory:
+                key, value = fact
+                try:
+                    self._memory.ingest(
+                        f"My {key} is {value}.",
+                        source="fact",
+                        title=f"my {key}",
+                        tags=["fact", key.lower()],
+                    )
+                    return text_card(
+                        f"✓ Got it — your {key} is {value}.",
+                        "Fact stored",
+                    )
+                except Exception:
+                    pass
+
             # 2. Inject relevant instructions into context
             instructions_str = self._instructions.to_context_string(message or "")
             if instructions_str:
@@ -818,6 +838,32 @@ class PrismAgent:
                 "identity profile · developer tasks (scan files, search code).",
                 "PRISM — What I can do",
             )
+        if intent == "memory_recall":
+            if not self._memory:
+                return text_card(
+                    "Memory isn't initialised yet, so I can't recall stored "
+                    "facts. Try restarting the daemon.",
+                    "Memory unavailable",
+                )
+            try:
+                hits = self._memory.search(message or "", top_n=3)
+            except Exception as exc:
+                return text_card(f"Memory search failed: {exc}", "Memory")
+            facts = [h for h in hits if h.entry.source == "fact"]
+            top   = facts or hits
+            if not top:
+                return text_card(
+                    "I don't have a stored answer for that yet. Tell me with "
+                    "\"remember that my X is Y\" and I'll keep it.",
+                    "No memory of that",
+                )
+            # Prefer terse direct answer for a fact hit; fall back to a list.
+            if facts:
+                lines = [h.entry.content for h in facts[:3]]
+            else:
+                lines = [f"- {h.entry.content}" for h in hits[:3]]
+            return text_card("\n".join(l for l in lines if l), "Recalled")
+
         if intent == "general_chat":
             router = getattr(self, "_router", None)
             if router is None:

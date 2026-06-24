@@ -29,6 +29,42 @@ logger = logging.getLogger(__name__)
 IntentTable = list[tuple[str, str]]
 
 
+# Reasoning/explanation/listing questions — these are open-ended chat, not
+# tool invocations. We use this to short-circuit the LLM classifier so it
+# can't latch onto an ambient topic keyword in the message (e.g. "explain
+# database deadlocks" → devices_list because of "deadlocks"). Regex stays
+# narrow: it must be the *frame* of the question, not just a substring.
+_REASONING_PATTERNS = re.compile(
+    r"^\s*(?:please\s+)?"
+    r"(?:"
+    r"explain\b|describe\b|define\b|"
+    r"what (?:is|are|was|were) (?:a |an |the )?(?!my\b|your\b)"
+    r"|why (?:do|does|did|is|are|was|were|should|would|can|could)\b"
+    r"|how (?:do|does|did|is|are|was|were|should|would|can|could|come)\b"
+    r"|when (?:do|does|did|is|are|was|were|should|would)\b"
+    r"|where (?:do|does|did|is|are|was|were|should|would)\b"
+    r"|who (?:is|are|was|were)\b(?!.*\bcontact\b)"
+    r"|name (?:three|five|ten|\d+|some|a few)\b"
+    r"|tell me (?:about|why|how|the difference)\b"
+    r"|compare\b|contrast\b|"
+    r"give me (?:an? )?(?:example|overview|summary)\b"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _is_reasoning_question(message: str) -> bool:
+    """True when the message reads as an explanation/definition/comparison.
+
+    Used to keep the LLM classifier from misrouting open-ended questions to
+    a tool-execution intent just because the question text mentions a token
+    that overlaps an intent keyword. Returns False fast for empty input.
+    """
+    if not message:
+        return False
+    return bool(_REASONING_PATTERNS.search(message[:200]))
+
+
 def route_intent(
     message: str,
     intents: IntentTable,
@@ -78,6 +114,12 @@ class LLMClassifier:
         self._get_organ_intents = get_organ_intents
 
     def classify(self, message: str) -> Optional[str]:
+        # Reasoning/explanation/definition questions route to chat — the
+        # classifier LLM is too eager to pick a tool intent when the
+        # question text mentions a topic keyword (e.g. "explain deadlocks"
+        # → devices_list because of the word "deadlocks").
+        if _is_reasoning_question(message):
+            return None
         regex_labels = [intent for _, intent in self._intents]
         try:
             organ_intents = self._get_organ_intents() or {}

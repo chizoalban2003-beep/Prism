@@ -8,6 +8,55 @@ version bumps.
 
 ## [Unreleased]
 
+## [0.2.3] — 2026-06-24
+
+Router-quality hotfix driven by live-test feedback on v0.2.2 (issue #26).
+Three bugs all surfaced from the same DeepSeek-backed chat session: PRISM
+mis-routed plain personal-fact questions to Wikipedia, the LLM classifier
+latched onto ambient topic keywords ("deadlocks" → devices_list), and
+"remember that my X is Y" was stored as a standing rule with the
+imperative still attached instead of an indexable memory entry.
+
+### Fixed
+- **Personal-fact recall now reaches `PrismMemory`.** Added a
+  `memory_recall` intent positioned after the specific `my_*` routes and
+  before the wikipedia/web-search catch-alls, so "what is my favourite
+  colour?" hits the local store instead of being redirected to an
+  encyclopaedia. Negative lookahead excludes routes that already own
+  "my X" (`my profile`, `my calendar`, `my email`, `my budget`, …) so
+  none of them lose their existing behaviour.
+- **`PrismInstructions.parse_fact` extracts `(key, value)` from
+  "remember that my X is Y"** and the chat prelude now routes those
+  assertions into `PrismMemory` (source=`"fact"`) instead of dropping
+  them into the standing-rule store. The verbatim-imperative storage
+  bug ("Stored: remember that my favourite colour is blue") is gone —
+  facts come back as plain `"My favourite colour is blue."` from
+  recall.
+- **Imperative prefixes stripped from stored rules.** `parse_from_chat`
+  now peels `remember:`, `remember that `, `from now on, `, `make sure `,
+  `don't forget `, `note:`, `rule:` (plus an optional leading `please `)
+  off the saved text. `always` / `never` / `whenever` / `every time` are
+  preserved because they carry the rule's quantifier — stripping them
+  would invert meaning.
+- **LLM intent classifier pre-filters reasoning questions.** Messages
+  framed as `explain X`, `why does X`, `how does X work`, `name three`,
+  `tell me about X`, `compare X`, `define X` short-circuit to
+  `general_chat` before the classifier prompt runs. v0.2.2's classifier
+  blindly trusted its output, so an explanation like "explain database
+  deadlocks" got routed to `devices_list` because the word "deadlocks"
+  overlapped a tool-intent keyword. The pre-filter is regex-only and
+  costs no LLM call.
+
+### Added
+- `tests/test_routing_issue_26.py` — covers the new `memory_recall`
+  intent (positive cases plus negative checks that `my_profile` /
+  `my_growth` / `calendar_read` / `email_read` / `show_policies` still
+  win), the reasoning-question pre-filter, and an end-to-end test that
+  forces a misfiring classifier and confirms reasoning-frame messages
+  fall through to `general_chat` regardless of what the LLM returns.
+- `tests/test_instructions.py` extended with prefix-strip,
+  `parse_fact`, and "facts don't land in the rule store" tests.
+
 ## [0.2.2] — 2026-06-24
 
 Second packaging+UX hotfix surfaced during live install testing of v0.2.1.
@@ -418,7 +467,8 @@ actual decisions.
 - `prism_device_agent.open_app` / `install_package` validate input
   against a strict shape and reject path-traversal / scheme tricks.
 
-[Unreleased]: https://github.com/chizoalban2003-beep/Prism/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/chizoalban2003-beep/Prism/compare/v0.2.3...HEAD
+[0.2.3]: https://github.com/chizoalban2003-beep/Prism/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/chizoalban2003-beep/Prism/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/chizoalban2003-beep/Prism/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/chizoalban2003-beep/Prism/compare/v0.1.3...v0.2.0
