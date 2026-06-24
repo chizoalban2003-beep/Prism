@@ -8,7 +8,19 @@ keep the agent module focused; behaviour is unchanged.
 from __future__ import annotations
 
 INTENTS: list[tuple[str, str]] = [
-    # Horizon goals — "when X" / "watch for" / "notify when" must precede every
+    # Horizon goals: abandon/list must precede add because the add pattern
+    # includes "horizon goal" as a literal trigger, so "list/show my horizon
+    # goals" would otherwise register a phantom meta-goal instead of listing.
+    # Abandon must precede list because list's "horizon goals?" substring
+    # would otherwise eat "cancel that horizon goal".
+    (r"(?:stop|cancel|abandon) (?:watching|monitoring|tracking|that horizon|horizon goal)|"
+     r"(?:forget|remove|delete) (?:that )?(?:goal|watch|monitor)",
+     "horizon_abandon"),
+    (r"(?:show|list|what are) (?:my )?(?:horizon|background|watching|monitored) goals?|"
+     r"what (?:are you |is prism )?(?:watching|monitoring|tracking)|"
+     r"horizon (?:status|goals?|list)",
+     "horizon_list"),
+    # Horizon add — "when X" / "watch for" / "notify when" must precede every
     # other intent because the trigger clause ("when bitcoin drops") would
     # otherwise be consumed by topic keywords (bitcoin → web_search, etc).
     (r"watch (?:for|out for)|monitor (?:for|when)|track (?:when|until)|"
@@ -190,18 +202,6 @@ INTENTS: list[tuple[str, str]] = [
      r"\bgive me (?:a |an )?(?:full |complete )?overview of your capabilities\b|"
      r"\b(?:commands|capabilities|features)\b|"
      r"\boptions\b\?", "help"),
-    # Horizon Planner — cross-session goal watching.
-    # horizon_add itself is hoisted to the top of this list so trigger
-    # clauses like "notify me when bitcoin drops" win against topic
-    # keyword routes. list/abandon don't need hoisting because their
-    # phrasing doesn't collide with other intents.
-    (r"(?:show|list|what are) (?:my )?(?:horizon|background|watching|monitored) goals?|"
-     r"what (?:are you |is prism )?(?:watching|monitoring|tracking)|"
-     r"horizon (?:status|goals?|list)",
-     "horizon_list"),
-    (r"(?:stop|cancel|abandon) (?:watching|monitoring|tracking|that horizon|horizon goal)|"
-     r"(?:forget|remove|delete) (?:that )?(?:goal|watch|monitor)",
-     "horizon_abandon"),
     # Organs — loaded capabilities
     (r"(?:what|which|show|list) (?:my )?(?:organs?|loaded (?:capabilities|modules|tools))|"
      r"organ (?:list|status|registry)",
