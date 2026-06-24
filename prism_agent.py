@@ -882,8 +882,25 @@ class PrismAgent:
                     "No memory of that",
                 )
             # Prefer terse direct answer for a fact hit; fall back to a list.
+            # Pre-fix bug: returning facts[:3] surfaced every stored fact whose
+            # text overlaps with the (very short) query — asking "who is my
+            # partner" also returned "My birthday is March 14" because both
+            # contain "my" and "is". Filter to facts whose key tag literally
+            # appears in the query; if none match (rare — usually means the
+            # user phrased the query differently from how they stored the
+            # fact), fall back to the single top-scored fact.
             if facts:
-                lines = [h.entry.content for h in facts[:3]]
+                q_lower = (message or "").lower()
+                def _tag_matches(h):
+                    for t in (h.entry.tags or []):
+                        if t in ("fact",):
+                            continue
+                        if t and t.lower() in q_lower:
+                            return True
+                    return False
+                relevant = [h for h in facts if _tag_matches(h)]
+                chosen = relevant[:3] if relevant else facts[:1]
+                lines = [h.entry.content for h in chosen]
             else:
                 lines = [f"- {h.entry.content}" for h in user_hits[:3]]
             return text_card("\n".join(line for line in lines if line), "Recalled")
