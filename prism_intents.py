@@ -185,7 +185,7 @@ INTENTS: list[tuple[str, str]] = [
      r"organ (?:list|status|registry)",
      "list_organs"),
     (r"turn (?:on|off)|set (?:the )?(?:lights?|thermostat|temp)|"
-     r"lock|unlock|what(?:'s| is) (?:on|off)(?! (?:my|the) screen)|smart home|home assistant",
+     r"\b(?:un)?lock\b|what(?:'s| is) (?:on|off)(?! (?:my|the) screen)|smart home|home assistant",
      "smart_home"),
     # NOTE: broad email catch-all — maps to email_read to avoid duplication
     # with the more specific email_read/email_send intents above.

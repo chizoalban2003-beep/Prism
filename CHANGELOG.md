@@ -8,6 +8,27 @@ version bumps.
 
 ## [Unreleased]
 
+## [0.2.4] — 2026-06-24
+
+Tiny routing hotfix surfaced during the v0.2.3 live-test session. With
+the new reasoning pre-filter in place, "explain database deadlocks" was
+still misrouting to `smart_home` because the offending regex matched at
+the *first-pass* intent table, never reaching the LLM classifier where
+the pre-filter sits. Root cause: the `smart_home` intent's
+`lock|unlock` alternation had no word boundaries, so any substring
+containing `lock` — `deadlocks`, `blocking`, `roadblock`, … — matched.
+
+### Fixed
+- **`smart_home` lock/unlock now word-boundaried.** `lock|unlock` →
+  `\b(?:un)?lock\b`. `lock the front door` / `unlock my phone` still
+  route to `smart_home`; sentences merely containing `lock` as a
+  substring fall through. Same class of bug as issue #26 bug 2, but at
+  the regex layer where the LLMClassifier pre-filter can't help.
+
+### Added
+- `TestSmartHomeWordBoundary` in `tests/test_routing_issue_26.py`
+  pinning the four positive/negative cases discovered during testing.
+
 ## [0.2.3] — 2026-06-24
 
 Router-quality hotfix driven by live-test feedback on v0.2.2 (issue #26).
@@ -467,7 +488,8 @@ actual decisions.
 - `prism_device_agent.open_app` / `install_package` validate input
   against a strict shape and reject path-traversal / scheme tricks.
 
-[Unreleased]: https://github.com/chizoalban2003-beep/Prism/compare/v0.2.3...HEAD
+[Unreleased]: https://github.com/chizoalban2003-beep/Prism/compare/v0.2.4...HEAD
+[0.2.4]: https://github.com/chizoalban2003-beep/Prism/compare/v0.2.3...v0.2.4
 [0.2.3]: https://github.com/chizoalban2003-beep/Prism/compare/v0.2.2...v0.2.3
 [0.2.2]: https://github.com/chizoalban2003-beep/Prism/compare/v0.2.1...v0.2.2
 [0.2.1]: https://github.com/chizoalban2003-beep/Prism/compare/v0.2.0...v0.2.1

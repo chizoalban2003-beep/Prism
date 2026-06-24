@@ -65,6 +65,29 @@ class TestMemoryRecallIntent:
         assert _route("what's my budget") == "show_policies"
 
 
+# ── word-boundary regression: smart_home "lock" must not eat "deadlock" ──
+# Discovered during live-test of v0.2.3: "explain database deadlocks" was
+# routing to smart_home because the alternation `lock|unlock` had no word
+# boundary, so any substring containing "lock" matched. The reasoning
+# pre-filter only sits in front of the LLM classifier, so a regex match
+# bypassed it. Fix is `\b(?:un)?lock\b` — covered here so it doesn't
+# silently regress.
+
+class TestSmartHomeWordBoundary:
+    def test_explain_deadlocks_does_not_route_to_smart_home(self):
+        assert _route("explain database deadlocks") != "smart_home"
+
+    def test_blocking_does_not_route_to_smart_home(self):
+        # "blocking" contains "lock" too — make sure the boundary holds.
+        assert _route("what's blocking the deadlock") != "smart_home"
+
+    def test_lock_the_door_still_routes_to_smart_home(self):
+        assert _route("lock the front door") == "smart_home"
+
+    def test_unlock_my_phone_still_routes_to_smart_home(self):
+        assert _route("unlock my phone") == "smart_home"
+
+
 # ── reasoning-question pre-filter ────────────────────────────────────────
 
 class TestReasoningPreFilter:
