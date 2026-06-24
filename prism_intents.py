@@ -36,6 +36,13 @@ INTENTS: list[tuple[str, str]] = [
      "web_search"),
     # News must precede plan — "today's headlines" contains "today"
     (r"news|headlines|top stories|latest stories|breaking news", "news_headlines"),
+    # Wall-clock queries must precede universal_plan ("today" overlaps).
+    (r"^\s*(?:what(?:'s| is)?\s+(?:the\s+)?time|"
+     r"what\s+time\s+(?:is\s+it|do\s+you\s+have)|"
+     r"current\s+time|time\s+(?:now|please)|"
+     r"what(?:'s| is)?\s+(?:today'?s\s+)?date|"
+     r"what\s+day\s+is\s+(?:it|today))\b",
+     "clock_query"),
     (r"(?!.*\bto (?:french|spanish|german|japanese|chinese|arabic|russian|hindi|italian"
      r"|portuguese)\b)(?:plan|morning|daily|today|schedule)", "universal_plan"),
     (r"how (?:do|can|should) i|plan (?:for|to)|strategy for|"
