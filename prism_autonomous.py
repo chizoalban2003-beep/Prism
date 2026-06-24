@@ -332,18 +332,44 @@ except Exception as e:
 
     # ── Cache management ──────────────────────────────────────────────────────
 
+    # Words that appear in many task descriptions but carry no topical meaning.
+    # Without this filter, "hello world" matched world_cup_predictor on the
+    # word "world", and a SHA256 hash request returned a FIFA prediction.
+    _FUZZY_STOPWORDS = frozenset({
+        "world", "hello", "thing", "stuff", "something", "anything",
+        "please", "could", "would", "should", "needed", "value", "values",
+        "result", "results", "input", "output", "thanks", "today",
+        "calculate", "compute", "generate", "create", "make", "build",
+        "find", "show", "list", "tell", "about",
+    })
+
     def _find_cached_tool(self, task: str) -> Optional[AcquiredTool]:
         # Exact hash match first
         tid = hashlib.sha256(task.encode()).hexdigest()[:10]
         if tid in self._tools:
             return self._tools[tid]
-        # Fuzzy: check description similarity
+
+        # Fuzzy: require at least two distinctive task keywords to appear in
+        # the tool's name or description. Generic stopwords don't count.
         task_lower = task.lower()
+        task_words = {
+            w.strip(".,?!:;\"'()[]")
+            for w in re.split(r"\s+", task_lower)
+            if len(w) > 4
+        }
+        keywords = {w for w in task_words if w and w not in self._FUZZY_STOPWORDS}
+        if len(keywords) < 2:
+            return None
+
+        best_tool: Optional[AcquiredTool] = None
+        best_score = 0
         for tool in self._tools.values():
-            if any(w in tool.description.lower()
-                   for w in task_lower.split() if len(w) > 4):
-                return tool
-        return None
+            haystack = f"{tool.name} {tool.description}".lower()
+            score = sum(1 for kw in keywords if kw in haystack)
+            if score >= 2 and score > best_score:
+                best_tool = tool
+                best_score = score
+        return best_tool
 
     def _save_tool(self, tool: AcquiredTool) -> None:
         path = self.TOOL_DIR / f"{tool.tool_id}.json"
