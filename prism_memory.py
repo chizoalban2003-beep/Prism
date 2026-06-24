@@ -101,6 +101,36 @@ class PrismMemory:
         scored.sort(key=lambda r: r.score, reverse=True)
         return [r for r in scored[:top_n] if r.score > 0.15]
 
+    def delete_by_tag(self, tag: str, source: str | None = None) -> int:
+        """Delete all entries carrying *tag*, optionally limited to one source.
+
+        Returns the number of rows removed. Used by the fact-store path to
+        upsert by key: when the user says "my favourite colour is teal",
+        any prior "my favourite colour is blue" entry must be removed
+        before the new one is ingested — otherwise recall surfaces all
+        historical values together as if they were equally true.
+
+        Implementation note: tags are stored as a JSON array string in
+        ``tags_json``, so we filter with ``LIKE`` over the serialised form.
+        A false-positive substring match would need a tag that contains
+        ``"<tag>"`` as a literal substring — vanishingly unlikely in
+        practice and harmless if it happened (we'd just over-delete the
+        same user's stored facts).
+        """
+        like = f'%"{tag}"%'
+        with sqlite3.connect(self._db, timeout=30.0) as c:
+            if source is not None:
+                cur = c.execute(
+                    "DELETE FROM memory WHERE tags_json LIKE ? AND source = ?",
+                    (like, source),
+                )
+            else:
+                cur = c.execute(
+                    "DELETE FROM memory WHERE tags_json LIKE ?",
+                    (like,),
+                )
+            return cur.rowcount or 0
+
     def ingest_conversation(self, role: str, content: str) -> str | None:
         """Store a single conversation turn. Returns the entry_id, or None if
         the turn was too short to store.

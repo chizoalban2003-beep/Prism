@@ -536,11 +536,20 @@ class PrismAgent:
             if fact and self._memory:
                 key, value = fact
                 try:
+                    # Upsert: drop any prior fact about the same key before
+                    # ingesting the new one. Without this, "my favourite
+                    # colour is teal" left two old "blue" entries in place
+                    # and recall surfaced all three as equally true.
+                    key_tag = key.lower()
+                    try:
+                        self._memory.delete_by_tag(key_tag, source="fact")
+                    except Exception:
+                        pass
                     self._memory.ingest(
                         f"My {key} is {value}.",
                         source="fact",
                         title=f"my {key}",
-                        tags=["fact", key.lower()],
+                        tags=["fact", key_tag],
                     )
                     return text_card(
                         f"✓ Got it — your {key} is {value}.",
