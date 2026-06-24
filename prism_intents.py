@@ -71,7 +71,8 @@ INTENTS: list[tuple[str, str]] = [
     # wikipedia_lookup/web_search catch-alls, so retrievable personal facts
     # don't get redirected to an encyclopaedia. The negative lookahead lists
     # tokens that have their own dedicated route.
-    (r"(?:what(?:'s| is| are)|tell me|do you (?:know|remember)|recall|"
+    (r"(?:what(?:'s| is| are)|who(?:'s| is| are)|when(?:'s| is| was)|"
+     r"where(?:'s| is| was)|tell me|do you (?:know|remember)|recall|"
      r"what did i (?:say|tell you) about)\s+(?:about\s+)?my\b"
      r"(?!\s+(?:profile|narrative|growth|week|month|tasks?|todos?|to-?do|"
      r"budget|spend|polic|limit|instructions?|rules?|standing|horizon|"
