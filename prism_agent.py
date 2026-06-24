@@ -994,10 +994,10 @@ class PrismAgent:
         if intent == "calibration_summary":
             summary = self._calibration.summary()
             history = self._calibration.history(n=10)
-            lines   = "\n".join(
+            history_text = "\n".join(
                 f"  [{e.domain}] {e.direction}: {e.message[:60]}"
                 for e in history[:8])
-            return text_card(f"{summary}\n\n{lines}", "Calibration history")
+            return text_card(f"{summary}\n\n{history_text}", "Calibration history")
 
         if intent == "approve_pending":
             pending = getattr(self, '_pending_approval', None)
@@ -1046,10 +1046,10 @@ class PrismAgent:
                     "No custom tools acquired yet. Give me a task I don't know how "
                     "to do and I'll build the tool for it.",
                     "Learned tools")
-            lines = "\n".join(
+            tools_text = "\n".join(
                 f"• **{t.name}** — {t.description} (used {t.use_count}×)"
                 for t in tools[:15])
-            return text_card(lines, f"Learned tools ({len(tools)})")
+            return text_card(tools_text, f"Learned tools ({len(tools)})")
 
         if intent == "explain_composition":
             # Show last composition plan from history
