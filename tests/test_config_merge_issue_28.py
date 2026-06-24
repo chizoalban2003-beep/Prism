@@ -16,7 +16,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
-from prism_agent_bootstrap import _deep_merge, load_toml_config
+from prism_agent_bootstrap import DEFAULT_CONFIG, _deep_merge, load_toml_config
 
 
 class TestDeepMerge:
@@ -91,26 +91,37 @@ class TestLoadTomlConfigMerges:
             cfg = load_toml_config(repo)
         assert cfg["agent"]["text_model"] == "llama3.2"
 
-    def test_missing_user_file_returns_repo_only(self, tmp_path):
+    def test_missing_user_file_overrides_defaults_with_repo(self, tmp_path):
         repo = tmp_path / "repo.toml"
-        repo.write_text('[agent]\ntext_model = "tinyllama"\n')
+        repo.write_text('[agent]\ntext_model = "phi3"\n')
         # no ~/.prism/prism_config.toml at all
         with patch("prism_agent_bootstrap.Path.home",
                    return_value=tmp_path / "nonexistent_home"):
             cfg = load_toml_config(repo)
-        assert cfg == {"agent": {"text_model": "tinyllama"}}
+        # Repo override applied...
+        assert cfg["agent"]["text_model"] == "phi3"
+        # ...but unrelated DEFAULT_CONFIG keys still present.
+        assert cfg["agent"]["ollama_host"] == "http://localhost:11434"
+        assert cfg["budget"]["daily_usd"] == 5.0
 
-    def test_missing_repo_file_returns_user_only(self, tmp_path):
+    def test_missing_repo_file_uses_defaults_plus_user(self, tmp_path):
         user_dir = tmp_path / "home" / ".prism"
         user_dir.mkdir(parents=True)
         (user_dir / "prism_config.toml").write_text('[llm]\npreferred = "openai"\n')
         with patch("prism_agent_bootstrap.Path.home",
                    return_value=tmp_path / "home"):
             cfg = load_toml_config(Path("/nonexistent/repo.toml"))
-        assert cfg == {"llm": {"preferred": "openai"}}
+        # User [llm] applied...
+        assert cfg["llm"]["preferred"] == "openai"
+        # ...and the DEFAULT_CONFIG [agent] block — the whole reason for the
+        # bake-in — is intact, so the planner never sees "mistral" again.
+        assert cfg["agent"]["text_model"] == "tinyllama"
 
-    def test_both_missing_returns_empty_dict(self, tmp_path):
+    def test_both_missing_returns_defaults(self, tmp_path):
         with patch("prism_agent_bootstrap.Path.home",
                    return_value=tmp_path / "nonexistent_home"):
             cfg = load_toml_config(Path("/nonexistent/repo.toml"))
-        assert cfg == {}
+        # Identical to DEFAULT_CONFIG — no zombie `mistral` reference is
+        # possible because there's no path that yields an empty agent block.
+        assert cfg == DEFAULT_CONFIG
+        assert cfg["agent"]["text_model"] == "tinyllama"

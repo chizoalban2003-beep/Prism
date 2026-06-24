@@ -426,6 +426,37 @@ class ChainOrchestrator:
                 "Task in progress",
             )
 
+        return self._result_card(graph, message)
+
+    def _result_card(self, graph: TaskGraph, message: str) -> PrismCard:
+        """Render the orchestrator's final card.
+
+        Branches on ``graph.status`` so a graph that failed (one or more
+        nodes errored, synthesis was therefore skipped) never gets the
+        "Task completed." default that the previous code would emit when
+        ``graph.final_answer`` was empty.
+        """
+        from prism_responses import text_card
+
+        if graph.status == "failed":
+            failed = [n for n in graph.nodes if n.status == "failed"]
+            done   = [n for n in graph.nodes if n.status == "done"]
+            lines  = ["Task could not complete — one or more sub-tasks failed."]
+            if failed:
+                lines.append("")
+                lines.append("**Failed steps:**")
+                for n in failed[:6]:
+                    err = (n.error or "no error info").strip()
+                    lines.append(f"  • {n.node_id} ({n.intent}): {err[:200]}")
+            if done:
+                lines.append("")
+                lines.append(f"_{len(done)} step(s) did complete — partial "
+                             "results are stored in the task graph._")
+            if graph.final_answer:
+                lines.append("")
+                lines.append(graph.final_answer)
+            return text_card("\n".join(lines), f"[Failed] {message[:60]}")
+
         return text_card(
             graph.final_answer or "Task completed.",
             f"[Orchestrated] {message[:60]}",
@@ -556,10 +587,7 @@ class ChainOrchestrator:
                 "Task in progress",
             )
 
-        return text_card(
-            graph.final_answer or "Task completed.",
-            f"[Orchestrated] {message[:60]}",
-        )
+        return self._result_card(graph, message)
 
     async def _run_graph_async(
         self,
