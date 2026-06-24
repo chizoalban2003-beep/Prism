@@ -84,6 +84,15 @@ INTENTS: list[tuple[str, str]] = [
      r"\bcontext\s+(?:right now|now)\b|"
      r"perception\s+(?:status|state|snapshot)",
      "current_context"),
+    # Pending-approval queue — must precede memory_recall and list_tasks.
+    # memory_recall's negative lookahead only fires when the dedicated noun
+    # comes immediately after "my", so "what are my pending approvals" would
+    # otherwise match the recall verb cluster first.
+    (r"(?:list|show|view|see|what(?:'s| is| are)?|any|my)\s+(?:my\s+|the\s+|current\s+|all\s+)?"
+     r"(?:pending\s+)?approvals?\b|"
+     r"^\s*approvals?\s*\??\s*$|"
+     r"pending\s+(?:approval|action)s?\b",
+     "approvals_list"),
     # Personal-fact recall — "what is my favourite colour", "do you remember
     # my partner's name". Placed after the specific my_X intents (profile,
     # narrative, growth, identity, artifacts, status) and before the generic
@@ -100,7 +109,7 @@ INTENTS: list[tuple[str, str]] = [
      r"documents?|desktop|pictures?|music|videos?|finances?|transactions?|"
      r"expenses?|health|steps?|sleep|hrv|heart|calories?|artifacts?|"
      r"identity|persona|status|clipboard|contacts?|day|mind|screen|"
-     r"context|notes?))",
+     r"context|notes?|approvals?|pending))",
      "memory_recall"),
     (r"index|scan\.files|search\.code|grep|find\.file", "ksa_task"),
     (r"resize|(?:convert|compress) (?:file|image|video)|rename|move|copy|delete|create file|"

@@ -165,5 +165,17 @@ def handle_info_intent(agent: Any, intent: str, message: str,
         lines = "\n".join(f"• **{o}**" for o in organs[:20])
         return text_card(lines, f"Loaded organs ({len(organs)})")
 
+    if intent == "approvals_list":
+        pending = getattr(agent, "_pending_approval", None)
+        if not pending:
+            return text_card("No pending approvals.", "Approvals")
+        task   = pending.get("task", "(unspecified task)")
+        reason = pending.get("reason", "")
+        body = f"1 pending approval:\n\n• {task}"
+        if reason:
+            body += f"\n  Reason: {reason}"
+        body += "\n\nRespond with 'approve' or 'deny' to act on it."
+        return text_card(body, "Approvals")
+
     return None
 
