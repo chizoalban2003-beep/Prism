@@ -100,7 +100,7 @@ INTENTS: list[tuple[str, str]] = [
      r"find file|search (?:in|for)|read file|list files|"
      r"run (?:command|script)|execute|open (?:app|file)|"
      r"install (?:package|app)|git (?:commit|push|pull|status)|"
-     r"what(?:'s| is) (?:on|in) my(?! screen| calendar| schedule| agenda| inbox| email| mailbox)|"
+     r"what(?:'s| is) (?:on|in) my(?! screen| calendar| schedule| agenda| inbox| email| mailbox| clipboard)|"
      r"show me (?:my )?files|"
      r"\bmy files?\b|"
      r"\bmy (?:downloads|documents|desktop|pictures|music|videos)\b",
@@ -211,7 +211,7 @@ INTENTS: list[tuple[str, str]] = [
      r"organ (?:list|status|registry)",
      "list_organs"),
     (r"turn (?:on|off)|set (?:the )?(?:lights?|thermostat|temp)|"
-     r"\b(?:un)?lock\b|what(?:'s| is) (?:on|off)(?! (?:my|the) screen)|smart home|home assistant",
+     r"\b(?:un)?lock\b|what(?:'s| is) (?:on|off)(?! (?:my|the) (?:screen|clipboard))|smart home|home assistant",
      "smart_home"),
     # NOTE: broad email catch-all — maps to email_read to avoid duplication
     # with the more specific email_read/email_send intents above.
@@ -221,6 +221,21 @@ INTENTS: list[tuple[str, str]] = [
      "email_read"),
     # Organ-mapped intents (broad fallback patterns — do not duplicate entries above)
     (r"weather|temperature|forecast|how (?:hot|cold)|rain|sunny", "weather_check"),
+    # Specific device/perception organ intents MUST precede the broad
+    # wikipedia_lookup catch-all below. The wikipedia pattern matches
+    # "what (?:is|was) (?:a |an |the )?[A-Za-z]" which would otherwise
+    # hijack "what is on my screen" → encyclopaedia article on Spell
+    # checker. Hoisting them keeps the catch-all intact for actual
+    # encyclopaedic queries while letting the perception intents win.
+    (r"(?:take|capture|grab) (?:a )?screenshot|screenshot", "screenshot_capture"),
+    (r"what(?:'s| is) on (?:my |the )?screen|analyse (?:my |the )?screen|"
+     r"analyze (?:my |the )?screen|describe (?:my |the )?screen|"
+     r"look at (?:my |the )?screen|what do you see|vision query|"
+     r"read (?:my |the )?screen|what(?:'s| is) (?:happening|visible) on screen",
+     "vision_query"),
+    (r"(?:read|what(?:'s| is) on|show|paste|get) (?:my )?clipboard", "clipboard_read"),
+    (r"(?:read|open|show|cat|display) (?:my |the )?file|file (?:contents?|read)", "file_read"),
+    (r"(?:write|save|create|overwrite) (?:to )?(?:the )?file|write (?:this|that) to", "file_write"),
     (r"wikipedia|look up|tell me about|who (?:is|was)|what (?:is|was) (?:a |an |the )?[A-Za-z]",
      "wikipedia_lookup"),
     (r"translate|translation|in (?:spanish|french|german|italian|portuguese|chinese|japanese|arabic|russian|hindi)",
@@ -245,16 +260,11 @@ INTENTS: list[tuple[str, str]] = [
     (r"(?:convert|how many|how much) .* (?:to|in|into)|"
      r"(?:km|miles|kg|lbs|celsius|fahrenheit|meters?|feet|inches?|liters?|gallons?) (?:to|in|into)",
      "unit_convert"),
-    (r"(?:take|capture|grab) (?:a )?screenshot|screenshot", "screenshot_capture"),
-    (r"what(?:'s| is) on (?:my |the )?screen|analyse (?:my |the )?screen|"
-     r"analyze (?:my |the )?screen|describe (?:my |the )?screen|"
-     r"look at (?:my |the )?screen|what do you see|vision query|"
-     r"read (?:my |the )?screen|what(?:'s| is) (?:happening|visible) on screen",
-     "vision_query"),
-    (r"(?:read|what(?:'s| is) on|show|paste|get) (?:my )?clipboard", "clipboard_read"),
+    # NOTE: screenshot_capture, vision_query, clipboard_read, file_read and
+    # file_write have been hoisted above wikipedia_lookup so the broad
+    # "what is X" catch-all doesn't grab "what is on my screen". Only
+    # entries unique to this position remain below.
     (r"(?:set|start|create) (?:a )?timer|timer (?:for|of)|countdown", "timer_set"),
-    (r"(?:read|open|show|cat|display) (?:my |the )?file|file (?:contents?|read)", "file_read"),
-    (r"(?:write|save|create|overwrite) (?:to )?(?:the )?file|write (?:this|that) to", "file_write"),
     (r"(?:play|pause|skip|next|previous|volume|stop) (?:music|spotify|song|track|playback)",
      "spotify_control"),
     (r"(?:generate|create|make|qr) (?:a )?qr (?:code)?|qr code for", "qr_generate"),
