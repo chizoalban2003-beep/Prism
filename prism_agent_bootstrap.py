@@ -5,11 +5,13 @@ Pure config-loading helpers extracted from ``PrismAgent.__init__``.
 
 Two functions:
 
-* :func:`load_toml_config` — reads ``prism_config.toml``. Tries
-  ``~/.prism/prism_config.toml`` first (the documented user-config
-  location) and falls back to the path passed in. Returns ``{}`` when
-  no ``tomllib``/``tomli`` parser is available, when the file is
-  missing, or when the parse fails. Never raises.
+* :func:`load_toml_config` — reads ``prism_config.toml``. Layers
+  baked-in :data:`DEFAULT_CONFIG`, the repo-local file at ``path``,
+  and the user's ``~/.prism/prism_config.toml`` (in that order) so a
+  user file that only sets ``[llm]`` doesn't wipe out the repo's
+  ``[agent]`` block. Returns :data:`DEFAULT_CONFIG` when neither file
+  is readable; ``{}`` only when no TOML parser is installed. Never
+  raises.
 * :func:`build_llm_config` — merges the ``[llm]`` section over the
   default key set, honours an explicit ``claude_api_key`` argument, and
   falls back to ``ANTHROPIC_API_KEY`` / ``OPENAI_API_KEY`` environment
@@ -26,6 +28,29 @@ import logging
 import os
 from pathlib import Path
 from typing import Any, Callable, Mapping, Optional
+
+# Baked-in defaults so the daemon works even when the repo's
+# ``prism_config.toml`` isn't installed (py-modules packaging doesn't
+# ship it). Anything the user sets in ``~/.prism/prism_config.toml``
+# or the repo file overrides these.
+DEFAULT_CONFIG: dict = {
+    "agent": {
+        "db_path":       "~/.prism/prism.db",
+        "media_dir":     "~/.prism/media",
+        "auto_watch":    True,
+        "ollama_model":  "tinyllama",
+        "ollama_host":   "http://localhost:11434",
+        "text_model":    "tinyllama",
+        "ffmpeg_path":   "ffmpeg",
+        "poll_interval": 30,
+    },
+    "budget": {
+        "daily_usd":             5.00,
+        "warn_at_fraction":      0.8,
+        "block_at_ceiling":      True,
+        "free_provider_bypass":  True,
+    },
+}
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
@@ -45,12 +70,19 @@ def _deep_merge(base: dict, override: dict) -> dict:
 
 
 def load_toml_config(path: Path) -> dict:
-    """Load a TOML config file. Returns ``{}`` on any failure.
+    """Load a TOML config file with three-layer overlay.
 
-    Loads the repo-local ``path`` as the base, then deep-merges the user's
-    ``~/.prism/prism_config.toml`` on top of it so a user file that only
-    sets ``[llm]`` keeps the repo's ``[agent]`` / ``[budget]`` / etc.
-    sections intact. Either file may be missing; both missing returns ``{}``.
+    Layers, low precedence first:
+      1. :data:`DEFAULT_CONFIG` — baked-in so the daemon works even when
+         the repo's ``prism_config.toml`` isn't installed.
+      2. The repo-local file at ``path`` (typically alongside the agent
+         module) — sets project defaults.
+      3. ``~/.prism/prism_config.toml`` — user overrides.
+
+    Layers 2 and 3 are deep-merged so a user file that only sets ``[llm]``
+    doesn't replace the entire ``[agent]`` block. Returns
+    :data:`DEFAULT_CONFIG` when neither file is readable; returns ``{}``
+    only when no TOML parser is installed.
     """
     try:
         import tomllib  # Python 3.11+
@@ -69,9 +101,10 @@ def load_toml_config(path: Path) -> dict:
 
     repo_cfg = _safe_load(path)
     user_cfg = _safe_load(Path.home() / ".prism" / "prism_config.toml")
-    if not repo_cfg and not user_cfg:
-        return {}
-    return _deep_merge(repo_cfg, user_cfg)
+    # Defaults first → repo overrides defaults → user overrides repo.
+    merged = _deep_merge(DEFAULT_CONFIG, repo_cfg)
+    merged = _deep_merge(merged, user_cfg)
+    return merged
 
 
 def build_llm_config(
