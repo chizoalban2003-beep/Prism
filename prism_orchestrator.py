@@ -257,6 +257,13 @@ Output:
 Reply with exactly: YES or NO
 """
 
+# Total budget for the combined sub-task results that get pasted into the
+# synthesis prompt. Raised from 3000 (the old hard cap, which silently
+# dropped tail nodes on chains with 4+ chatty steps) to 8000 so a typical
+# 5-node chain has room to land without truncation.
+_SYNTHESIS_TOTAL_BUDGET = 8000
+
+
 _SYNTHESIS_PROMPT = """\
 You are composing the final answer to a user's request from completed sub-tasks.
 
@@ -949,28 +956,36 @@ class ChainOrchestrator:
     # ------------------------------------------------------------------
 
     def _synthesise(self, graph: TaskGraph) -> str:
-        results_text = "\n\n".join(
-            f"[{n.node_id} — {n.intent}]\n{n.result}"
-            for n in graph.nodes
-            if n.result and n.status == "done"
-        )
-        if not results_text:
+        done_nodes = [n for n in graph.nodes if n.result and n.status == "done"]
+        if not done_nodes:
             return "All sub-tasks completed but no results to synthesise."
 
+        # Per-node budget keeps a single chatty node from monopolising the
+        # synthesis prompt and starving the rest. Total budget is generous
+        # enough for typical 3-5 node chains; tight enough to keep the LLM
+        # prompt within router limits.
+        per_node = max(800, _SYNTHESIS_TOTAL_BUDGET // max(len(done_nodes), 1))
+        chunks: list[str] = []
+        for n in done_nodes:
+            body = (n.result or "").strip()
+            if len(body) > per_node:
+                body = body[:per_node].rstrip() + "… [truncated]"
+            chunks.append(f"[{n.node_id} — {n.intent}]\n{body}")
+        results_text = "\n\n".join(chunks)
+
         if not self._router:
-            # Fallback: concatenate
             return results_text
 
         prompt = _SYNTHESIS_PROMPT.format(
             original = graph.original,
             hint     = graph.synthesis_hint or "Summarise all results clearly.",
-            results  = results_text[:3000],
+            results  = results_text[:_SYNTHESIS_TOTAL_BUDGET],
         )
         try:
             text, _ = self._router.call(
                 prompt,
                 min_capability = 2,
-                max_tokens     = 600,
+                max_tokens     = 900,
                 speculative    = True,
             )
             return text.strip()
