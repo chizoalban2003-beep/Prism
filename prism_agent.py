@@ -846,11 +846,26 @@ class PrismAgent:
                     "Memory unavailable",
                 )
             try:
-                hits = self._memory.search(message or "", top_n=3)
+                hits = self._memory.search(message or "", top_n=5)
             except Exception as exc:
                 return text_card(f"Memory search failed: {exc}", "Memory")
             facts = [h for h in hits if h.entry.source == "fact"]
-            top   = facts or hits
+            # Drop conversation hits that came from PRISM itself — those are
+            # past hedged/generated replies, not stored facts. Surfacing them
+            # was the issue #28-6 bug where recall echoed stale LLM output
+            # back as if it were ground truth.
+            def _is_self_authored(h):
+                tags = h.entry.tags or []
+                if "role:assistant" in tags:
+                    return True
+                # Legacy entries (pre-tag rollout) leave the role in the title.
+                title = (h.entry.title or "").lower()
+                return title.startswith("assistant:")
+            user_hits = [
+                h for h in hits
+                if h.entry.source == "conversation" and not _is_self_authored(h)
+            ]
+            top = facts or user_hits
             if not top:
                 return text_card(
                     "I don't have a stored answer for that yet. Tell me with "
@@ -861,7 +876,7 @@ class PrismAgent:
             if facts:
                 lines = [h.entry.content for h in facts[:3]]
             else:
-                lines = [f"- {h.entry.content}" for h in hits[:3]]
+                lines = [f"- {h.entry.content}" for h in user_hits[:3]]
             return text_card("\n".join(line for line in lines if line), "Recalled")
 
         if intent == "general_chat":

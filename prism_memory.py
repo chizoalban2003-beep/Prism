@@ -103,10 +103,17 @@ class PrismMemory:
 
     def ingest_conversation(self, role: str, content: str) -> str | None:
         """Store a single conversation turn. Returns the entry_id, or None if
-        the turn was too short to store."""
+        the turn was too short to store.
+
+        The role is recorded as a ``role:<role>`` tag so recall sites can
+        decide whether to surface the entry. Without this, PRISM's own
+        past replies were being returned to the user as if they were
+        stored facts (issue #28-6).
+        """
         if len(content) > 50:   # skip very short turns
             return self.ingest(content, source="conversation",
-                               title=f"{role}: {content[:40]}")
+                               title=f"{role}: {content[:40]}",
+                               tags=[f"role:{role}"])
         return None
 
     # ── Helpers ───────────────────────────────────────────────────────────
