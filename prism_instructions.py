@@ -235,10 +235,13 @@ class PrismInstructions:
         msg   = message.strip()
         lower = msg.lower()
 
-        # Detection patterns
+        # Detection patterns.
+        # "note:" was previously included here, but it overlaps with the
+        # note_append intent: "note: buy milk" should land in PrismNotes,
+        # not the standing-rule store. Drop it so intent routing wins.
         prefixes = ["remember:", "remember that", "always ", "never ",
                     "from now on", "whenever ", "every time ", "make sure",
-                    "don't forget", "note:", "rule:"]
+                    "don't forget", "rule:"]
         is_instruction = any(lower.startswith(p) or lower.startswith("please "+p)
                              for p in prefixes)
         if not is_instruction:
