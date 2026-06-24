@@ -257,6 +257,15 @@ INTENTS: list[tuple[str, str]] = [
     (r"(?:read|what(?:'s| is) on|show|paste|get) (?:my )?clipboard", "clipboard_read"),
     (r"(?:read|open|show|cat|display) (?:my |the )?file|file (?:contents?|read)", "file_read"),
     (r"(?:write|save|create|overwrite) (?:to )?(?:the )?file|write (?:this|that) to", "file_write"),
+    # Arithmetic must precede wikipedia_lookup — otherwise "what is the square
+    # root of 144" was hitting the broad "what is X" wiki pattern and
+    # returning the article on "New Jerusalem". Symbolic operators, the
+    # word-form ("plus", "times", ...), and "square root of N" all route here.
+    (r"(?:^|\b)(?:calc(?:ulate)?|compute|evaluate|solve)\b\s*\d|"
+     r"\d+(?:\.\d+)?\s*[+\-*/×÷%^]\s*\d|"
+     r"\d+\s+(?:plus|minus|times|over|divided\s+by|multiplied\s+by|modulo|to\s+the\s+power\s+of)\s+\d|"
+     r"square\s+root\s+of\s+\d|\bsqrt\s*(?:of\s+)?\d",
+     "calc_eval"),
     (r"wikipedia|look up|tell me about|who (?:is|was)|what (?:is|was) (?:a |an |the )?[A-Za-z]",
      "wikipedia_lookup"),
     (r"translate|translation|in (?:spanish|french|german|italian|portuguese|chinese|japanese|arabic|russian|hindi)",
