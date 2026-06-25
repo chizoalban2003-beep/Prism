@@ -372,6 +372,10 @@ class PrismAgent:
             logger.info("PrismBudget ready: daily=$%.2f", budget.daily_usd)
             return budget
         self._budget = safe_init("PrismBudget", _build_budget, logger=logger)
+        # Wire budget into the router so non-free providers honour the daily
+        # ceiling. Router is built before the budget so we attach post-hoc.
+        if self._budget is not None and getattr(self, "_router", None) is not None:
+            self._router._budget_policy = self._budget
 
         # ChainOrchestrator — prefrontal cortex for multi-step coordination
         def _build_orchestrator():

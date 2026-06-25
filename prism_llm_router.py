@@ -122,6 +122,7 @@ class LLMRouter:
         fallback:     list[str] | None = None,   # ordered fallback list
         ollama_host:  str = "http://localhost:11434",
         config:       dict | None = None,        # from prism_config.toml [llm] section
+        budget_policy: Any | None = None,        # PrismBudget gate; free providers bypass
     ):
         self._preferred   = preferred
         self._fallback    = fallback or []
@@ -131,6 +132,7 @@ class LLMRouter:
         self._discovered  = False
         self._last_scan   = 0.0
         self._speculative_pipeline: Any | None = None
+        self._budget_policy = budget_policy
 
     @classmethod
     def from_config(cls, config_path: str = "~/.prism/prism_config.toml",
@@ -435,6 +437,15 @@ class LLMRouter:
         for opt in self.discover():
             if not opt.available or opt.capability < _eff_capability:
                 continue
+            if self._budget_policy is not None:
+                try:
+                    _decision = self._budget_policy.check(opt.provider)
+                    if not _decision.allowed:
+                        logger.info("[llm_router] budget blocked %s/%s: %s",
+                                    opt.provider, opt.model, _decision.reason)
+                        continue
+                except Exception as _be:
+                    logger.debug("[llm_router] budget check error: %s", _be)
             try:
                 _t0 = time.time()
                 text = self._call_option(
@@ -467,6 +478,15 @@ class LLMRouter:
         for opt in self.discover():
             if not opt.available or opt.provider == "stdlib":
                 continue
+            if self._budget_policy is not None:
+                try:
+                    _decision = self._budget_policy.check(opt.provider)
+                    if not _decision.allowed:
+                        logger.info("[llm_router] budget blocked fallback %s/%s: %s",
+                                    opt.provider, opt.model, _decision.reason)
+                        continue
+                except Exception:
+                    pass
             try:
                 text = self._call_option(
                     opt, _effective_prompt, _eff_max_tokens, system,
