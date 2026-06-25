@@ -18,6 +18,28 @@ ORGAN_POLICY = {
 }
 
 
+_NUM_WORDS = {
+    "a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
+    "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10,
+}
+
+
+def _parse_count(msg: str, verb: str, noun: str) -> int:
+    """Pick out N from 'flip 5 coins' / 'roll three dice'. Default 1."""
+    m = re.search(
+        rf"\b{verb}\s+(\d+|{'|'.join(_NUM_WORDS)})\s+{noun}",
+        msg, re.IGNORECASE,
+    )
+    if not m:
+        return 1
+    token = m.group(1).lower()
+    if token.isdigit():
+        n = int(token)
+    else:
+        n = _NUM_WORDS.get(token, 1)
+    return max(1, min(n, 100))
+
+
 def _parse_dice(msg: str) -> tuple[int, int] | None:
     m = re.search(r"\b(\d*)d(\d+)\b", msg, re.IGNORECASE)
     if m:
@@ -25,8 +47,13 @@ def _parse_dice(msg: str) -> tuple[int, int] | None:
         sides = int(m.group(2))
         if 1 <= n <= 100 and 2 <= sides <= 1000:
             return n, sides
-    if re.search(r"\b(?:roll|throw)\s+(?:a\s+|me\s+)?(?:die|dice)\b", msg, re.IGNORECASE):
-        return 1, 6
+    if re.search(
+        r"\b(?:roll|throw)\s+(?:\d+\s+|a\s+|an\s+|me\s+|some\s+|two\s+|three\s+|four\s+"
+        r"|five\s+|six\s+|seven\s+|eight\s+|nine\s+|ten\s+)?(?:die|dice)\b",
+        msg, re.IGNORECASE,
+    ):
+        n = _parse_count(msg, r"(?:roll|throw)", r"(?:die|dice)")
+        return n, 6
     return None
 
 
@@ -64,10 +91,22 @@ def execute(intent: str, message: str, ctx: dict):
     msg = (message or "").strip()
     rng = random.SystemRandom()
 
-    if re.search(r"\b(?:flip|toss)\b.*\bcoin\b|\bcoin\s+(?:flip|toss)\b", msg, re.IGNORECASE):
-        result = rng.choice(["Heads", "Tails"])
-        card = text_card(f"{result}.", "Coin flip")
-        card.card_data.update({"kind": "coin", "result": result})
+    if re.search(r"\b(?:flip|toss)\b.*\bcoins?\b|\bcoins?\s+(?:flip|toss)\b", msg, re.IGNORECASE):
+        n = _parse_count(msg, r"(?:flip|toss)", r"coins?")
+        flips = [rng.choice(["Heads", "Tails"]) for _ in range(n)]
+        if n == 1:
+            body = f"{flips[0]}."
+            card = text_card(body, "Coin flip")
+            card.card_data.update({"kind": "coin", "result": flips[0]})
+        else:
+            heads = sum(1 for f in flips if f == "Heads")
+            tails = n - heads
+            body = f"{n} flips: {', '.join(flips)}\n({heads}H {tails}T)"
+            card = text_card(body, "Coin flip")
+            card.card_data.update({
+                "kind": "coin", "result": ",".join(flips),
+                "flips": flips, "heads": heads, "tails": tails,
+            })
         return card
 
     dice = _parse_dice(msg)
