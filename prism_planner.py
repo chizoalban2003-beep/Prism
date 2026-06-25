@@ -217,11 +217,18 @@ class PrismPlanner:
         ollama_model: str = "mistral",
         claude_api_key: Optional[str] = None,
         prefer_claude:  bool = True,
+        request_timeout: float = 30.0,
     ):
         self.ollama_host    = ollama_host
         self.ollama_model   = ollama_model
         self.claude_api_key = claude_api_key
         self.prefer_claude  = prefer_claude and bool(claude_api_key)
+        # Interactive chat path uses this planner too — 120s was killing
+        # the UX for greetings like "good morning" (which legitimately
+        # routes here) when the local Ollama model was slow. 30s is
+        # generous for a 3B model and bearable as worst-case chat wait.
+        # Override via the kwarg for batch/offline planning.
+        self.request_timeout = request_timeout
 
     @classmethod
     def setup(cls, **kwargs) -> PrismPlanner:
@@ -427,7 +434,7 @@ class PrismPlanner:
             method = "POST",
         )
         try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
+            with urllib.request.urlopen(req, timeout=self.request_timeout) as resp:
                 data = json.loads(resp.read())
             return data["content"][0]["text"]
         except Exception as e:
@@ -446,7 +453,7 @@ class PrismPlanner:
             headers = {"Content-Type": "application/json"},
         )
         try:
-            with urllib.request.urlopen(req, timeout=120) as resp:
+            with urllib.request.urlopen(req, timeout=self.request_timeout) as resp:
                 return json.loads(resp.read()).get("response", "")
         except urllib.error.HTTPError as e:
             logger.warning("Ollama call failed: HTTP %s — model '%s' may not exist",
@@ -457,7 +464,7 @@ class PrismPlanner:
             etype = type(e).__name__
             if "timed out" in str(e).lower() or "timeout" in etype.lower():
                 self._last_ollama_error = (
-                    f"model '{self.ollama_model}' timed out after 120s — "
+                    f"model '{self.ollama_model}' timed out after {self.request_timeout:g}s — "
                     "too slow for structured planning"
                 )
             else:
