@@ -70,6 +70,36 @@ from prism_voice import PrismVoice
 logger = logging.getLogger(__name__)
 
 
+# Trivial acks/greetings — short-circuit before the LLM. Without this,
+# bare "thanks" was getting a 1.5 kB "Hypothesis: the user's single word
+# 'thanks' is a conclusionary utterance…" essay because no system prompt
+# steered the model, and some models (DeepSeek in particular) improvised
+# a "factual-audit" persona on every casual phrase. See issue #28-53.
+_TRIVIAL_CHAT_REPLIES: dict[str, str] = {
+    "thanks":    "You're welcome.",
+    "thank you": "You're welcome.",
+    "thx":       "You're welcome.",
+    "ty":        "You're welcome.",
+    "ok":        "Got it.",
+    "okay":      "Got it.",
+    "k":         "Got it.",
+    "cool":      "Got it.",
+    "bye":       "Goodbye.",
+    "goodbye":   "Goodbye.",
+    "see you":   "See you.",
+    "hi":        "Hi! How can I help?",
+    "hello":     "Hi! How can I help?",
+    "hey":       "Hi! How can I help?",
+    "yo":        "Hey! How can I help?",
+}
+
+
+def _trivial_chat_reply(message: str) -> Optional[str]:
+    """Return a fixed reply for trivial acks/greetings, else None."""
+    stripped = (message or "").strip().lower().rstrip("!.?,")
+    return _TRIVIAL_CHAT_REPLIES.get(stripped)
+
+
 class PrismAgent:
     """
     Unified PRISM agent. Routes natural language to sub-agents.
@@ -938,6 +968,9 @@ class PrismAgent:
             return text_card("\n".join(line for line in lines if line), "Recalled")
 
         if intent == "general_chat":
+            reply = _trivial_chat_reply(message)
+            if reply is not None:
+                return text_card(reply, "Chat")
             router = getattr(self, "_router", None)
             if router is None:
                 return text_card(
@@ -946,7 +979,17 @@ class PrismAgent:
                     "Chat unavailable",
                 )
             try:
-                raw, _ = router.call(message, min_capability=1, max_tokens=400)
+                # System prompt anchors the model to conversational replies
+                # instead of letting it improvise a "factual-audit" persona.
+                system = (
+                    "You are PRISM, a local-first personal assistant. "
+                    "Respond conversationally and concisely — one or two "
+                    "short sentences for casual chat. Do not analyse the "
+                    "user's message structure or invent a persona. Just "
+                    "reply naturally."
+                )
+                raw, _ = router.call(message, min_capability=1,
+                                     max_tokens=400, system=system)
                 answer = (raw or "").strip()
                 if not answer:
                     # Router returned nothing — almost always means no LLM
