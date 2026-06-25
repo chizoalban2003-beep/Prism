@@ -82,6 +82,23 @@ INTENTS: list[tuple[str, str]] = [
     (r"predict|match|fixture|vs|versus", "predict_match"),
     (r"injury risk|squad risk|squad injury|player risk|player fitness|"
      r"\binjury\b|\bsquad\b|\bfitness\b", "squad_risk"),
+    # Device inventory: PRISM's core mission is bridging the user to
+    # their hardware. Hoisted above all domain matchers because:
+    #   * "hardware inventory" was eaten by domain_supply's `inventory`.
+    #   * "list my devices" / "show device capabilities" were eaten by
+    #     status's bare `device` keyword.
+    #   * "what hardware do I have" was eaten by my_profile's
+    #     "what (?:do you )?know about me" via the LLM classifier.
+    #   * "what is on this computer" was eaten by smart_home's regex.
+    # See issue #28-49.
+    (r"(?:what|which|list|show|describe)\s+(?:my\s+|the\s+|all\s+)?"
+     r"(?:hardware|devices?|capabilities?|"
+     r"(?:cli|command[- ]?line)\s+tools?|browsers?)\b|"
+     r"\bdevice\s+(?:inventory|capabilities|capability\s+map|scan)\b|"
+     r"\bhardware\s+(?:inventory|scan|list)\b|"
+     r"what(?:'s| is)?\s+on\s+(?:this|my)\s+(?:computer|machine|laptop|system)\b|"
+     r"what\s+can\s+(?:this|my)\s+(?:computer|machine|device)\s+do\b",
+     "device_inventory"),
     (r"moment|1v1|keeper|\bshot\b|attack", "moment"),
     (r"session|footage|video|analyse.*play", "session"),
     (r"transfer|market|value|worth", "transfer"),
