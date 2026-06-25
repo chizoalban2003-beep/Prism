@@ -98,6 +98,12 @@ def _rank(option: LLMOption) -> int:
             return cap
     return 1 if option.available else 0
 
+# CRYSTAL-phase ("fast") selection caps the local-preference at this avg
+# latency. If the only local option is slower than this (e.g. tinyllama
+# on a CPU-only host averaging tens of seconds), fall through to the
+# ranked selection rather than dragging chat down to "local at any cost".
+_FAST_LOCAL_LATENCY_CAP_MS = 10000
+
 class LLMRouter:
     """
     Discovers all available LLMs, ranks them, and routes requests
@@ -237,11 +243,17 @@ class LLMRouter:
                 pass
 
         if effective_hint == "fast":
-            # Prefer smallest/fastest local model (capability=1) over cloud
+            # Prefer smallest/fastest local model (capability=1) over cloud —
+            # but only when "local" is actually fast. A local model with a
+            # multi-second-average latency (e.g. tinyllama at 91s on a CPU-only
+            # host) violates the "fast" semantic; in that case fall through to
+            # the ranked selection, which orders by measured latency.
             for opt in self.discover():
-                if opt.available and opt.capability >= 1 and opt.provider == "ollama":
+                if (opt.available and opt.capability >= 1
+                        and opt.provider == "ollama"
+                        and opt.latency_ms <= _FAST_LOCAL_LATENCY_CAP_MS):
                     return opt
-            # Fall through to normal selection if no local available
+            # Fall through to normal selection if no local available or all too slow
         elif effective_hint == "emergency":
             # Prefer cloud (claude/openai) as fastest reliable fallback
             for opt in self.discover():
