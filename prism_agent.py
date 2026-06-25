@@ -521,6 +521,17 @@ class PrismAgent:
 
     def chat(self, message: str, context: dict | None = None) -> PrismCard:
         context = context or {}
+        # Empty / whitespace-only input must not reach the tier dispatcher.
+        # Without this guard "" routed to policy_inspect (first organ with
+        # no required regex anchor) and "   " created an empty task — both
+        # are surprising for the user *and* spend budget on LLM calls
+        # against meaningless input. See issue #28-46.
+        if not (message or "").strip():
+            return text_card(
+                "What would you like help with? Try a question, a calculation, "
+                "or 'plan my day'.",
+                "PRISM",
+            )
         try:
             # 1. Check for standing instruction (store if detected)
             stored_instruction = self._instructions.parse_from_chat(message or "")
