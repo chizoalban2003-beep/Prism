@@ -267,6 +267,37 @@ def handle_pa_intent(agent: Any, intent: str, message: str,
                 for r in results[:4])
         return text_card(body, f"Search · {agent._search.status_summary()['provider']}")
 
+    if intent == "show_notifications":
+        proactive = getattr(agent, "_proactive", None)
+        if proactive is None:
+            return text_card(
+                "Proactive notifications aren't running on this daemon.",
+                "Notifications")
+        try:
+            events = proactive.pending_events(n=10)
+        except Exception as exc:
+            logger.debug("[show_notifications] read failed: %s", exc)
+            return text_card("Couldn't read notifications right now.",
+                             "Notifications")
+        if not events:
+            return text_card(
+                "No new notifications. I'll surface anything that needs "
+                "your attention here.", "Notifications")
+        import time as _time
+        def _fmt(ev):
+            secs = max(0, int(_time.time() - ev.timestamp))
+            if secs < 60:
+                rel = f"{secs}s ago"
+            elif secs < 3600:
+                rel = f"{secs // 60}m ago"
+            elif secs < 86400:
+                rel = f"{secs // 3600}h ago"
+            else:
+                rel = f"{secs // 86400}d ago"
+            return f"• {ev.message}  ({rel})"
+        body = "\n".join(_fmt(e) for e in events)
+        return text_card(body, f"Notifications ({len(events)})")
+
     if intent == "send_push":
         if not agent._push.configured:
             return text_card(

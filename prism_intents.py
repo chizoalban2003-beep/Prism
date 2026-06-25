@@ -167,7 +167,7 @@ INTENTS: list[tuple[str, str]] = [
      r"documents?|desktop|pictures?|music|videos?|finances?|transactions?|"
      r"expenses?|health|steps?|sleep|hrv|heart|calories?|artifacts?|"
      r"identity|persona|status|clipboard|contacts?|day|mind|screen|"
-     r"context|notes?|approvals?|pending))",
+     r"context|notes?|approvals?|pending|notifications?|notifs?|alerts?))",
      "memory_recall"),
     (r"index|scan\.files|search\.code|grep|find\.file", "ksa_task"),
     # remove_instruction must accept content between the article and
@@ -229,6 +229,17 @@ INTENTS: list[tuple[str, str]] = [
      r"what(?:'s| is) (?:the )?(?:latest|current|today)|"
      r"research|who is|where is|when (?:did|does|is)",
      "web_search"),
+    # show_notifications must precede send_push: a bare "my notifications"
+    # or "any alerts?" is a read intent, not a send intent. The reverse
+    # order let send_push's "ping me / alert me" fragments win for
+    # phrases like "alerts for me", and "my notifications" fell through
+    # to general_chat, where the LLM improvised "Current context".
+    (r"(?:what(?:'s| are)?\s+)?(?:my|any|all|the|recent|new)\s+"
+     r"(?:notifications?|notifs?|alerts?|reminders?\s+pending)\b|"
+     r"(?:show|list|read|view|see|get|check|open)\s+"
+     r"(?:my\s+|the\s+|all\s+)?(?:notifications?|notifs?|alerts?)\b|"
+     r"^\s*(?:notifications?|notifs?|alerts?)\s*\??\s*$",
+     "show_notifications"),
     # send_push: accept "a" or "an", and an optional adjective between
     # the article and the noun ("send me a test notification", "push me an
     # urgent alert"). Pre-fix the regex required "notification" to follow
