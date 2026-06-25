@@ -102,6 +102,17 @@ INTENTS: list[tuple[str, str]] = [
      "my_growth"),
     (r"identity|digital\.dna|who\.am", "identity"),
     (r"artifact|past\.decision|what\.have\.i|my artifacts", "artifacts"),
+    # Spotify must precede the generic "status" intent — otherwise
+    # "spotify status" / "what's playing on spotify" was eaten by the
+    # bare-word \bstatus\b regex (returning the system status card) or
+    # by wikipedia_lookup's "what is X" catch-all (returning the
+    # Wikipedia article on Spotify the company). See issue #28-48.
+    (r"(?:play|pause|skip|next|previous|volume|stop)\s+(?:music|spotify|song|track|playback)|"
+     r"what(?:'s| is)?\s+(?:song\s+is\s+)?(?:playing|on)(?:\s+(?:right\s+)?now)?\s+on\s+spotify|"
+     r"what(?:'s| is)?\s+playing(?:\s+(?:right\s+)?now)?(?=\s|$|\?)|"
+     r"current(?:ly)?\s+playing|now\s+playing|"
+     r"\bspotify\s+(?:status|state|now)\b",
+     "spotify_control"),
     (r"\bstatus\b|connected|device|\bsync\b", "status"),
     # Perception / fused-context snapshot — "what's my current context",
     # "show my context", "perception status". Placed before memory_recall
@@ -356,8 +367,9 @@ INTENTS: list[tuple[str, str]] = [
      r"random number (?:between|from)|"
      r"random (?:choice|pick) (?:from|between|of)",
      "random_pick"),
-    (r"(?:play|pause|skip|next|previous|volume|stop) (?:music|spotify|song|track|playback)",
-     "spotify_control"),
+    # Spotify hoisted to top of file (line ~95) — the control-verb form is
+    # narrow enough not to false-positive earlier, and the query form has
+    # to beat status/wikipedia_lookup.
     (r"(?:generate|create|make|qr) (?:a )?qr (?:code)?|qr code for", "qr_generate"),
     (r"(?:run|execute|shell|bash|cmd|terminal|command)(?:\s|:)", "shell_run"),
     (r"(?:make|place|give|dial) (?:a )?(?:phone )?call|"
