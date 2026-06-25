@@ -42,6 +42,12 @@ def execute(intent: str, message: str, ctx: dict):
         "yesterdays", "tonights", "todays", "now", "currently", "outside",
         "like", "right", "going", "to", "be", "and",
         "weather", "forecast", "temperature", "temp", "climate",
+        # Condition words — "how cold is it" was looking up city "Cold",
+        # "is it raining" was looking up "Raining".
+        "cold", "hot", "warm", "chilly", "windy", "sunny", "cloudy",
+        "rain", "rainy", "raining", "snow", "snowy", "snowing",
+        "fog", "foggy", "hail", "hailing", "storm", "storming", "stormy",
+        "humid", "freezing", "scorching", "wet", "dry", "it",
         "me", "my", "your", "our", "us", "please", "city",
     }
     if ctx.get("location"):

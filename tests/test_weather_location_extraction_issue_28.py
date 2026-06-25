@@ -75,6 +75,20 @@ class TestStopwordsStripped:
         url, _ = self._call("today's weather")
         assert "London" in url
 
+    def test_how_cold_is_it_uses_default(self):
+        # "how cold is it" was treating "cold" as the city, querying
+        # wttr.in for "Cold" and getting back nonsense.
+        url, _ = self._call("how cold is it")
+        assert "London" in url, f"expected London fallback, got {url}"
+
+    def test_how_hot_is_it_uses_default(self):
+        url, _ = self._call("how hot is it")
+        assert "London" in url
+
+    def test_is_it_raining_uses_default(self):
+        url, _ = self._call("is it raining")
+        assert "London" in url
+
     def test_how_is_the_weather_uses_default(self):
         url, _ = self._call("how is the weather")
         assert "London" in url
