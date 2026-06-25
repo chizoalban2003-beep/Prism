@@ -50,8 +50,15 @@ INTENTS: list[tuple[str, str]] = [
      r"what(?:'s| is)?\s+(?:today'?s\s+)?date|"
      r"what\s+day\s+is\s+(?:it|today))\b",
      "clock_query"),
-    (r"(?!.*\bto (?:french|spanish|german|japanese|chinese|arabic|russian|hindi|italian"
-     r"|portuguese)\b)(?:plan|morning|daily|today|schedule)", "universal_plan"),
+    # The (?:in)?to alternation catches "translate X into french" — the
+     # previous lookahead only excluded "to french" so "good morning into
+     # french" routed here on the "morning" hit. Also bail on any literal
+     # "translate" verb in the message, regardless of preposition shape.
+     (r"(?!.*\b(?:in)?to (?:french|spanish|german|japanese|chinese|arabic|russian|hindi"
+     r"|italian|portuguese|dutch|korean|turkish|polish|swedish|norwegian|danish|finnish"
+     r"|greek|czech|romanian|hungarian|thai|vietnamese|indonesian|hebrew|ukrainian"
+     r"|catalan|english)\b)(?!.*\btranslate\b)(?:plan|morning|daily|today|schedule)",
+     "universal_plan"),
     (r"how (?:do|can|should) i|plan (?:for|to)|strategy for|"
      r"help me (?:with|plan|reach|achieve|set|accomplish|hit|build|launch|"
      r"finish|complete|start|tackle|prepare)|"
