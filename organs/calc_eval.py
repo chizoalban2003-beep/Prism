@@ -138,6 +138,15 @@ def _extract_expression(message: str) -> str:
         text = pat.sub(sym, text)
     # Strip stray trailing words like "please".
     text = re.sub(r"\b(?:please|equals?|equal to|result)\b", "", text, flags=re.IGNORECASE)
+    # Final whitelist pass: keep only characters that are valid in a plain
+    # arithmetic expression. Without this, mixed-script input like
+    # "日本語テスト 計算して 2 + 3 を" or "hola 🌮 cuanto es 7 + 8" routed
+    # to calc_eval (the intent regex catches "2 + 3") but blew up in
+    # ast.parse with "invalid character" — the user saw a confusing
+    # arithmetic error instead of the answer. Drops Japanese kana, emoji,
+    # Spanish lead-ins, and any other text the substitutions above didn't
+    # account for. See issue #28-47.
+    text = re.sub(r"[^0-9.+\-*/%()\s]", " ", text)
     # Collapse spaces.
     text = re.sub(r"\s+", " ", text).strip()
     return text
