@@ -53,6 +53,9 @@ INTENTS: list[tuple[str, str]] = [
      r"what\s+time\s+(?:is\s+it|do\s+you\s+have)|"
      r"current\s+time|time\s+(?:now|please)|"
      r"what(?:'s| is)?\s+(?:today'?s\s+)?date|"
+     r"what(?:'s| is)?\s+the\s+date(?:\s+today)?|"
+     r"what\s+date\s+is\s+(?:it|today)|"
+     r"current\s+date|today'?s\s+date|"
      r"what\s+day\s+is\s+(?:it|today))\b",
      "clock_query"),
     # The (?:in)?to alternation catches "translate X into french" — the
