@@ -65,6 +65,26 @@ class TestAbsoluteTimeWithoutAt:
         assert delay > 0
 
 
+class TestAlarmAndWake:
+    """Alarms and wake-ups are reminders with a time; previously
+    "set an alarm for 7am" routed to organ synthesis."""
+
+    def test_set_an_alarm_for_7am(self):
+        text, delay = _parse_reminder("set an alarm for 7am")
+        assert text == "wake up"
+        assert delay > 0
+
+    def test_wake_me_up_at_7am(self):
+        text, delay = _parse_reminder("wake me up at 7am")
+        assert text == "wake up"
+        assert delay > 0
+
+    def test_wake_me_at_7am_with_action(self):
+        text, delay = _parse_reminder("wake me at 6am to go running")
+        assert text == "go running"
+        assert delay > 0
+
+
 class TestBackwardCompat:
     """The cases the original code already handled must keep working."""
 

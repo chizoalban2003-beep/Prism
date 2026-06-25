@@ -180,7 +180,12 @@ INTENTS: list[tuple[str, str]] = [
     (r"(?:append|add|write|save|take|jot down) (?:a )?note|note(?:pad)?:? ", "note_append"),
     (r"remind me|set (?:a )?reminder|alert me (?:in|at|when)|"
      r"don't let me forget|in (\d+) (?:minute|hour|day)|"
-     r"at (\d+(?::\d+)?(?:am|pm)?)", "reminder_set"),
+     r"at (\d+(?::\d+)?(?:am|pm)?)|"
+     # Alarms and wake-ups are just reminders with a time. Without
+     # this branch "set an alarm for 7am" tried to synthesise a fresh
+     # organ when reminder_set already does the job.
+     r"set (?:an )?alarm|wake me (?:up )?(?:at|in)",
+     "reminder_set"),
     (r"(?:add|create|make|new) (?:a )?(?:task|todo|reminder|ticket|issue)|"
      r"(?:i need to|i have to|remember to|don't forget)",
      "add_task"),

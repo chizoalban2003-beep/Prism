@@ -105,7 +105,7 @@ def _parse_reminder(message: str) -> tuple:
     # "reminder:" etc. Whatever's left is the action.
     text = residual
     text = re.sub(
-        r'\bset\s+(?:a\s+|the\s+)?reminder\s+(?:for|to|about|that)?\b',
+        r'\bset\s+(?:a\s+|an\s+|the\s+)?(?:reminder|alarm)\s+(?:for|to|about|that)?\b',
         ' ', text, flags=re.IGNORECASE,
     )
     text = re.sub(
@@ -116,13 +116,24 @@ def _parse_reminder(message: str) -> tuple:
         r'\bremind\s+(?:me\s+)?(?:to|that|about|of)?\b',
         ' ', text, flags=re.IGNORECASE,
     )
+    # "wake me up at 7am" → strip "wake me up" so the reminder text is
+    # the residue (often empty, in which case _DEFAULT_WAKE label fires).
+    text = re.sub(
+        r'\bwake\s+me(?:\s+up)?(?:\s+(?:at|in))?\b',
+        ' ', text, flags=re.IGNORECASE,
+    )
     text = re.sub(r'\s+', ' ', text).strip(' :,-.')
     # If a lone "to" survived from "...for 3pm to take medication"
     # (the lead-in only matched "set a reminder for"), drop it.
     text = re.sub(r'^(?:to|that|about|of)\s+', '', text, flags=re.IGNORECASE).strip()
 
     if not text:
-        text = message.strip()
+        # When the user said "wake me up at 7am" or "set an alarm for 7am"
+        # — pure time, no action — give a sensible default label.
+        if re.search(r"\b(?:wake|alarm)\b", message, re.IGNORECASE):
+            text = "wake up"
+        else:
+            text = message.strip()
 
     return text, delay
 
