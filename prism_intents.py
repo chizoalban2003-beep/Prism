@@ -170,9 +170,26 @@ INTENTS: list[tuple[str, str]] = [
      r"context|notes?|approvals?|pending))",
      "memory_recall"),
     (r"index|scan\.files|search\.code|grep|find\.file", "ksa_task"),
-    (r"resize|(?:convert|compress) (?:file|image|video)|rename|move|copy|delete|create file|"
+    # remove_instruction must accept content between the article and
+    # "instruction|rule" — "remove the never mind instruction" and
+    # "delete the rule about uber" are natural phrasings the old narrow
+    # regex (article *immediately* followed by the keyword) didn't catch.
+    # Also hoisted above device_task — without that, "delete the rule"
+    # was eaten by device_task's `delete the` file-op branch.
+    # See issue #28-50.
+    (r"(?:forget|remove|delete)\s+(?:[^.?!\n]+?\s+)?(?:instruction|rule)s?\b|"
+     r"\bstop\s+(?:always|never)\b", "remove_instruction"),
+    # Word boundaries around the bare file-op verbs are critical: without
+    # \b the substring match for "move" inside "remove" sent
+    # "remove the never mind instruction" to device_task instead of
+    # remove_instruction (so the user couldn't delete a stored
+    # instruction from chat — they got an approval card for a no-op).
+    # Same for "delete" inside "deletes" etc. See issue #28-50.
+    (r"resize|(?:convert|compress) (?:file|image|video)|"
+     r"\b(?:rename|move|copy|delete)\b\s+(?:file|folder|directory|the|a|my)|"
+     r"\bcreate file\b|"
      r"find file|search (?:in|for)|read file|list files|"
-     r"run (?:command|script)|execute|open (?:app|file)|"
+     r"run (?:command|script)|\bexecute\b|open (?:app|file)|"
      r"install (?:package|app)|git (?:commit|push|pull|status)|"
      r"what(?:'s| is) (?:on|in) my(?! screen| calendar| schedule| agenda| inbox| email| mailbox| clipboard)|"
      r"show me (?:my )?files|"
@@ -204,8 +221,6 @@ INTENTS: list[tuple[str, str]] = [
     (r"show (?:my )?(?:instructions?|rules?|standing orders?)|"
      r"what (?:have you )?(?:remember|know) about my preferences",
      "show_instructions"),
-    (r"(?:forget|remove|delete) (?:that |the )?(?:instruction|rule)|"
-     r"stop (?:always|never)", "remove_instruction"),
     (r"(?:use|connect|integrate|set up|configure|add) (?:with )?(?!my )(?!the )"
      r"(?:[A-Z][a-z]+(?:\s[A-Z][a-z]+)*|[a-z]+\.[a-z]+)|"
      r"(?:can you|how do i) (?:use|access|connect to) ", "discover_service"),
