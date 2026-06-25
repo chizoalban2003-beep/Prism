@@ -59,6 +59,14 @@ INTENTS: list[tuple[str, str]] = [
      # previous lookahead only excluded "to french" so "good morning into
      # french" routed here on the "morning" hit. Also bail on any literal
      # "translate" verb in the message, regardless of preposition shape.
+     # Reminder/task list queries must precede universal_plan — "today"
+     # in "reminders for today" would otherwise be claimed by the planner.
+     # Keep this narrow: only LIST verbs + the noun, or interrogatives that
+     # specifically ask about pending items. Don't claim "set a reminder".
+     (r"\b(?:list|show|view|display|see) (?:my |the |all )?(?:reminders?|tasks?|todos?|to-?dos?)\b"
+     r"|^(?:my\s+)?(?:reminders?|tasks?|todos?)\s+(?:for\s+)?(?:today|tomorrow|tonight)\b"
+     r"|what (?:reminders?|tasks?|todos?) (?:do i have|are (?:pending|there|due|on|in))",
+     "list_tasks"),
      (r"(?!.*\b(?:in)?to (?:french|spanish|german|japanese|chinese|arabic|russian|hindi"
      r"|italian|portuguese|dutch|korean|turkish|polish|swedish|norwegian|danish|finnish"
      r"|greek|czech|romanian|hungarian|thai|vietnamese|indonesian|hebrew|ukrainian"
@@ -201,8 +209,10 @@ INTENTS: list[tuple[str, str]] = [
     (r"(?:add|create|make|new) (?:a )?(?:task|todo|reminder|ticket|issue)|"
      r"(?:i need to|i have to|remember to|don't forget)",
      "add_task"),
-    (r"(?:my )?(?:tasks?|todos?|to-do|to do|what(?:'s| is) (?:on my )?list|"
-     r"pending|backlog|open issues?)",
+    (r"(?:my )?(?:tasks?|todos?|reminders?|to-do|to do|"
+     r"what(?:'s| is) (?:on my )?list|pending|backlog|open issues?)|"
+     r"(?:list|show|view|see|display) (?:my |the )?(?:tasks?|todos?|reminders?|to-?dos?)|"
+     r"what (?:tasks?|reminders?|todos?) (?:do i have|are (?:there|pending))",
      "list_tasks"),
     (r"(?:that was|you were|that(?:'s| is)) (?:wrong|right|too|not|off|correct|"
      r"perfect|bad|good)|(?:i (?:disagree|agree|wouldn't|would)|"
