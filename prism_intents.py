@@ -312,8 +312,15 @@ INTENTS: list[tuple[str, str]] = [
      r"bitcoin|satoshi|ethereum) (?:to|in|into)|"
      r"(?:convert|exchange) .* (?:dollar|euro|pound|yen|yuan|franc|rupee)",
      "currency_convert"),
-    (r"(?:convert|how many|how much) .* (?:to|in|into)|"
-     r"(?:km|miles|kg|lbs|celsius|fahrenheit|meters?|feet|inches?|liters?|gallons?) (?:to|in|into)",
+    # Negative lookahead skips data-format / code-language conversions
+     # ("convert json to yaml", "convert python to javascript") so they
+     # fall through to organ synthesis instead of hitting the unit
+     # converter and getting back "Could not parse conversion request".
+     (r"(?!.*\b(?:json|yaml|yml|xml|csv|tsv|html|markdown|md|toml|ini|sql"
+     r"|python|javascript|typescript|ruby|java|rust|golang|kotlin|swift|c\+\+"
+     r"|base64|hex|binary)\b)"
+     r"(?:(?:convert|how many|how much) .* (?:to|in|into)|"
+     r"(?:km|miles|kg|lbs|celsius|fahrenheit|meters?|feet|inches?|liters?|gallons?) (?:to|in|into))",
      "unit_convert"),
     # NOTE: screenshot_capture, vision_query, clipboard_read, file_read and
     # file_write have been hoisted above wikipedia_lookup so the broad
