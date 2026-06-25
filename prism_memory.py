@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import re
 import sqlite3
 import time
 from dataclasses import dataclass, field
@@ -87,10 +88,18 @@ class PrismMemory:
         for row in rows:
             content   = row[1]
             stored_emb = json.loads(row[5]) if row[5] else []
+            # Hybrid score: cosine catches semantic recall, BM25 catches
+            # exact-token recall (hashes, UUIDs, file paths, error codes —
+            # things embeddings can't represent meaningfully). Without this
+            # max(), searching for "deadbeef" against content containing
+            # "deadbeef-9d3a" returned nothing because cosine sat well
+            # below the 0.15 surface threshold.
+            lexical_score = self._bm25(query, content)
             if query_emb and stored_emb:
-                score = self._cosine(query_emb, stored_emb)
+                semantic_score = self._cosine(query_emb, stored_emb)
+                score = max(semantic_score, lexical_score)
             else:
-                score = self._bm25(query, content)
+                score = lexical_score
             excerpt   = self._excerpt(query, content)
             entry     = MemoryEntry(
                 entry_id = row[0], content=content, source=row[2],
@@ -170,10 +179,20 @@ class PrismMemory:
         return dot / (na * nb + 1e-9)
 
     @staticmethod
+    def _tokenise(text: str) -> list[str]:
+        """Alphanumeric tokens. ``re.findall(r"\\w+")`` splits on punctuation
+        (including hyphens), so ``"deadbeef-9d3a"`` becomes the two tokens
+        ``["deadbeef", "9d3a"]`` — both at ingest and at query time. The old
+        ``str.split()`` left the whole hyphenated string as one token, which
+        made hash/UUID/error-code lookups fail.
+        """
+        return re.findall(r"\w+", text.lower())
+
+    @staticmethod
     def _bm25(query: str, doc: str, k1: float=1.5, b: float=0.75) -> float:
         """Simplified single-document BM25 scoring."""
-        q_terms  = query.lower().split()
-        d_terms  = doc.lower().split()
+        q_terms  = PrismMemory._tokenise(query)
+        d_terms  = PrismMemory._tokenise(doc)
         d_len    = len(d_terms)
         avg_len  = 100.0
         score    = 0.0
