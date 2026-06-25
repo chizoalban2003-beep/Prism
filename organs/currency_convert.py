@@ -68,6 +68,16 @@ _CURRENCY_NAMES: dict[str, str] = {
 }
 
 
+def _fmt_amount(v: float) -> str:
+    # ``:,.4g`` (the original) collapses to scientific notation for any
+    # value >= 1e4, so "50 GBP to JPY" rendered as "1.065e+04 JPY".
+    # Fixed-point for ordinary amounts; fall back to 6 significant digits
+    # only for sub-unit conversions where decimals matter.
+    if abs(v) >= 1:
+        return f"{v:,.2f}"
+    return f"{v:.6g}"
+
+
 def _resolve_currency(token: str) -> str:
     """Resolve a token to an ISO 4217 code. Returns the token uppercased if unknown."""
     t = token.strip().lower()
@@ -144,7 +154,7 @@ def execute(intent: str, message: str, ctx: dict):
         if rate is None:
             return text_card(f"Unknown target currency: {dst}", "Currency")
         converted = amount * rate
-        result = f"{amount:,.2f} {src} = {converted:,.4g} {dst}  (rate: {rate:.6g})"
+        result = f"{amount:,.2f} {src} = {_fmt_amount(converted)} {dst}  (rate: {rate:.6g})"
         structured.update({"converted": float(converted), "rate": float(rate)})
     except Exception as exc:
         result = f"Currency conversion failed: {exc}"
