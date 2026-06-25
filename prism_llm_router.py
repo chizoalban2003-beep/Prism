@@ -123,6 +123,7 @@ class LLMRouter:
         ollama_host:  str = "http://localhost:11434",
         config:       dict | None = None,        # from prism_config.toml [llm] section
         budget_policy: Any | None = None,        # PrismBudget gate; free providers bypass
+        request_timeout: float = 30.0,           # per-provider urlopen timeout in seconds
     ):
         self._preferred   = preferred
         self._fallback    = fallback or []
@@ -133,6 +134,7 @@ class LLMRouter:
         self._last_scan   = 0.0
         self._speculative_pipeline: Any | None = None
         self._budget_policy = budget_policy
+        self.request_timeout = float(request_timeout)
 
     @classmethod
     def from_config(cls, config_path: str = "~/.prism/prism_config.toml",
@@ -631,7 +633,7 @@ class LLMRouter:
             headers={"Content-Type":"application/json",
                      "anthropic-version":"2023-06-01",
                      "x-api-key":api_key})
-        resp = urllib.request.urlopen(req, timeout=120)
+        resp = urllib.request.urlopen(req, timeout=self.request_timeout)
         return json.loads(resp.read())["content"][0]["text"]
 
     def _call_ollama(self, opt: LLMOption, prompt: str,
@@ -654,7 +656,7 @@ class LLMRouter:
         payload = json.dumps(body).encode()
         req = urllib.request.Request(f"{opt.endpoint}/api/generate",
             data=payload,headers={"Content-Type":"application/json"})
-        resp = urllib.request.urlopen(req, timeout=120)
+        resp = urllib.request.urlopen(req, timeout=self.request_timeout)
         return json.loads(resp.read()).get("response","")
 
     def _call_openai(self, opt: LLMOption, prompt: str,
@@ -687,7 +689,7 @@ class LLMRouter:
             data=payload,
             headers={"Content-Type":"application/json",
                      "Authorization": "Bearer " + api_key})
-        resp = urllib.request.urlopen(req, timeout=120)
+        resp = urllib.request.urlopen(req, timeout=self.request_timeout)
         return json.loads(resp.read())["choices"][0]["message"]["content"]
 
     # ── Async interface ───────────────────────────────────────────────────
