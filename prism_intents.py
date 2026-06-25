@@ -301,7 +301,11 @@ INTENTS: list[tuple[str, str]] = [
      r"\d+\s+(?:plus|minus|times|over|divided\s+by|multiplied\s+by|modulo|to\s+the\s+power\s+of)\s+\d|"
      r"square\s+root\s+of\s+\d|\bsqrt\s*(?:of\s+)?\d|"
      r"\d+(?:\.\d+)?\s+(?:squared|cubed)\b|"
-     r"\d+(?:\.\d+)?\s*(?:%|percent)\s+of\s+\d",
+     r"\d+(?:\.\d+)?\s*(?:%|percent)\s+of\s+\d|"
+     r"\blog\s+(?:base\s+\d+(?:\.\d+)?\s+)?of\s+\d|"
+     r"\bln\s+of\s+\d|"
+     r"\bfactorial\s+of\s+\d|"
+     r"(?<!\w)\d+!",
      "calc_eval"),
     (r"wikipedia|look up|tell me about|who (?:is|was)|what (?:is|was) (?:a |an |the )?[A-Za-z]",
      "wikipedia_lookup"),

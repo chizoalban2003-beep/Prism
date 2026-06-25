@@ -70,6 +70,27 @@ _PERCENT_OF_RE = re.compile(
     re.IGNORECASE,
 )
 
+# log/ln/factorial: substitute the computed value as a literal so the AST
+# walker stays function-call-free. Order matters — log base B of N must
+# match before bare "log of N".
+_LOG_BASE_RE = re.compile(
+    r"\blog\s+base\s+(\d+(?:\.\d+)?)\s+of\s+(\d+(?:\.\d+)?)\b",
+    re.IGNORECASE,
+)
+_LOG_OF_RE = re.compile(r"\blog\s+of\s+(\d+(?:\.\d+)?)\b", re.IGNORECASE)
+_LN_OF_RE = re.compile(r"\bln\s+of\s+(\d+(?:\.\d+)?)\b", re.IGNORECASE)
+_FACTORIAL_OF_RE = re.compile(r"\bfactorial\s+of\s+(\d+)\b", re.IGNORECASE)
+_BANG_RE = re.compile(r"(?<!\w)(\d+)!(?!\w)")
+
+_FACTORIAL_CAP = 500
+
+
+def _factorial_literal(n_str: str) -> str:
+    n = int(n_str)
+    if n > _FACTORIAL_CAP:
+        raise ValueError(f"factorial of {n} exceeds cap ({_FACTORIAL_CAP})")
+    return str(math.factorial(n))
+
 # Strip the conversational lead-in so we get a clean expression.
 _LEAD_RE = re.compile(
     r"^\s*(?:calc(?:ulate)?|compute|evaluate|solve|how\s+much\s+is|"
@@ -91,6 +112,27 @@ def _extract_expression(message: str) -> str:
     text = _PERCENT_OF_RE.sub(
         lambda m: f"(({m.group(1)}/100)*{m.group(2)})", text,
     )
+    # log/ln/factorial → literal value (computed eagerly, AST stays clean)
+    def _log_base_sub(m):
+        base = float(m.group(1))
+        n = float(m.group(2))
+        # Use math.log10 / math.log2 for common bases to avoid float drift
+        # (math.log(1000, 10) is 2.9999999999999996, not 3).
+        if base == 10:
+            return f"({math.log10(n)})"
+        if base == 2:
+            return f"({math.log2(n)})"
+        return f"({math.log(n, base)})"
+
+    text = _LOG_BASE_RE.sub(_log_base_sub, text)
+    text = _LOG_OF_RE.sub(
+        lambda m: f"({math.log10(float(m.group(1)))})", text,
+    )
+    text = _LN_OF_RE.sub(
+        lambda m: f"({math.log(float(m.group(1)))})", text,
+    )
+    text = _FACTORIAL_OF_RE.sub(lambda m: _factorial_literal(m.group(1)), text)
+    text = _BANG_RE.sub(lambda m: _factorial_literal(m.group(1)), text)
     # word operators → symbols
     for pat, sym in _WORD_OPS:
         text = pat.sub(sym, text)
