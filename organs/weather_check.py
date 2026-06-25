@@ -41,6 +41,9 @@ def execute(intent: str, message: str, ctx: dict):
         "today", "tonight", "tomorrow", "tomorrows", "yesterday",
         "yesterdays", "tonights", "todays", "now", "currently", "outside",
         "like", "right", "going", "to", "be", "and",
+        # Future-tense auxiliaries: "will it rain tomorrow" was picking
+        # "will" as the city.
+        "will", "would", "shall", "can", "could", "may", "might",
         "weather", "forecast", "temperature", "temp", "climate",
         # Condition words — "how cold is it" was looking up city "Cold",
         # "is it raining" was looking up "Raining".

@@ -114,3 +114,14 @@ class TestStopwordsStripped:
         # The original symptom — body said "Weather in Weather".
         url, data = self._call("what's the weather")
         assert data.get("location", "").lower() != "weather"
+
+    def test_will_it_rain_tomorrow_uses_default(self):
+        # "will it rain tomorrow" was picking "will" as the city after
+        # the routing fix in #28-34 stopped relying on the bare-rain
+        # rule. The organ stopwords missed the future-tense auxiliary.
+        url, _ = self._call("will it rain tomorrow")
+        assert "London" in url, f"expected London fallback, got {url}"
+
+    def test_will_it_snow_tonight_uses_default(self):
+        url, _ = self._call("will it snow tonight")
+        assert "London" in url, f"expected London fallback, got {url}"

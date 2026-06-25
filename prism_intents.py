@@ -40,8 +40,13 @@ INTENTS: list[tuple[str, str]] = [
     # universal_plan claims, and weather is more specific. A dedicated
     # entry remains below (line 244) for cases where this hoist doesn't
     # win; ordering still picks the first match.
-    (r"\b(?:weather|temperature|forecast|how (?:hot|cold)|"
-     r"is it (?:rain|sunny|cloudy|hot|cold|warm|chilly|windy))\b",
+    (r"\b(?:weather|temperature|forecast|"
+     r"how (?:hot|cold|warm)|"
+     r"(?:is|will) it (?:rain(?:ing|y)?|sunny|cloudy|hot|cold|warm|chilly|windy"
+     r"|snow(?:ing|y)?|hail(?:ing)?|storm(?:ing|y)?|freezing|scorching|foggy)|"
+     r"(?:is it|will it) (?:going to |gonna )?"
+     r"(?:rain(?:ing)?|snow(?:ing)?|hail(?:ing)?|storm(?:ing)?)|"
+     r"(?:will|gonna) (?:it )?(?:rain|snow|hail|storm))\b",
      "weather_check"),
     # Wall-clock queries must precede universal_plan ("today" overlaps).
     (r"^\s*(?:what(?:'s| is)?\s+(?:the\s+)?time|"
@@ -260,7 +265,8 @@ INTENTS: list[tuple[str, str]] = [
      r"draft.*(?:email|reply)|reply.*email|email.*summary",
      "email_read"),
     # Organ-mapped intents (broad fallback patterns — do not duplicate entries above)
-    (r"weather|temperature|forecast|how (?:hot|cold)|rain|sunny", "weather_check"),
+    # Weather routing fully handled by the hoist at line 43; the previous
+    # bare `rain|sunny` here caught "haiku about rain" and "sunny day".
     # Specific device/perception organ intents MUST precede the broad
     # wikipedia_lookup catch-all below. The wikipedia pattern matches
     # "what (?:is|was) (?:a |an |the )?[A-Za-z]" which would otherwise
