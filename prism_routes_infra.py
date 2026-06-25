@@ -827,6 +827,18 @@ async def organs_pack_import(request: Request):
     return JSONResponse(report, status_code=status)
 
 
+@router.get("/organs/intents")
+async def organs_intents():
+    """List the intent→organ map. Must be declared before
+    ``/organs/{name}`` — otherwise the dynamic route matches first and
+    returns ``organ 'intents' not found``. See issue #28-45.
+    """
+    loader = _get_organ_loader()
+    if loader is None:
+        return {"organs": {}}
+    return {"organs": loader.known_intents(), "count": len(loader.list_organs())}
+
+
 @router.get("/organs/{name}")
 async def organs_get(name: str):
     """Get details for a single organ by intent name."""

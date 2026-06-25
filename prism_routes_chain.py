@@ -86,16 +86,13 @@ async def chain_status():
 
 
 # ---------------------------------------------------------------------------
-# /organs
+# /organs/intents moved to prism_routes_infra.py (issue #28-45): the
+# chain router was registered after infra in prism_asgi.py, so the
+# static "/organs/intents" path was shadowed by infra's "/organs/{name}"
+# dynamic route and 404'd for callers. Co-locating with the dynamic
+# route — and declaring the static one first — keeps ordering correct
+# regardless of include_router() order.
 # ---------------------------------------------------------------------------
-
-@router.get("/organs/intents")
-async def organs_intents():
-    agent = _get_agent()
-    ol    = getattr(agent, "_organ_loader", None) if agent else None
-    if ol is None:
-        return {"organs": {}}
-    return {"organs": ol.known_intents(), "count": len(ol.list_organs())}
 
 
 # ---------------------------------------------------------------------------

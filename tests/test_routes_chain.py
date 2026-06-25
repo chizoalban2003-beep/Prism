@@ -96,21 +96,8 @@ class TestChainStatus:
         assert "db" in data
 
 
-# ---------------------------------------------------------------------------
-# /organs
-# ---------------------------------------------------------------------------
-
-class TestOrgansIntents:
-    def test_organs_no_agent(self):
-        data = _app_no_agent().get("/organs/intents").json()
-        assert data["organs"] == {}
-
-    def test_organs_intents_200(self):
-        client, _ = _app_with_agent()
-        data = client.get("/organs/intents").json()
-        assert "organs" in data
-        assert "count" in data
-        assert data["count"] == 1
+# /organs/intents lives in prism_routes_infra now (issue #28-45). Its
+# tests moved to tests/test_organs_intents_route_shadow_issue_28.py.
 
 
 # ---------------------------------------------------------------------------
