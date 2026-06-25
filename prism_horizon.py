@@ -713,9 +713,12 @@ class HorizonPlanner:
 
         description = self._build_execution_prompt(goal, resume)
 
-        def _execute_step(params: dict) -> str:
-            # Prefer PrismChain for richer execution; fall back to bare LLM
-            goal_prompt = params.get("prompt", description)
+        def _execute_step(prompt: str = "", **_ignored) -> str:
+            # TaskQueue calls fn(**params) (see prism_task_queue.py:98), so we
+            # accept the keyword form. Fall back to the closure's `description`
+            # when prompt isn't supplied (e.g. callers using submit_single).
+            # Prefer PrismChain for richer execution; fall back to bare LLM.
+            goal_prompt = prompt or description
             if self._chain is not None:
                 try:
                     card = self._chain.run(
