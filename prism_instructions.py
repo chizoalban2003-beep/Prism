@@ -226,6 +226,41 @@ class PrismInstructions:
             return None
         return key, value
 
+    # "forget my birthday" / "please forget about my partner" → "birthday".
+    # Symmetric with parse_fact: the chat prelude uses it to delete a
+    # stored personal fact instead of recalling it. Without this, "forget
+    # my X" hit memory_recall and returned the value the user wanted gone.
+    _FORGET_RE = re.compile(
+        r"^(?:please\s+)?forget\s+(?:that\s+|about\s+)?my\s+"
+        r"(?P<key>[a-z][\w\s'-]{1,60}?)\s*[.!?]?$",
+        re.IGNORECASE,
+    )
+
+    @classmethod
+    def parse_forget(cls, message: str) -> Optional[str]:
+        """Return the fact key the user wants forgotten, or None.
+
+        Rejects keys that contain ``is``/``are`` — "forget that my car
+        is blue" is a fact assertion in disguise, not a forget request,
+        and should fall through to parse_fact / other handlers.
+        """
+        if not message:
+            return None
+        # Negative gate: "don't forget …" is part of remember-flow.
+        lower = message.strip().lower()
+        if lower.startswith(("don't forget", "dont forget", "do not forget")):
+            return None
+        m = cls._FORGET_RE.match(message.strip())
+        if not m:
+            return None
+        key = m.group("key").strip()
+        if not key:
+            return None
+        # Reject "X is Y" / "X are Y" shapes — those are assertions.
+        if re.search(r"\b(?:is|are)\b", key, re.IGNORECASE):
+            return None
+        return key
+
     def parse_from_chat(self, message: str) -> Optional[Instruction]:
         """
         Detect and store instructions from natural language.

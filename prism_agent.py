@@ -558,6 +558,27 @@ class PrismAgent:
                 except Exception:
                     pass
 
+            # 1c. Symmetric "forget my X" — without this branch, "forget
+            # my birthday" hit memory_recall and returned the value the
+            # user wanted gone.
+            forget_key = self._instructions.parse_forget(message or "")
+            if forget_key and self._memory:
+                try:
+                    removed = self._memory.delete_by_tag(
+                        forget_key.lower(), source="fact",
+                    )
+                    if removed:
+                        return text_card(
+                            f"✓ Forgotten — I won't recall your {forget_key} any more.",
+                            "Fact forgotten",
+                        )
+                    return text_card(
+                        f"I don't have anything stored about your {forget_key}.",
+                        "Fact forgotten",
+                    )
+                except Exception:
+                    pass
+
             # 2. Inject relevant instructions into context
             instructions_str = self._instructions.to_context_string(message or "")
             if instructions_str:
