@@ -297,7 +297,7 @@ INTENTS: list[tuple[str, str]] = [
     # returning the article on "New Jerusalem". Symbolic operators, the
     # word-form ("plus", "times", ...), and "square root of N" all route here.
     (r"(?:^|\b)(?:calc(?:ulate)?|compute|evaluate|solve)\b\s*\d|"
-     r"\d+(?:\.\d+)?\s*[+\-*/×÷%^]\s*\d|"
+     r"\d+(?:\.\d+)?\s*(?:\*\*|//|[+\-*/×÷%^])\s*\d|"
      r"\d+\s+(?:plus|minus|times|over|divided\s+by|multiplied\s+by|modulo|to\s+the\s+power\s+of)\s+\d|"
      r"square\s+root\s+of\s+\d|\bsqrt\s*(?:of\s+)?\d",
      "calc_eval"),
