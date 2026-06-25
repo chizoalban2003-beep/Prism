@@ -91,3 +91,21 @@ class TestDeclinesForeignTimezone:
         # Should NOT just give local time silently.
         assert ("new york" in body or "timezone" in body or "only" in body
                 or "local" in body), card.body
+
+    def test_time_in_utc(self):
+        # UTC/GMT/EST etc. are timezone codes, not cities — the city-only
+        # guard missed them and "what time is it in utc" silently returned
+        # local time.
+        card = execute("clock_query", "what time is it in utc", {})
+        body = card.body.lower()
+        assert ("only" in body or "timezone" in body or "local" in body), card.body
+
+    def test_time_in_gmt(self):
+        card = execute("clock_query", "what is the time in gmt", {})
+        body = card.body.lower()
+        assert ("only" in body or "timezone" in body or "local" in body), card.body
+
+    def test_time_in_est(self):
+        card = execute("clock_query", "what time is it in est", {})
+        body = card.body.lower()
+        assert ("only" in body or "timezone" in body or "local" in body), card.body

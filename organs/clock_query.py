@@ -34,13 +34,20 @@ _TIME_RE = re.compile(r"\btime\b|\bhour\b|\bclock\b", re.IGNORECASE)
 _COUNTDOWN_RE = re.compile(r"\b(?:until|till)\b", re.IGNORECASE)
 _ELAPSED_RE = re.compile(r"\b(?:since|ago|how\s+long)\b", re.IGNORECASE)
 _FOREIGN_TZ_RE = re.compile(
-    r"\bin\s+(?:tokyo|paris|london|new\s+york|nyc|sydney|moscow|"
+    r"\bin\s+(?:"
+    # Major cities
+    r"tokyo|paris|london|new\s+york|nyc|sydney|moscow|"
     r"berlin|madrid|rome|beijing|shanghai|hong\s*kong|singapore|"
     r"dubai|mumbai|delhi|bangalore|seoul|bangkok|jakarta|"
     r"san\s+francisco|los\s+angeles|chicago|toronto|vancouver|"
     r"mexico\s+city|sao\s+paulo|buenos\s+aires|cairo|lagos|"
     r"johannesburg|nairobi|istanbul|tehran|riyadh|karachi|"
-    r"[a-z]+\s+time(?:zone)?)\b",
+    # Timezone codes — UTC, GMT, EST, PST, etc. "in utc", "in gmt+2".
+    r"utc(?:[+-]\d+)?|gmt(?:[+-]\d+)?|"
+    r"e[ds]t|p[ds]t|c[ds]t|m[ds]t|bst|cet|cest|jst|kst|ist|aest|aedt|"
+    # Generic "in <X> time(zone)"
+    r"[a-z]+\s+time(?:zone)?"
+    r")\b",
     re.IGNORECASE,
 )
 
