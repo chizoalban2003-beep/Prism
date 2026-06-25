@@ -64,6 +64,17 @@ class TestStopwordsStripped:
         url, _ = self._call("what is the weather today")
         assert "London" in url
 
+    def test_tomorrows_weather_uses_default(self):
+        # "tomorrow's" — apostrophe gets stripped to "tomorrows" which
+        # the initial stopword set missed, producing wttr.in lookup of
+        # "Tomorrows" as a city name.
+        url, _ = self._call("tomorrow's weather")
+        assert "London" in url, f"expected London fallback, got {url}"
+
+    def test_todays_weather_uses_default(self):
+        url, _ = self._call("today's weather")
+        assert "London" in url
+
     def test_how_is_the_weather_uses_default(self):
         url, _ = self._call("how is the weather")
         assert "London" in url

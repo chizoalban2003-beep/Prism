@@ -36,6 +36,13 @@ INTENTS: list[tuple[str, str]] = [
      "web_search"),
     # News must precede plan — "today's headlines" contains "today"
     (r"news|headlines|top stories|latest stories|breaking news", "news_headlines"),
+    # Weather must precede plan — "today's weather" contains "today" which
+    # universal_plan claims, and weather is more specific. A dedicated
+    # entry remains below (line 244) for cases where this hoist doesn't
+    # win; ordering still picks the first match.
+    (r"\b(?:weather|temperature|forecast|how (?:hot|cold)|"
+     r"is it (?:rain|sunny|cloudy|hot|cold|warm|chilly|windy))\b",
+     "weather_check"),
     # Wall-clock queries must precede universal_plan ("today" overlaps).
     (r"^\s*(?:what(?:'s| is)?\s+(?:the\s+)?time|"
      r"what\s+time\s+(?:is\s+it|do\s+you\s+have)|"

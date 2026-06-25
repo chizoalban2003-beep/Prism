@@ -38,7 +38,8 @@ def execute(intent: str, message: str, ctx: dict):
     _STOP = {
         "what", "whats", "how", "hows", "tell", "show", "get", "give",
         "the", "a", "an", "is", "are", "was", "in", "for", "at", "on",
-        "today", "tonight", "tomorrow", "now", "currently", "outside",
+        "today", "tonight", "tomorrow", "tomorrows", "yesterday",
+        "yesterdays", "tonights", "todays", "now", "currently", "outside",
         "like", "right", "going", "to", "be", "and",
         "weather", "forecast", "temperature", "temp", "climate",
         "me", "my", "your", "our", "us", "please", "city",
