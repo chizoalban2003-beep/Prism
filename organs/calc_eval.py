@@ -59,6 +59,17 @@ _SQRT_RE = re.compile(
     re.IGNORECASE,
 )
 
+# "N squared" → "(N)**2", "N cubed" → "(N)**3"
+_SQUARED_RE = re.compile(r"(\d+(?:\.\d+)?)\s*squared\b", re.IGNORECASE)
+_CUBED_RE = re.compile(r"(\d+(?:\.\d+)?)\s*cubed\b", re.IGNORECASE)
+
+# "X% of Y" or "X percent of Y" → "(X/100)*Y". Stays infix so the AST
+# walker only sees plain arithmetic.
+_PERCENT_OF_RE = re.compile(
+    r"(\d+(?:\.\d+)?)\s*(?:%|percent)\s+of\s+(\d+(?:\.\d+)?)",
+    re.IGNORECASE,
+)
+
 # Strip the conversational lead-in so we get a clean expression.
 _LEAD_RE = re.compile(
     r"^\s*(?:calc(?:ulate)?|compute|evaluate|solve|how\s+much\s+is|"
@@ -73,6 +84,13 @@ def _extract_expression(message: str) -> str:
     text = _LEAD_RE.sub("", text).strip()
     # square root → ()**0.5
     text = _SQRT_RE.sub(lambda m: f"(({m.group(1).strip()})**0.5)", text)
+    # "N squared" / "N cubed" → power form
+    text = _SQUARED_RE.sub(lambda m: f"(({m.group(1)})**2)", text)
+    text = _CUBED_RE.sub(lambda m: f"(({m.group(1)})**3)", text)
+    # "X% of Y" / "X percent of Y" → (X/100)*Y
+    text = _PERCENT_OF_RE.sub(
+        lambda m: f"(({m.group(1)}/100)*{m.group(2)})", text,
+    )
     # word operators → symbols
     for pat, sym in _WORD_OPS:
         text = pat.sub(sym, text)

@@ -299,7 +299,9 @@ INTENTS: list[tuple[str, str]] = [
     (r"(?:^|\b)(?:calc(?:ulate)?|compute|evaluate|solve)\b\s*\d|"
      r"\d+(?:\.\d+)?\s*(?:\*\*|//|[+\-*/×÷%^])\s*\d|"
      r"\d+\s+(?:plus|minus|times|over|divided\s+by|multiplied\s+by|modulo|to\s+the\s+power\s+of)\s+\d|"
-     r"square\s+root\s+of\s+\d|\bsqrt\s*(?:of\s+)?\d",
+     r"square\s+root\s+of\s+\d|\bsqrt\s*(?:of\s+)?\d|"
+     r"\d+(?:\.\d+)?\s+(?:squared|cubed)\b|"
+     r"\d+(?:\.\d+)?\s*(?:%|percent)\s+of\s+\d",
      "calc_eval"),
     (r"wikipedia|look up|tell me about|who (?:is|was)|what (?:is|was) (?:a |an |the )?[A-Za-z]",
      "wikipedia_lookup"),
