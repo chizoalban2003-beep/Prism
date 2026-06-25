@@ -149,14 +149,37 @@ def handle_pa_intent(agent: Any, intent: str, message: str,
         return text_card(lines, f"Your instructions ({len(instrs)})")
 
     if intent == "remove_instruction":
+        # Score each instruction by how many significant words from its
+        # text appear in the user's message. The previous matcher used
+        # `w in message.lower()` — substring containment on the first 3
+        # words. A 1-letter token like "i" from "I prefer short emails"
+        # matched inside "instruction", so the request "remove the never
+        # mind instruction" deleted the wrong instruction. Word-boundary
+        # tokenization + stopword filtering picks the named one.
+        import re as _re
+        _STOPWORDS = {
+            "i","a","an","the","that","this","these","those","of","to",
+            "in","on","at","for","with","by","my","me","is","are","was",
+            "were","be","and","or","not","do","does","did","you","it",
+            "as","but","if","so","please","just","ok","okay",
+            "instruction","instructions","rule","rules","remove","delete",
+            "forget","remember","stop",
+        }
+        def _tokens(t: str) -> list[str]:
+            return [w for w in _re.findall(r"[a-z0-9]+", t.lower())
+                    if w not in _STOPWORDS and len(w) > 1]
+        msg_tokens = set(_tokens(message))
         instrs = agent._instructions.all_active()
-        if instrs:
-            for instr in reversed(instrs):
-                if any(w in message.lower()
-                       for w in instr.text.lower().split()[:3]):
-                    agent._instructions.remove(instr.instr_id)
-                    return text_card(f"Removed: {instr.text}",
-                                     "Instruction removed")
+        best, best_score = None, 0
+        if instrs and msg_tokens:
+            for instr in instrs:
+                score = sum(1 for w in _tokens(instr.text) if w in msg_tokens)
+                if score > best_score:
+                    best, best_score = instr, score
+        if best is not None:
+            agent._instructions.remove(best.instr_id)
+            return text_card(f"Removed: {best.text}",
+                             "Instruction removed")
         return text_card("Couldn't find a matching instruction to remove.",
                          "Instructions")
 
