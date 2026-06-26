@@ -314,7 +314,7 @@ INTENTS: list[tuple[str, str]] = [
     # itself as a new note.
     (r"(?:list|show|read|view|open|see|get|what(?:'s| are)?)\s+(?:my\s+|the\s+|all\s+)?notes?\b|"
      r"my\s+notes\b", "note_list"),
-    (r"(?:append|add|write|save|take|jot down) (?:a )?note|note(?:pad)?:? ", "note_append"),
+    (r"(?:append|add|write|save|take|jot down|create|start|new|begin) (?:a )?note|note(?:pad)?:? ", "note_append"),
     (r"remind me|set (?:a )?reminder|alert me (?:in|at|when)|"
      r"don't let me forget|in (\d+) (?:minute|hour|day)|"
      r"at (\d+(?::\d+)?(?:am|pm)?)|"
