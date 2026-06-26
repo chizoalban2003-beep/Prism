@@ -64,7 +64,8 @@ class PrismTasks:
     def add(self, title: str, notes="", due_date="",
              priority=1, project="", tags=None) -> Task:
         import uuid
-        task = Task(str(uuid.uuid4())[:8], title, notes,
+        clean = (title or "").strip() or "Untitled task"
+        task = Task(str(uuid.uuid4())[:8], clean, notes,
                     due_date, priority, False, project,
                     tags or [], "local")
         provider = self._resolve_provider()

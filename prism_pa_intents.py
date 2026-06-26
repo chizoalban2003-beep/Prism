@@ -476,8 +476,9 @@ def handle_pa_intent(agent: Any, intent: str, message: str,
             except Exception:
                 pass
         if parsed:
+            llm_title = (parsed.get("title") or "").strip()
             task = agent._task_mgr.add(
-                title    = parsed.get("title", message[:80]),
+                title    = llm_title or message[:80],
                 notes    = parsed.get("notes",""),
                 due_date = parsed.get("due_date",""),
                 priority = parsed.get("priority",1),
@@ -490,7 +491,8 @@ def handle_pa_intent(agent: Any, intent: str, message: str,
         return text_card(f"Added: {task.title}", "Task added")
 
     if intent == "list_tasks":
-        tasks = agent._task_mgr.list_tasks(done=False)
+        tasks = [t for t in agent._task_mgr.list_tasks(done=False)
+                 if (t.title or "").strip()]
         if not tasks:
             return text_card("No open tasks.", "Tasks")
         provider = agent._task_mgr._resolve_provider()
