@@ -103,6 +103,15 @@ INTENTS: list[tuple[str, str]] = [
      (r"\b(?:schedule|book|create|add|set\s+up)\s+(?:a\s+|an\s+|the\s+)?(?:meeting|appointment|event)\b|"
      r"\b(?:find|when(?:'s| is)\s+(?:the\s+)?next)\s+(?:a\s+|an\s+)?(?:free|available)\s+(?:slot|time)\b",
      "calendar_write"),
+     # contacts must precede wikipedia_lookup — line ~416's broad
+     # "who is X" / "what is X" pattern otherwise steals "what is John's
+     # email" / "who is John Smith". Possessive form unambiguously asks
+     # for a person's record, and "(show|find) contact <Name>" /
+     # "contact info for <Name>" are the natural verb-noun forms.
+     (r"\bwhat(?:'s| is)\s+\w+'s\s+(?:phone(?:\s+number)?|number|email|address|contact)\b|"
+     r"\b(?:show|find|get)\s+contact\s+(?:info\s+(?:for\s+)?)?\w+|"
+     r"\bcontact\s+info\s+(?:for\s+)?\w+",
+     "contacts"),
      (r"(?!.*\b(?:in)?to (?:french|spanish|german|japanese|chinese|arabic|russian|hindi"
      r"|italian|portuguese|dutch|korean|turkish|polish|swedish|norwegian|danish|finnish"
      r"|greek|czech|romanian|hungarian|thai|vietnamese|indonesian|hebrew|ukrainian"
