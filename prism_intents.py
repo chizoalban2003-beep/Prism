@@ -146,6 +146,24 @@ INTENTS: list[tuple[str, str]] = [
      r"current(?:ly)?\s+playing|now\s+playing|"
      r"\bspotify\s+(?:status|state|now)\b",
      "spotify_control"),
+    # hardware_status — pure read-only hardware/system telemetry.
+    # Placed *before* generic "status": queries like "battery status",
+    # "disk space", "memory usage", "wifi connected", "uptime" are
+    # observations, not the daemon-status card. They bypass the
+    # approval flow because reading is not actuation. The user's CEO
+    # directive frames PRISM as a bridge to hardware components —
+    # bridges report state without asking permission first.
+    (r"\b(?:battery|disk|memory|ram|cpu|wi-?fi|network|internet|uptime)\b"
+     r"(?:\s+(?:level|status|percent|percentage|remaining|life|space|"
+     r"free|usage|available|used|left|load|connected|on|working|now))?\b|"
+     r"\bfree\s+(?:disk|memory|ram)\s+(?:space|available)?|"
+     r"\bhow\s+much\s+(?:disk|memory|ram|cpu)\b|"
+     r"\bsystem\s+(?:load|health|stats)\b|"
+     r"\bsystem\s+status\b|"
+     r"\bhardware\s+(?:status|stats|info)\b|"
+     r"\bload\s+average\b|"
+     r"\bhow\s+long\s+(?:has\s+)?(?:this|the\s+(?:system|machine))\s+been\s+(?:up|running|on)\b",
+     "hardware_status"),
     (r"\bstatus\b|connected|device|\bsync\b", "status"),
     # Perception / fused-context snapshot — "what's my current context",
     # "show my context", "perception status". Placed before memory_recall

@@ -21,6 +21,136 @@ from prism_responses import PrismCard, setup_required_card, text_card
 logger = logging.getLogger(__name__)
 
 
+def _hardware_status_card(message: str) -> PrismCard:
+    """Render a focused hardware/system status card based on which
+    component the user actually asked about. Pure observation — no
+    approval flow, no LLM call. Bridges user to hardware state.
+    """
+    import shutil
+    msg = (message or "").lower()
+    lines: list[str] = []
+    section_title = "System status"
+
+    wants_battery = re.search(r"\bbatter(?:y|ies)\b", msg) is not None
+    wants_disk    = re.search(r"\b(?:disk|storage|free\s+space)\b", msg) is not None
+    wants_mem     = re.search(r"\b(?:memory|ram)\b", msg) is not None
+    wants_cpu     = re.search(r"\b(?:cpu|load(?:\s+average)?|system\s+load)\b", msg) is not None
+    wants_net     = re.search(r"\b(?:wi-?fi|network|internet)\b", msg) is not None
+    wants_uptime  = re.search(r"\buptime\b|how\s+long.*been\s+(?:up|running|on)", msg) is not None
+    wants_all     = re.search(r"\b(?:hardware|system)\s+(?:status|stats|health|info)\b", msg) is not None
+
+    if not any((wants_battery, wants_disk, wants_mem, wants_cpu,
+                wants_net, wants_uptime)) or wants_all:
+        wants_battery = wants_disk = wants_mem = wants_cpu = wants_net = wants_uptime = True
+
+    try:
+        import psutil  # type: ignore
+    except Exception:
+        psutil = None  # type: ignore
+
+    if wants_battery:
+        section_title = "Battery" if not wants_all else section_title
+        try:
+            b = psutil.sensors_battery() if psutil is not None else None
+            if b is None:
+                lines.append("• Battery: no battery (desktop or VM)")
+            else:
+                pct = int(b.percent)
+                bar = "█" * (pct // 5) + "░" * (20 - pct // 5)
+                plugged = "charging" if b.power_plugged else "on battery"
+                lines.append(f"• Battery: {pct}% [{bar}] ({plugged})")
+        except Exception as exc:
+            lines.append(f"• Battery: unavailable ({exc.__class__.__name__})")
+
+    if wants_disk:
+        section_title = "Disk" if not wants_all else section_title
+        try:
+            d = shutil.disk_usage("/")
+            free_gb = d.free / (1024 ** 3)
+            total_gb = d.total / (1024 ** 3)
+            used_pct = int((d.used / d.total) * 100)
+            bar = "█" * (used_pct // 5) + "░" * (20 - used_pct // 5)
+            lines.append(
+                f"• Disk /: {free_gb:.1f} GB free of {total_gb:.1f} GB "
+                f"[{bar}] {used_pct}% used"
+            )
+        except Exception as exc:
+            lines.append(f"• Disk: unavailable ({exc.__class__.__name__})")
+
+    if wants_mem:
+        section_title = "Memory" if not wants_all else section_title
+        try:
+            if psutil is None:
+                raise RuntimeError("psutil unavailable")
+            m = psutil.virtual_memory()
+            free_gb = m.available / (1024 ** 3)
+            total_gb = m.total / (1024 ** 3)
+            bar = "█" * (m.percent // 5) + "░" * (20 - int(m.percent // 5))
+            lines.append(
+                f"• Memory: {free_gb:.1f} GB free of {total_gb:.1f} GB "
+                f"[{bar}] {int(m.percent)}% used"
+            )
+        except Exception as exc:
+            lines.append(f"• Memory: unavailable ({exc.__class__.__name__})")
+
+    if wants_cpu:
+        section_title = "CPU" if not wants_all else section_title
+        try:
+            if psutil is None:
+                raise RuntimeError("psutil unavailable")
+            pct = psutil.cpu_percent(interval=0.2)
+            cores = psutil.cpu_count(logical=True) or 1
+            try:
+                import os as _os
+                load1, load5, load15 = _os.getloadavg()
+                lines.append(
+                    f"• CPU: {pct:.0f}% ({cores} cores) — "
+                    f"load avg 1/5/15: {load1:.2f} / {load5:.2f} / {load15:.2f}"
+                )
+            except Exception:
+                lines.append(f"• CPU: {pct:.0f}% ({cores} cores)")
+        except Exception as exc:
+            lines.append(f"• CPU: unavailable ({exc.__class__.__name__})")
+
+    if wants_net:
+        section_title = "Network" if not wants_all else section_title
+        try:
+            if psutil is None:
+                raise RuntimeError("psutil unavailable")
+            stats = psutil.net_if_stats()
+            up_ifs = [name for name, s in stats.items()
+                      if s.isup and name != "lo"]
+            if up_ifs:
+                lines.append(f"• Network: up — interfaces: {', '.join(up_ifs)}")
+            else:
+                lines.append("• Network: no interfaces up (besides loopback)")
+        except Exception as exc:
+            lines.append(f"• Network: unavailable ({exc.__class__.__name__})")
+
+    if wants_uptime:
+        section_title = "Uptime" if not wants_all else section_title
+        try:
+            if psutil is None:
+                raise RuntimeError("psutil unavailable")
+            import time as _time
+            secs = int(_time.time() - psutil.boot_time())
+            days, rem = divmod(secs, 86400)
+            hours, rem = divmod(rem, 3600)
+            mins, _ = divmod(rem, 60)
+            parts: list[str] = []
+            if days:
+                parts.append(f"{days}d")
+            if hours or days:
+                parts.append(f"{hours}h")
+            parts.append(f"{mins}m")
+            lines.append(f"• Uptime: {' '.join(parts)}")
+        except Exception as exc:
+            lines.append(f"• Uptime: unavailable ({exc.__class__.__name__})")
+
+    body = "\n".join(lines) if lines else "No readings available."
+    return text_card(body, section_title)
+
+
 def handle_pa_intent(agent: Any, intent: str, message: str,
                      ctx: dict) -> Optional[PrismCard]:
     if intent == "smart_home":
@@ -182,6 +312,9 @@ def handle_pa_intent(agent: Any, intent: str, message: str,
                              "Instruction removed")
         return text_card("Couldn't find a matching instruction to remove.",
                          "Instructions")
+
+    if intent == "hardware_status":
+        return _hardware_status_card(message)
 
     if intent == "discover_service":
         router = getattr(agent, '_router', None)
