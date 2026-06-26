@@ -120,6 +120,20 @@ INTENTS: list[tuple[str, str]] = [
      # user may not have. See issue #28-68.
      (r"\block\s+(?:my\s+|the\s+)?(?:screen|computer|session|workstation|desktop|laptop|pc|machine)\b",
      "system_lock"),
+     # system_power: suspend / shutdown / restart / logout. Hoisted above
+     # browser_task (steals "go to"), policy_inspect (steals "log"), and
+     # organ_proposal. Negative-lookaheads exclude app-level scopes so
+     # "restart the app" / "shut down this tab" / "sign in" don't get
+     # claimed. See issue #28-69.
+     (r"\b(?:go\s+to\s+sleep|put\s+(?:my\s+)?(?:computer|laptop|pc|machine|system)\s+to\s+sleep)\b|"
+     r"\bhibernate\b|"
+     r"\b(?:sleep|suspend)\s+(?:my\s+|the\s+)?(?:computer|laptop|pc|machine|system)\b|"
+     r"\b(?:shut\s*down|shutdown)(?!\s+(?:this\s+|the\s+)?(?:tab|browser|app|application|service|window))\b|"
+     r"\bpower\s+off\b|"
+     r"\bturn\s+off\s+(?:my\s+|the\s+)?(?:computer|laptop|pc|machine|system)\b|"
+     r"\b(?:restart|reboot)(?!\s+(?:this\s+|the\s+)?(?:tab|browser|app|application|service|window|process))\b|"
+     r"\b(?:log\s*out|logout|sign\s*out|signout|log\s+me\s+out|sign\s+me\s+out)\b",
+     "system_power"),
      (r"(?!.*\b(?:in)?to (?:french|spanish|german|japanese|chinese|arabic|russian|hindi"
      r"|italian|portuguese|dutch|korean|turkish|polish|swedish|norwegian|danish|finnish"
      r"|greek|czech|romanian|hungarian|thai|vietnamese|indonesian|hebrew|ukrainian"
