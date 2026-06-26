@@ -120,6 +120,15 @@ INTENTS: list[tuple[str, str]] = [
      # user may not have. See issue #28-68.
      (r"\block\s+(?:my\s+|the\s+)?(?:screen|computer|session|workstation|desktop|laptop|pc|machine)\b",
      "system_lock"),
+     # bluetooth_control: local Bluetooth radio. Hoisted above smart_home
+     # (whose `turn (?:on|off)` would otherwise treat "turn on bluetooth"
+     # as an IoT device). Scoped to the literal noun "bluetooth". See
+     # issue #28-73.
+     (r"\bbluetooth\s+(?:on|off|status)\b|"
+     r"\b(?:turn|switch)\s+(?:on|off)\s+bluetooth\b|"
+     r"\b(?:enable|disable)\s+bluetooth\b|"
+     r"\bis\s+bluetooth\s+(?:on|off|enabled|disabled)\b",
+     "bluetooth_control"),
      # brightness_control: local display brightness. Hoisted above
      # smart_home_control (which claims "dim the lights" — distinct from
      # "dim my screen") and organ_proposal. Scoped to the literal noun
