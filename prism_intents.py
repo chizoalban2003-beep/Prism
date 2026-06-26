@@ -86,6 +86,16 @@ INTENTS: list[tuple[str, str]] = [
      r"\bremaining\s+(?:budget|spend|credit)\b|"
      r"\b(?:daily|monthly)\s+(?:cost|spend|budget)\b",
      "budget_status"),
+     # calendar_read must precede universal_plan — "today" overlaps. Same
+     # hoist pattern as budget_status/list_tasks above. Covers the natural
+     # phrasings the user types: "any meetings today", "meetings today",
+     # "do I have meetings today", "what meetings do I have", and the
+     # appointments/events variants.
+     (r"\b(?:any|my)\s+(?:meetings?|appointments?|events?)(?:\s+(?:today|tomorrow|this\s+(?:week|month)))?\b|"
+     r"\b(?:meetings?|appointments?|events?)\s+(?:today|tomorrow|this\s+(?:week|month))\b|"
+     r"\bdo\s+i\s+have\s+(?:any\s+)?(?:meetings?|appointments?|events?)\b|"
+     r"\bwhat\s+(?:meetings?|appointments?|events?)\s+(?:do\s+i\s+have|are\s+there)\b",
+     "calendar_read"),
      (r"(?!.*\b(?:in)?to (?:french|spanish|german|japanese|chinese|arabic|russian|hindi"
      r"|italian|portuguese|dutch|korean|turkish|polish|swedish|norwegian|danish|finnish"
      r"|greek|czech|romanian|hungarian|thai|vietnamese|indonesian|hebrew|ukrainian"
