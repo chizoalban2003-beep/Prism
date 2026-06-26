@@ -49,8 +49,8 @@ INTENTS: list[tuple[str, str]] = [
      r"(?:will|gonna) (?:it )?(?:rain|snow|hail|storm))\b",
      "weather_check"),
     # Wall-clock queries must precede universal_plan ("today" overlaps).
-    (r"^\s*(?:what(?:'s| is)?\s+(?:the\s+)?time|"
-     r"what\s+time\s+(?:is\s+it|do\s+you\s+have)|"
+    (r"^\s*(?:what(?:'s| is)?\s+(?:the\s+)?time(?!\s+(?:is|in|of|for|at|until|till|do)\b)|"
+     r"what\s+time\s+(?:is\s+it|do\s+you\s+have)\b|"
      r"current\s+time|time\s+(?:now|please)|"
      r"what(?:'s| is)?\s+(?:today'?s\s+)?date|"
      r"what(?:'s| is)?\s+the\s+date(?:\s+today)?|"
