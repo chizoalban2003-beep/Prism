@@ -510,9 +510,38 @@ INTENTS: list[tuple[str, str]] = [
     # to beat status/wikipedia_lookup.
     (r"(?:generate|create|make|qr) (?:a )?qr (?:code)?|qr code for", "qr_generate"),
     (r"(?:run|execute|shell|bash|cmd|terminal|command)(?:\s|:)", "shell_run"),
+    # phone_call covers both voice calls and SMS — the organ branches on
+    # verb (call/phone/ring vs text/sms/message) and handles either path
+    # via Twilio. Widened in #28-71 to claim natural forms like "text bob",
+    # "sms bob", "send bob a message", "call bob". route_intent lowercases
+    # the message, so name matching must use \w/[a-z] not [A-Z].
     (r"(?:make|place|give|dial) (?:a )?(?:phone )?call|"
-     r"(?:call|phone|ring) (?:someone|them|him|her|my |the )|"
-     r"phone call to|\bcall \d",
+     r"(?:call|phone|ring) (?:someone|them|him|her|my |the |mom|dad)|"
+     r"phone call to|\bcall \d|"
+     # text/sms verbs with a name-shaped target. Exclude common noun-
+     # phrase tails (text editor / text file / text format / text box).
+     r"\btext\s+(?!editor|file|format|document|box|area|message\b)"
+     r"(?:someone|them|him|her|mom|dad|me|[a-z]+)\b|"
+     r"\bsms\s+\w+\b|"
+     # send a text / sms / whatsapp message
+     r"\bsend\s+(?:a\s+|an\s+)?(?:text|sms|whatsapp)(?:\s+message)?"
+     r"(?:\s+to\s+\w+)?\b|"
+     # send <name> a text/sms/message — covers "send Bob a message"
+     r"\bsend\s+(?:mom|dad|someone|them|him|her|"
+     r"(?!(?:an?|the|my|me)\b)[a-z]+)\s+(?:a\s+)?(?:text|sms|message|whatsapp)\b|"
+     # call <name> — narrow proper-name list (lowercased). Common names
+     # only, to avoid claiming "call this/that/out/up/over/back/off".
+     r"\bcall\s+(?:bob|alice|mom|dad|john|jane|mary|james|mike|sarah|"
+     r"emily|david|chris|tom|tim|kate|anna|paul|peter|sam|alex|"
+     r"michael|jennifer|robert|linda|patricia|barbara|elizabeth|"
+     r"william|richard|charles|joseph|thomas|daniel|matthew|grandma|"
+     r"grandpa|aunt|uncle|sis|bro)\b|"
+     r"\bphone\s+(?:bob|alice|mom|dad|john|jane|grandma|grandpa)\b|"
+     # message <name> — narrow name list to avoid claiming "the message
+     # says" / "show me the message".
+     r"\bmessage\s+(?:bob|alice|mom|dad|john|jane|mary|james|mike|"
+     r"sarah|emily|david|chris|tom|tim|kate|anna|paul|peter|sam|alex|"
+     r"michael|grandma|grandpa|aunt|uncle|someone|them|him|her)\b",
      "phone_call"),
     (r"github (?:issue|pr|pull request|repo)|(?:create|list|open) (?:an? )?issue", "github_issue"),
     (r"(?:send|post) (?:a )?(?:message )?(?:to|on) discord|discord", "discord_send"),
