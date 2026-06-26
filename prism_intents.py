@@ -166,7 +166,7 @@ INTENTS: list[tuple[str, str]] = [
     # bare-word \bstatus\b regex (returning the system status card) or
     # by wikipedia_lookup's "what is X" catch-all (returning the
     # Wikipedia article on Spotify the company). See issue #28-48.
-    (r"(?:play|pause|skip|next|previous|volume|stop)\s+(?:music|spotify|song|track|playback)|"
+    (r"(?:play|pause|skip|next|previous|volume|stop)\s+(?:(?:some|a|the|my|that)\s+)?(?:\w+\s+)?(?:music|spotify|song|track|playback)\b|"
      r"what(?:'s| is)?\s+(?:song\s+is\s+)?(?:playing|on)(?:\s+(?:right\s+)?now)?\s+on\s+spotify|"
      r"what(?:'s| is)?\s+playing(?:\s+(?:right\s+)?now)?(?=\s|$|\?)|"
      r"current(?:ly)?\s+playing|now\s+playing|"
