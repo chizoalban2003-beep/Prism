@@ -61,9 +61,11 @@ class TestRouterAcceptsBudgetPolicy:
 class TestRouterSkipsBlockedProviders:
 
     def _wire(self, *opts):
+        import time as _t
         r = LLMRouter()
         r._options = list(opts)
         r._discovered = True
+        r._last_scan = _t.time()  # keep discover() in cache-hit branch
         return r
 
     def test_paid_provider_blocked_when_over_budget(self):
