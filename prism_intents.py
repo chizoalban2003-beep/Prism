@@ -70,6 +70,22 @@ INTENTS: list[tuple[str, str]] = [
      r"|^(?:my\s+)?(?:reminders?|tasks?|todos?)\s+(?:for\s+)?(?:today|tomorrow|tonight)\b"
      r"|what (?:reminders?|tasks?|todos?) (?:do i have|are (?:pending|there|due|on|in))",
      "list_tasks"),
+     # budget_status must precede universal_plan: phrases like "how much
+     # have I spent today" or "spending so far today" contain "today",
+     # which would otherwise be claimed by the planner and freeze the
+     # chat for 30s on a planner LLM call. Same hoist pattern as
+     # list_tasks above.
+     #
+     # Carefully NOT claiming bare "what's my budget" — that belongs to
+     # show_policies (policy engine, distinct concept). Qualifiers
+     # (llm/api/prism/daily/monthly) disambiguate to financial spend.
+     (r"\bshow\s+(?:me\s+)?(?:my\s+|the\s+)?budget\b|"
+     r"\b(?:llm|api|prism)\s+(?:spend|cost|budget|spending)\b|"
+     r"\bhow much (?:have (?:i|you)|did (?:i|you)|am i)\s+spen[dt]\w*\b|"
+     r"\b(?:spend|spent|spending|costs?)\s+(?:so far\s+)?(?:today|this\s+(?:week|month|day))\b|"
+     r"\bremaining\s+(?:budget|spend|credit)\b|"
+     r"\b(?:daily|monthly)\s+(?:cost|spend|budget)\b",
+     "budget_status"),
      (r"(?!.*\b(?:in)?to (?:french|spanish|german|japanese|chinese|arabic|russian|hindi"
      r"|italian|portuguese|dutch|korean|turkish|polish|swedish|norwegian|danish|finnish"
      r"|greek|czech|romanian|hungarian|thai|vietnamese|indonesian|hebrew|ukrainian"
@@ -296,11 +312,9 @@ INTENTS: list[tuple[str, str]] = [
     (r"outcome stats?|chain outcomes?|learning stats?|"
      r"completion rate|how (?:often|many chains?) (?:do you )?(?:complete|finish)",
      "outcome_stats"),
-    (r"\b(?:show|what(?:'s| is)?|check)\s+(?:my\s+|the\s+)?budget\b|"
-     r"\b(?:llm|api|prism)\s+(?:spend|cost|budget|spending)\b|"
-     r"\bhow much (?:have (?:i|you)|did (?:i|you)) spen[dt]\b|"
-     r"\bdaily (?:cost|spend|budget)\b",
-     "budget_status"),
+    # NOTE: budget_status is hoisted above universal_plan (see line ~73)
+    # so that "how much have I spent today" doesn't get claimed by the
+    # planner on the bare "today" hit.
     (r"weekly reflection|reflect (?:on (?:this|the|my) )?(?:week|month|today)|"
      r"how (?:did|was) (?:my|the|this) (?:week|month) go|"
      r"weekly summary",
