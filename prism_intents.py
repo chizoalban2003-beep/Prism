@@ -112,6 +112,14 @@ INTENTS: list[tuple[str, str]] = [
      r"\b(?:show|find|get)\s+contact\s+(?:info\s+(?:for\s+)?)?\w+|"
      r"\bcontact\s+info\s+(?:for\s+)?\w+",
      "contacts"),
+     # system_lock: local OS screen lock. Hoisted above device_task (which
+     # claims "my desktop/computer" file-op verbs) AND smart_home (which has
+     # a bare `\b(?:un)?lock\b` for IoT smart locks). Locking the local
+     # screen is a hardware-bridge action PRISM should handle directly —
+     # via loginctl lock-session — not delegate to a smart home setup the
+     # user may not have. See issue #28-68.
+     (r"\block\s+(?:my\s+|the\s+)?(?:screen|computer|session|workstation|desktop|laptop|pc|machine)\b",
+     "system_lock"),
      (r"(?!.*\b(?:in)?to (?:french|spanish|german|japanese|chinese|arabic|russian|hindi"
      r"|italian|portuguese|dutch|korean|turkish|polish|swedish|norwegian|danish|finnish"
      r"|greek|czech|romanian|hungarian|thai|vietnamese|indonesian|hebrew|ukrainian"
