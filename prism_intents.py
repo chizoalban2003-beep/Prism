@@ -262,7 +262,7 @@ INTENTS: list[tuple[str, str]] = [
      r"require approval|reset (?:all )?polic", "update_policy"),
     (r"(?:running|active|pending|recent) tasks?|task (?:status|progress)|"
      r"what(?:'s| is) (?:running|happening)", "task_status"),
-    (r"(?:read|check|show|any|my) (?:new )?(?:emails?|inbox|messages?)|"
+    (r"(?:read|check|show|any|my) (?:new )?(?:emails?|inbox|messages?|mail)|"
      r"unread|what(?:'s| came) in",                        "email_read"),
     (r"(?:send|reply|write|draft) (?:an? )?email|"
      r"email (?:to|them|him|her)",                          "email_send"),
@@ -383,11 +383,12 @@ INTENTS: list[tuple[str, str]] = [
     (r"turn (?:on|off)|set (?:the )?(?:lights?|thermostat|temp)|"
      r"\b(?:un)?lock\b|what(?:'s| is) (?:on|off)(?! (?:my|the) (?:screen|clipboard))|smart home|home assistant",
      "smart_home"),
-    # NOTE: broad email catch-all — maps to email_read to avoid duplication
-    # with the more specific email_read/email_send intents above.
+    # NOTE: split broad email catch-all. Send-shaped phrases must NOT
+    # land on email_read — that opens the inbox instead of composing.
+    (r"send.*(?:email|mail)|draft.*(?:email|reply)|reply.*email",
+     "email_send"),
     (r"(?:check|read|show|open|fetch|get|list).*(?:email|inbox|mail)|"
-     r"(?:email|mail).*(?:unread|new|recent)|send.*(?:email|mail)|"
-     r"draft.*(?:email|reply)|reply.*email|email.*summary",
+     r"(?:email|mail).*(?:unread|new|recent)|email.*summary",
      "email_read"),
     # Organ-mapped intents (broad fallback patterns — do not duplicate entries above)
     # Weather routing fully handled by the hoist at line 43; the previous
