@@ -120,6 +120,20 @@ INTENTS: list[tuple[str, str]] = [
      # user may not have. See issue #28-68.
      (r"\block\s+(?:my\s+|the\s+)?(?:screen|computer|session|workstation|desktop|laptop|pc|machine)\b",
      "system_lock"),
+     # volume_control: local audio volume. Hoisted above spotify_control
+     # (matches "volume music" but never bare "volume up") and
+     # organ_proposal. Negative-lookahead on the spectrum-tuning verb
+     # ("increase verification" → veax) is implicit because we require
+     # the literal "volume"/"louder"/"quieter"/"mute" anchor. See issue
+     # #28-70.
+     (r"\bvolume\s+(?:up|down)\b|"
+     r"\bturn\s+(?:up|down)\s+(?:the\s+)?volume\b|"
+     r"\b(?:increase|decrease|raise|lower)\s+(?:the\s+)?volume\b|"
+     r"\b(?:un)?mute\b|"
+     r"\bset\s+volume\s+to\s+\d+|"
+     r"\bvolume\s+(?:to\s+)?\d+|"
+     r"\bmake\s+it\s+(?:louder|quieter|softer)\b",
+     "volume_control"),
      # system_power: suspend / shutdown / restart / logout. Hoisted above
      # browser_task (steals "go to"), policy_inspect (steals "log"), and
      # organ_proposal. Negative-lookaheads exclude app-level scopes so
