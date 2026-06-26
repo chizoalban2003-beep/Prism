@@ -17,7 +17,6 @@ Fix: make the timeout configurable on the planner, default 30 s.
 """
 from __future__ import annotations
 
-import socket
 from unittest import mock
 
 from prism_planner import PrismPlanner
@@ -47,7 +46,7 @@ class TestTimeoutFlowsToOllamaCall:
 
     def test_timeout_message_reflects_configured_value(self):
         p = PrismPlanner(request_timeout=8.0)
-        with mock.patch("urllib.request.urlopen", side_effect=socket.timeout("timed out")):
+        with mock.patch("urllib.request.urlopen", side_effect=TimeoutError("timed out")):
             result = p._call_ollama("hi")
         assert result == ""
         # Error string must say 8s, not the old hard-coded 120s.

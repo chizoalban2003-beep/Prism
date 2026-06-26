@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from unittest import mock
 
-from prism_llm_router import LLMRouter, LLMOption
+from prism_llm_router import LLMOption, LLMRouter
 
 
 class TestDefaultTimeoutIsChatFriendly:
@@ -92,6 +92,7 @@ class TestNoLegacy120Hangs:
 
     def test_no_hard_coded_120s_in_sync_provider_calls(self):
         import inspect
+
         import prism_llm_router
         for name in ("_call_claude", "_call_ollama", "_call_openai"):
             src = inspect.getsource(getattr(prism_llm_router.LLMRouter, name))

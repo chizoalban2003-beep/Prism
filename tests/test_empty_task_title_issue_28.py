@@ -29,14 +29,9 @@ Surgical fix:
 from __future__ import annotations
 
 import tempfile
-from pathlib import Path
-from unittest import mock
-
-import pytest
 
 from prism_pa_intents import handle_pa_intent
 from prism_tasks import PrismTasks, Task
-
 
 # ---------------------------------------------------------------------
 # 1. PrismTasks.add never persists an empty title.

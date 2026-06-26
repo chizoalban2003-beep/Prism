@@ -22,7 +22,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from unittest import mock
 
-from prism_llm_router import LLMRouter, LLMOption
+from prism_llm_router import LLMOption, LLMRouter
 
 
 @dataclass
@@ -131,6 +131,7 @@ class TestAgentWiresBudgetIntoRouter:
 
     def test_agent_source_wires_budget_to_router(self):
         import inspect
+
         import prism_agent
         src = inspect.getsource(prism_agent.PrismAgent.__init__)
         # The wiring is one line; assert it survives refactors.

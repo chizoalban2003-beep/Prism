@@ -31,7 +31,7 @@ from __future__ import annotations
 from unittest import mock
 
 from prism_intents import INTENTS
-from prism_pa_intents import handle_pa_intent, _hardware_status_card
+from prism_pa_intents import _hardware_status_card
 from prism_routing import route_intent
 
 
