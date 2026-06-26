@@ -94,8 +94,15 @@ INTENTS: list[tuple[str, str]] = [
      (r"\b(?:any|my)\s+(?:meetings?|appointments?|events?)(?:\s+(?:today|tomorrow|this\s+(?:week|month)))?\b|"
      r"\b(?:meetings?|appointments?|events?)\s+(?:today|tomorrow|this\s+(?:week|month))\b|"
      r"\bdo\s+i\s+have\s+(?:any\s+)?(?:meetings?|appointments?|events?)\b|"
-     r"\bwhat\s+(?:meetings?|appointments?|events?)\s+(?:do\s+i\s+have|are\s+there)\b",
+     r"\bwhat\s+(?:meetings?|appointments?|events?)\s+(?:do\s+i\s+have|are\s+there)\b|"
+     r"\b(?:show|check|view)\s+my\s+(?:agenda|schedule|calendar)\b",
      "calendar_read"),
+     # calendar_write must precede universal_plan (steals "schedule") AND
+     # browser_task (steals "book"). Hoisted with explicit calendar nouns
+     # so "book a table" still routes to browser_task.
+     (r"\b(?:schedule|book|create|add|set\s+up)\s+(?:a\s+|an\s+|the\s+)?(?:meeting|appointment|event)\b|"
+     r"\b(?:find|when(?:'s| is)\s+(?:the\s+)?next)\s+(?:a\s+|an\s+)?(?:free|available)\s+(?:slot|time)\b",
+     "calendar_write"),
      (r"(?!.*\b(?:in)?to (?:french|spanish|german|japanese|chinese|arabic|russian|hindi"
      r"|italian|portuguese|dutch|korean|turkish|polish|swedish|norwegian|danish|finnish"
      r"|greek|czech|romanian|hungarian|thai|vietnamese|indonesian|hebrew|ukrainian"
