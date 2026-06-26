@@ -120,6 +120,20 @@ INTENTS: list[tuple[str, str]] = [
      # user may not have. See issue #28-68.
      (r"\block\s+(?:my\s+|the\s+)?(?:screen|computer|session|workstation|desktop|laptop|pc|machine)\b",
      "system_lock"),
+     # brightness_control: local display brightness. Hoisted above
+     # smart_home_control (which claims "dim the lights" — distinct from
+     # "dim my screen") and organ_proposal. Scoped to the literal noun
+     # "brightness" / "screen brightness", or {brighter,dimmer,dim} with
+     # an explicit screen anchor. See issue #28-72.
+     (r"\bbrightness\s+(?:up|down)\b|"
+     r"\bscreen\s+brightness\s+(?:up|down)\b|"
+     r"\b(?:increase|decrease|raise|lower)\s+(?:the\s+|screen\s+)?brightness\b|"
+     r"\bset\s+(?:screen\s+)?brightness\s+to\s+\d+|"
+     r"\b(?:screen\s+)?brightness\s+to\s+\d+|"
+     r"\bmake\s+(?:the\s+|my\s+)?screen\s+(?:brighter|dimmer)\b|"
+     r"\bdim\s+(?:my\s+|the\s+)?(?:screen|display|monitor)\b|"
+     r"\bbrighten\s+(?:my\s+|the\s+)?(?:screen|display|monitor)\b",
+     "brightness_control"),
      # volume_control: local audio volume. Hoisted above spotify_control
      # (matches "volume music" but never bare "volume up") and
      # organ_proposal. Negative-lookahead on the spectrum-tuning verb
