@@ -46,15 +46,22 @@ class TestStopwordsStripped:
     organ = _load("weather_check")
 
     def _call(self, message: str, ctx: dict | None = None) -> tuple[str, dict]:
-        captured = {}
+        # Capture every URL the organ probes during execute(). The wttr.in
+        # request is the one we want to assert on, but other modules in
+        # CI's import graph occasionally fire a stray Ollama-tags probe
+        # via urllib.request.urlopen — using a list keeps the assertion
+        # focused on the wttr.in call rather than whichever urlopen fired
+        # last.
+        captured: list[str] = []
 
         def fake_urlopen(url, timeout=6):
-            captured["url"] = url
+            captured.append(url)
             return _urlopen(_FAKE_BODY)
 
         with patch("urllib.request.urlopen", side_effect=fake_urlopen):
             card = self.organ.execute("weather_check", message, ctx or {})
-        return captured.get("url", ""), card.card_data
+        wttr = next((u for u in captured if "wttr.in" in u), "")
+        return wttr, card.card_data
 
     def test_bare_weather_query_uses_default(self):
         url, _ = self._call("what's the weather")
