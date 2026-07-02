@@ -1,24 +1,55 @@
 // PRISM VS Code Extension
-// Bridges VS Code to the local PRISM assistant running on 127.0.0.1:8743.
+// Bridges VS Code to the local PRISM assistant running on 127.0.0.1:8742.
 // No npm dependencies — uses Node 18+ built-in fetch.
 
 const vscode = require("vscode");
+const fs = require("fs");
+const os = require("os");
+const nodePath = require("path");
 
 let outputChannel;
 let statusBarItem;
+let cachedToken = null;
 
 function getBaseUrl() {
   const cfg = vscode.workspace.getConfiguration("prism");
   const host = cfg.get("host") || "127.0.0.1";
-  const port = cfg.get("port") || 8743;
+  const port = cfg.get("port") || 8742;
   return `http://${host}:${port}`;
+}
+
+function getToken() {
+  // Every PRISM endpoint except /_health requires a bearer token. Prefer
+  // an explicit setting; otherwise read ~/.prism/auth_token — the daemon
+  // and this extension run on the same machine.
+  const cfg = vscode.workspace.getConfiguration("prism");
+  const configured = cfg.get("token");
+  if (configured) return configured;
+  if (cachedToken !== null) return cachedToken;
+  try {
+    cachedToken = fs
+      .readFileSync(nodePath.join(os.homedir(), ".prism", "auth_token"), "utf8")
+      .trim();
+  } catch {
+    cachedToken = "";
+  }
+  return cachedToken;
 }
 
 async function prismFetch(path, method = "GET", body = null) {
   const url = getBaseUrl() + path;
-  const options = { method, headers: { "Content-Type": "application/json" } };
+  const headers = { "Content-Type": "application/json" };
+  const token = getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  const options = { method, headers };
   if (body) options.body = JSON.stringify(body);
   const res = await fetch(url, options);
+  if (res.status === 401) {
+    cachedToken = null; // token may have rotated — re-read the file next call
+    throw new Error(
+      "PRISM rejected the auth token. Check ~/.prism/auth_token or set the prism.token setting."
+    );
+  }
   return res.json();
 }
 

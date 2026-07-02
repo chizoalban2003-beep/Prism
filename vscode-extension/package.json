@@ -25,7 +25,8 @@
       "title": "PRISM",
       "properties": {
         "prism.port": {"type": "number", "default": 8742, "description": "PRISM server port"},
-        "prism.host": {"type": "string", "default": "127.0.0.1", "description": "PRISM server host"}
+        "prism.host": {"type": "string", "default": "127.0.0.1", "description": "PRISM server host"},
+        "prism.token": {"type": "string", "default": "", "description": "Bearer auth token. Leave blank to read ~/.prism/auth_token automatically."}
       }
     }
   }
