@@ -506,8 +506,8 @@ class PrismPlanner:
         """
         raw = self._call_ollama(
             self.SIMPLE_PLAN_PROMPT.format(task=task[:300]),
-            num_predict=220,
-            timeout=min(self.request_timeout, 20.0),
+            num_predict=160,
+            timeout=self.request_timeout,
         )
         if not raw:
             return None

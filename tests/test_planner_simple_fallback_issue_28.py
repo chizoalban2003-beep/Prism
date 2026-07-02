@@ -85,3 +85,17 @@ class TestPlanDegradationChain:
             except Exception:
                 pass  # downstream mocks are incomplete; we only assert routing
             simple.assert_not_called()
+
+
+class TestPlannerTimeoutConfig:
+    def test_agent_config_wires_planner_timeout(self):
+        """[agent].planner_timeout must reach PrismPlanner — the lever for
+        slow hardware where the default 30s can't finish a short plan."""
+        import inspect
+
+        import prism_agent as pa
+        src = inspect.getsource(pa)
+        assert "planner_timeout" in src
+        # And the planner accepts it:
+        p = PrismPlanner(request_timeout=150.0)
+        assert p.request_timeout == 150.0

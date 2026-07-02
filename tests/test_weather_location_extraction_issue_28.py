@@ -7,13 +7,34 @@ taking the LAST word longer than two letters as the city, which for
 "what's the weather" is "weather" itself.
 
 Fix: drop query stopwords (what, the, weather, today, ...) before
-choosing a city. If nothing real remains, fall back to "London".
+choosing a city. Originally the empty case fell back to "London";
+since #28-83 it asks which city to use (and remembers the answer), so
+the invariant these tests protect is now "a stopword is never treated
+as a city": stopword-only queries must not hit wttr.in at all.
 """
 from __future__ import annotations
 
 import importlib.util
 import json
 from unittest.mock import MagicMock, patch
+
+import pytest
+
+import prism_settings_store
+
+
+@pytest.fixture(autouse=True)
+def isolated_settings(tmp_path):
+    """Point the settings store at a temp DB — the organ persists the
+    last explicitly named city (#28-83), and without isolation these
+    tests would write into the developer's real ~/.prism/settings.db."""
+    db = str(tmp_path / "settings.db")
+    prism_settings_store.reset_settings_store(db)
+    with patch.object(
+            prism_settings_store, "get_settings_store",
+            lambda db_path="ignored": prism_settings_store.reset_settings_store(db)):
+        yield
+    prism_settings_store.reset_settings_store()
 
 
 def _load(name: str):
@@ -63,42 +84,42 @@ class TestStopwordsStripped:
         wttr = next((u for u in captured if "wttr.in" in u), "")
         return wttr, card.card_data
 
-    def test_bare_weather_query_uses_default(self):
+    def test_bare_weather_query_asks_for_city(self):
         url, _ = self._call("what's the weather")
-        assert "London" in url, f"expected London fallback, got {url}"
+        assert url == "", f"stopword query must not hit wttr.in: {url}"
 
-    def test_weather_today_uses_default(self):
+    def test_weather_today_asks_for_city(self):
         url, _ = self._call("what is the weather today")
-        assert "London" in url
+        assert url == "", f"stopword query must not hit wttr.in: {url}"
 
-    def test_tomorrows_weather_uses_default(self):
+    def test_tomorrows_weather_asks_for_city(self):
         # "tomorrow's" — apostrophe gets stripped to "tomorrows" which
         # the initial stopword set missed, producing wttr.in lookup of
         # "Tomorrows" as a city name.
         url, _ = self._call("tomorrow's weather")
-        assert "London" in url, f"expected London fallback, got {url}"
+        assert url == "", f"stopword query must not hit wttr.in: {url}"
 
-    def test_todays_weather_uses_default(self):
+    def test_todays_weather_asks_for_city(self):
         url, _ = self._call("today's weather")
-        assert "London" in url
+        assert url == "", f"stopword query must not hit wttr.in: {url}"
 
-    def test_how_cold_is_it_uses_default(self):
+    def test_how_cold_is_it_asks_for_city(self):
         # "how cold is it" was treating "cold" as the city, querying
         # wttr.in for "Cold" and getting back nonsense.
         url, _ = self._call("how cold is it")
-        assert "London" in url, f"expected London fallback, got {url}"
+        assert url == "", f"stopword query must not hit wttr.in: {url}"
 
-    def test_how_hot_is_it_uses_default(self):
+    def test_how_hot_is_it_asks_for_city(self):
         url, _ = self._call("how hot is it")
-        assert "London" in url
+        assert url == "", f"stopword query must not hit wttr.in: {url}"
 
-    def test_is_it_raining_uses_default(self):
+    def test_is_it_raining_asks_for_city(self):
         url, _ = self._call("is it raining")
-        assert "London" in url
+        assert url == "", f"stopword query must not hit wttr.in: {url}"
 
-    def test_how_is_the_weather_uses_default(self):
+    def test_how_is_the_weather_asks_for_city(self):
         url, _ = self._call("how is the weather")
-        assert "London" in url
+        assert url == "", f"stopword query must not hit wttr.in: {url}"
 
     def test_real_city_survives(self):
         url, _ = self._call("what's the weather in Tokyo")
@@ -122,13 +143,13 @@ class TestStopwordsStripped:
         url, data = self._call("what's the weather")
         assert data.get("location", "").lower() != "weather"
 
-    def test_will_it_rain_tomorrow_uses_default(self):
+    def test_will_it_rain_tomorrow_asks_for_city(self):
         # "will it rain tomorrow" was picking "will" as the city after
         # the routing fix in #28-34 stopped relying on the bare-rain
         # rule. The organ stopwords missed the future-tense auxiliary.
         url, _ = self._call("will it rain tomorrow")
-        assert "London" in url, f"expected London fallback, got {url}"
+        assert url == "", f"stopword query must not hit wttr.in: {url}"
 
-    def test_will_it_snow_tonight_uses_default(self):
+    def test_will_it_snow_tonight_asks_for_city(self):
         url, _ = self._call("will it snow tonight")
-        assert "London" in url, f"expected London fallback, got {url}"
+        assert url == "", f"stopword query must not hit wttr.in: {url}"

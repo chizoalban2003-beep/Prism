@@ -18,6 +18,9 @@ ollama_model   = "llama3.2:3b"
 
 [agent]
 # text_model  = "llama3.2:3b"           # overrides [llm].ollama_model for planning
+# planner_timeout = 30.0                # seconds per planner LLM call; raise on
+                                        # slow hardware (a few tokens/sec) where
+                                        # 30s can't finish even a short plan
 
 # ── Model Context Protocol (MCP) ──────────────────────────────────────────────
 # Connect external MCP servers; their tools are auto-registered as governed
