@@ -143,6 +143,7 @@ def get_llm_settings_html() -> str:
     claude_model  = cfg.get("claude_model",   "claude-opus-4-8")
     oai_key       = cfg.get("openai_api_key", "")
     oai_host      = cfg.get("openai_host",    "https://api.openai.com")
+    oai_model     = cfg.get("openai_model",   "")
     ollama_host   = cfg.get("ollama_host",    "http://localhost:11434")
     ollama_model  = cfg.get("ollama_model",   "mistral")
     preferred     = cfg.get("preferred",      "")
@@ -365,8 +366,8 @@ def get_llm_settings_html() -> str:
         <div class="card-icon">⚡</div>
         <div class="card-info">
           <h2>OpenAI-compatible endpoint</h2>
-          <p>Groq · Together AI · LM Studio · llama.cpp · Gemini · Mistral AI ·
-             any /v1/chat/completions-compatible server.</p>
+          <p>DeepSeek · Groq · Together AI · LM Studio · llama.cpp · Gemini ·
+             Mistral AI · any /v1/chat/completions-compatible server.</p>
         </div>
       </div>
       <div class="field">
@@ -380,6 +381,11 @@ def get_llm_settings_html() -> str:
                value="{_mask(oai_key) if oai_host != 'https://api.openai.com' else ''}"
                placeholder="your-api-key  or  local" autocomplete="off"
                onfocus="if(this.value.startsWith('•'))this.value=''">
+      </div>
+      <div class="field">
+        <label>Model (as the endpoint names it)</label>
+        <input id="compat_model" value="{oai_model}"
+               placeholder="deepseek-chat / llama-3.3-70b-versatile / …">
       </div>
       <div class="actions">
         <button class="btn secondary sm" onclick="testProvider('openai_compat')">Test connection</button>
@@ -452,8 +458,9 @@ async function saveProvider(p) {{
   }}
   if (p === 'openai')        body.key  = document.getElementById('openai_api_key').value;
   if (p === 'openai_compat') {{
-    body.host = document.getElementById('compat_host').value;
-    body.key  = document.getElementById('compat_key').value || 'local';
+    body.host  = document.getElementById('compat_host').value;
+    body.key   = document.getElementById('compat_key').value || 'local';
+    body.model = document.getElementById('compat_model').value;
   }}
   const res = await api('/settings/llm', body);
   showMsg(p, res.ok, res.message);

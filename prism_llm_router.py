@@ -85,7 +85,8 @@ class LLMOption:
 # Capability ranking — higher = preferred for complex tasks
 MODEL_CAPABILITY: dict[str, int] = {
     "claude-sonnet": 3, "claude-opus": 3, "claude-fable": 3, "claude-haiku": 2,
-    "deepseek-r1": 3, "deepseek-v3": 2,
+    "deepseek-r1": 3, "deepseek-reasoner": 3, "deepseek-v3": 2, "deepseek-chat": 2,
+    "gpt-4o-mini": 2, "gpt-4": 3,  # -mini must precede the gpt-4 substring
     "llama3": 2, "llama3.1": 2, "llama3.2": 2,
     "mistral": 2, "mixtral": 2,
     "qwen": 1, "phi": 1, "gemma": 1, "tinyllama": 1,
@@ -248,15 +249,18 @@ class LLMRouter:
 
         if effective_hint == "fast":
             # Prefer smallest/fastest local model (capability=1) over cloud —
-            # but only when "local" is actually fast. A local model with a
-            # multi-second-average latency (e.g. tinyllama at 91s on a CPU-only
-            # host) violates the "fast" semantic; in that case fall through to
-            # the ranked selection, which orders by measured latency.
-            for opt in self.discover():
-                if (opt.available and opt.capability >= 1
-                        and opt.provider == "ollama"
-                        and opt.latency_ms <= _FAST_LOCAL_LATENCY_CAP_MS):
-                    return opt
+            # but only when "local" is actually fast, AND only when the user
+            # hasn't explicitly preferred a non-local provider. An explicit
+            # [llm].preferred is a CEO lever; the fast-local heuristic must
+            # not silently override it.
+            _preferred_is_local = (not self._preferred
+                                   or self._preferred.startswith("ollama"))
+            if _preferred_is_local:
+                for opt in self.discover():
+                    if (opt.available and opt.capability >= 1
+                            and opt.provider == "ollama"
+                            and opt.latency_ms <= _FAST_LOCAL_LATENCY_CAP_MS):
+                        return opt
             # Fall through to normal selection if no local available or all too slow
         elif effective_hint == "emergency":
             # Prefer cloud (claude/openai) as fastest reliable fallback
@@ -450,8 +454,15 @@ class LLMRouter:
                     logger.debug("[llm_router] budget check error: %s", _be)
             try:
                 _t0 = time.time()
+                # The silicon throttle protects LOCAL compute — cloud calls
+                # don't burn this machine's silicon, and clamping their
+                # max_tokens truncates structured output mid-JSON (observed
+                # live: 700-token cap cut the planner's extraction JSON,
+                # failing the whole plan while DeepSeek was healthy).
+                _opt_max_tokens = (_eff_max_tokens if opt.provider == "ollama"
+                                   else max_tokens)
                 text = self._call_option(
-                    opt, _effective_prompt, _eff_max_tokens, system,
+                    opt, _effective_prompt, _opt_max_tokens, system,
                     json_mode, _pruned_history, images=images)
                 if text:
                     logger.debug("LLM call via %s/%s", opt.provider, opt.model)
@@ -490,8 +501,10 @@ class LLMRouter:
                 except Exception:
                     pass
             try:
+                _opt_max_tokens = (_eff_max_tokens if opt.provider == "ollama"
+                                   else max_tokens)
                 text = self._call_option(
-                    opt, _effective_prompt, _eff_max_tokens, system,
+                    opt, _effective_prompt, _opt_max_tokens, system,
                     json_mode, _pruned_history, images=images)
                 if text:
                     logger.warning("LLM fallback (cap ignored): %s/%s", opt.provider, opt.model)
@@ -591,13 +604,19 @@ class LLMRouter:
                               False,0,0,"Ollama not running")]
 
     def _ping_openai_compat(self, host: str, api_key: str) -> LLMOption:
+        # Label the option with the model that _call_openai will actually
+        # send. The old hardcoded "gpt-4" placeholder broke capability
+        # ranking for every non-OpenAI host (DeepSeek, Groq, LM Studio…):
+        # _rank() saw "gpt-4"-the-string, not the real model.
+        model = (self._config.get("openai_model")
+                 or os.environ.get("OPENAI_MODEL", "gpt-4o-mini"))
         try:
             req = urllib.request.Request(f"{host}/v1/models",
                 headers={"Authorization": "Bearer " + api_key})
             urllib.request.urlopen(req, timeout=2)
-            return LLMOption("openai_compat","gpt-4",host,True,0,2)
+            return LLMOption("openai_compat",model,host,True,0,2)
         except Exception as e:
-            return LLMOption("openai_compat","unknown",host,False,0,0,str(e)[:80])
+            return LLMOption("openai_compat",model,host,False,0,0,str(e)[:80])
 
     def _call_option(self, opt: LLMOption, prompt: str,
                      max_tokens: int, system: str,

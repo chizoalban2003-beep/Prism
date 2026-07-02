@@ -341,6 +341,8 @@ async def settings_llm_post(request: Request):
             "openai_host":    host,
             "preferred":      "openai_compat",
         }
+        if model:
+            updates["openai_model"] = model
 
     if updates:
         write_llm_config(updates)
