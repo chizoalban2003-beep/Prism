@@ -64,8 +64,9 @@ class TestNoUniversalPlanRegression:
     def test_plan_my_day_still_plans(self):
         assert _route("plan my day") == "universal_plan"
 
-    def test_good_morning_still_plans(self):
-        assert _route("good morning") == "universal_plan"
+    def test_good_morning_is_smalltalk(self):
+        # Changed in #28-79: bare greetings route to general_chat.
+        assert _route("good morning") == "general_chat"
 
     def test_what_should_i_do_today_still_plans(self):
         # No meeting/calendar keyword — planner keeps it.

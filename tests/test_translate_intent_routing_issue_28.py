@@ -55,7 +55,8 @@ class TestPlanStillRoutes:
     """Make sure widening the negative lookahead didn't kill the planner."""
 
     def test_plain_morning(self):
-        assert _route("good morning") == "universal_plan"
+        # Changed in #28-79: bare greetings route to general_chat.
+        assert _route("good morning") == "general_chat"
 
     def test_plan_my_day(self):
         assert _route("plan my day") == "universal_plan"

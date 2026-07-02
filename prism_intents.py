@@ -29,6 +29,30 @@ INTENTS: list[tuple[str, str]] = [
      r"(?:book|buy|do|send|run) (?:it |that )?when |"
      r"horizon goal|long.?term goal|background goal",
      "horizon_add"),
+    # Small talk & emotional check-ins: a companion answers "good morning"
+    # with a greeting, not a plan card. universal_plan's bare keywords
+    # (morning/today) below would otherwise claim these — live probe showed
+    # "good morning" and "i feel stressed today" both dead-ending in a
+    # "Planner LLM unavailable" error card. Greetings are anchored at BOTH
+    # ends (plus optional punctuation/'prism') so "good morning, plan my
+    # day" still falls through to the planner; the feelings pattern is
+    # unanchored because an emotional statement deserves an empathetic chat
+    # reply even mid-sentence. Routing lowercases first — keep patterns
+    # lowercase. See issue #28-79.
+    (r"^\s*(?:good\s+(?:morning|afternoon|evening|night)|"
+     r"hello|hi(?:ya)?|hey(?:\s+there)?|howdy|greetings|yo|"
+     r"how(?:'s| is| are) (?:it going|you|things|life|your day)(?:\s+(?:doing|going|today|tonight))*|"
+     r"what'?s up|sup|"
+     r"thank(?:s| you)(?:\s+(?:so|very)\s+much)?|thankyou|cheers|appreciate (?:it|you)|"
+     r"good\s*bye|bye(?:\s+for\s+now)?|see you(?:\s+(?:later|soon|tomorrow))?|"
+     r"good\s+job|well done|nice work|love (?:it|that|you))"
+     r"[\s!,.?]*(?:prism)?[\s!,.?]*$",
+     "general_chat"),
+    (r"\b(?:i(?:'m|\s+am)?\s+)?feel(?:ing)?\s+(?:a\s+bit\s+|a\s+little\s+|really\s+|so\s+|very\s+|kinda\s+|quite\s+|pretty\s+)?"
+     r"(?:stressed|anxious|sad|down|overwhelmed|tired|exhausted|burn(?:t|ed)[-\s]?out|"
+     r"lonely|depressed|worried|nervous|angry|frustrated|upset|low|unmotivated|lost|"
+     r"happy|great|good|amazing|excited|energi[sz]ed|motivated|proud)\b",
+     "general_chat"),
     # Live financial/crypto data — must precede plan ("today") and wikipedia ("what is")
     (r"stock (?:price|market|quote)|share price|market cap|"
      r"bitcoin|ethereum|crypto (?:price|market)|coin price|"

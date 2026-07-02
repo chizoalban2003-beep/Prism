@@ -85,8 +85,9 @@ class TestNoUniversalPlanRegression:
         assert _route("plan my day") == "universal_plan"
 
     def test_good_morning(self):
-        # The deliberate product behaviour — "good morning" → daily plan.
-        assert _route("good morning") == "universal_plan"
+        # Changed in #28-79: a bare greeting is small talk, not a plan
+        # request. "plan my day" / "good morning, plan my day" still plan.
+        assert _route("good morning") == "general_chat"
 
     def test_what_should_i_do_today(self):
         # No budget/spend keywords; planner keeps the "today" claim.
