@@ -31,6 +31,57 @@
 
 ---
 
+## Find your way
+
+| I want to… | Go to |
+|---|---|
+| **Install and run PRISM** | [60-second start](#the-60-second-start) · [full install guide](#installing-prism-on-your-device) |
+| **See what I can say to it** | [Try these first](#try-these-first) |
+| **Pick my LLM** (Ollama / Claude / OpenAI-compatible) | [LLM setup](#llm-setup) |
+| **Understand the architecture** | [Architecture](#architecture) · [docs/architecture.md](docs/architecture.md) |
+| **Add my own capability** | [Organ system](#organ-system) · [Extending PRISM](#extending-prism) |
+| **Check every HTTP endpoint** | [REST API](#rest-api) |
+| **Fix something that broke** | [QUICKSTART → When something breaks](docs/QUICKSTART.md#when-something-breaks) |
+| **Contribute** | [CONTRIBUTING.md](CONTRIBUTING.md) |
+
+## The 60-second start
+
+```bash
+git clone https://github.com/chizoalban2003-beep/Prism.git && cd Prism
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[full]"
+python3 prism_daemon.py            # first boot creates ~/.prism/ and your auth token
+```
+
+Open <http://127.0.0.1:8742> — the page asks for your token
+(`cat ~/.prism/auth_token`), then keeps you signed in. No LLM yet?
+Everything deterministic still works; add a brain in
+[LLM setup](#llm-setup) when ready.
+
+## Try these first
+
+Every row below is a real, tested path through the system — type it into the chat.
+
+| Say… | What happens | Needs |
+|---|---|---|
+| `good morning` | It greets you back (and means it) | nothing |
+| `what time is it` | Local clock, no LLM involved | nothing |
+| `calculate 12% of 340` | Deterministic calculator organ | nothing |
+| `weather in Berlin` | Fetches it — and remembers Berlin for plain "weather?" later | internet |
+| `remind me to stretch in 2 hours` | Proactive trigger fires even after you close the tab | nothing |
+| `take a note: call mum` | Appended to `~/.prism/notes.md` | nothing |
+| `what did we talk about yesterday` | Time-windowed recall from your conversation store | nothing |
+| `remember that my favourite colour is teal` | Stored as a fact; ask `what is my favourite colour` later | nothing |
+| `lock my screen` | First-class hardware organ (loginctl → fallbacks) | Linux/macOS/Windows |
+| `shut down the computer` | Stops at a **high-risk approval card** — nothing runs until you approve | nothing |
+| `plan my day` | Multi-strategy plan; degrades honestly on small local models | an LLM |
+| `is bluetooth on?` | Queries the local radio | bluetoothctl/rfkill |
+
+Runtime self-check: `GET /organs/health` tells you if any capability
+on disk failed to load — 200 means every organ registered.
+
+---
+
 ## The Personification Moat
 
 Every other AI stores memory. Prism builds a **model of you** — from your actual decisions, not self-reported preferences.
@@ -79,6 +130,9 @@ Concrete capabilities exposed today, not roadmap:
 
 ---
 
+<details>
+<summary><b>Architecture</b> — nucleus-organ topology, async stack, memory layers, observability</summary>
+
 ## Architecture
 
 ### Nucleus-Organ Topology
@@ -113,7 +167,7 @@ PRISM's execution model is a Nucleus-Organ topology with three-layer security:
 └───────────────────────────┬─────────────────────────────────────┘
                             │ hot-swappable at runtime
               ┌─────────────▼─────────────────────────────┐
-              │  ORGAN LAYER  (41 bundled + user/LLM)     │
+              │  ORGAN LAYER  (51 bundled + user/LLM)     │
               │  Each organ declares capabilities manifest │
               │  internet_read/write · filesystem_r/w      │
               │  subprocess · telephony · system_ui        │
@@ -205,7 +259,7 @@ User input (chat / voice / CLI / REST API)
     │  AdaptiveFulcrum.observe() ← online learn     │
     └────────────────────────────────────────────────┘
 
-Organ Layer — 41 bundled organs, extensible at runtime:
+Organ Layer — 51 bundled organs, extensible at runtime:
   ┌──────────────────────────────────────────────────────────────┐
   │  OrganLoader (prism_organ_loader.py)                         │
   │  Discovers organs from ./organs/ (bundled) and              │
@@ -319,6 +373,11 @@ GET `/metrics?window_s=300` returns the full JSON report. A canary run is schedu
 
 ---
 
+</details>
+
+<details>
+<summary><b>Capabilities</b> — decision engine, sports intelligence, domains, personal assistant</summary>
+
 ## Capabilities
 
 ### Decision Engine
@@ -409,6 +468,11 @@ GET `/metrics?window_s=300` returns the full JSON report. A canary run is schedu
 | Phase feedback loop | `prism_shadow_pipeline.py` | Working — after each commit cycle, Φ_melt computed; if should_melt() → VEAX deltas applied; closes hardware-pressure→VEAX loop |
 
 ---
+
+</details>
+
+<details>
+<summary><b>New since v0.1.3</b> — MCP client, organ packs, mesh, LoRA loop, agent registry</summary>
 
 ## New since v0.1.3
 
@@ -513,6 +577,11 @@ Internal cleanup, no user-facing API change — but worth knowing the file map i
 
 ---
 
+</details>
+
+<details>
+<summary><b>Living User Model</b> — persona, crystalliser, narrative, identity ceremony</summary>
+
 ## Living User Model
 
 PRISM crystallises to each user over time through three interlocking systems:
@@ -595,6 +664,11 @@ Belief merging uses higher-confidence-wins: your phone and laptop's models conve
 
 ---
 
+</details>
+
+<details>
+<summary><b>Autonomous Execution</b> — self-built tools, approval gate, safety blocklist</summary>
+
 ## Autonomous Execution
 
 PRISM is a managerial PA with full autonomy. When asked to do something it has no built-in tool for, instead of returning instructions to the user it:
@@ -655,6 +729,11 @@ The following patterns are **always blocked** regardless of LLM output:
 
 ---
 
+</details>
+
+<details>
+<summary><b>Reasoning Chains</b> — the LLM↔Logic+Policy alternating spine</summary>
+
 ## Reasoning Chains
 
 For complex requests PRISM uses an alternating chain architecture instead of a single LLM call:
@@ -697,6 +776,11 @@ View recent chains: say `show chain history` or call `GET /chain/recent`.
 
 ---
 
+</details>
+
+<details>
+<summary><b>Voice input setup</b> — local Whisper, push-to-talk</summary>
+
 ## Voice input setup
 
 PRISM supports local speech-to-text via `prism_voice.py`. Three backends in priority order:
@@ -733,6 +817,8 @@ Falls back gracefully when no backend is installed — PRISM remains fully funct
 
 ---
 
+</details>
+
 ## LLM Setup
 
 PRISM needs an LLM for its reasoning chains, organ routing, and synthesis. Three ways to connect one:
@@ -749,7 +835,7 @@ Auto-detects Ollama, Claude API, and OpenAI. Presents a numbered menu, tests the
 
 ### Option B — Web settings page
 
-With the daemon running (`python3 prism_daemon.py`), open **http://localhost:8742/settings/llm** — a settings page with provider cards (Ollama, Claude, OpenAI, OpenAI-compatible). Click **Test**, then **Save & use**. No restart required for provider switching.
+With the daemon running (`python3 prism_daemon.py`), open **http://localhost:8742/settings/llm** — a settings page with provider cards (Ollama, Claude, OpenAI, OpenAI-compatible). Pick a provider, paste your key, choose the model (for Claude: Opus 4.8 / Sonnet 5 / Haiku 4.5), click **Test**, then **Save & use**. No restart required for provider switching — chat, reasoning chains, **and the planner** all follow your pick live.
 
 ### Option C — Edit `prism_config.toml` directly
 
@@ -760,6 +846,7 @@ preferred      = ""           # "ollama/mistral" | "claude" | "openai" | "openai
 ollama_host    = "http://localhost:11434"
 ollama_model   = "mistral"    # any pulled model: llama3, deepseek-r1, qwen, phi, etc.
 claude_api_key = "sk-ant-..."  # console.anthropic.com  (or ANTHROPIC_API_KEY env var)
+claude_model   = "claude-opus-4-8"  # or "claude-sonnet-5" / "claude-haiku-4-5"
 openai_api_key = "sk-..."      # platform.openai.com    (or OPENAI_API_KEY env var)
 openai_host    = "https://api.openai.com"  # or Groq/Together/LM Studio/Gemini endpoint
 fallback       = ["ollama/mistral", "claude"]  # ordered fallback chain
@@ -776,7 +863,22 @@ fallback       = ["ollama/mistral", "claude"]  # ordered fallback chain
 
 PRISM always falls back to stdlib-only mode if no LLM is available — routing, organ execution, and approval gates still work; only LLM-dependent steps (chain synthesis, complex planning) are skipped.
 
+**Slow hardware?** If your local model runs at a few tokens/sec, structured
+planning may not finish inside the default 30s. Raise it:
+
+```toml
+[agent]
+planner_timeout = 120.0
+```
+
+The planner also degrades gracefully on its own: full multi-strategy
+planning → quick single-shot plan → an honest "here's what to install"
+card. It never fakes a result.
+
 ---
+
+<details>
+<summary><b>Phone calls and SMS (Twilio)</b> — optional telephony organ</summary>
 
 ## Phone calls and SMS (Twilio)
 
@@ -804,6 +906,11 @@ Or set environment variables `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_
 
 ---
 
+</details>
+
+<details>
+<summary><b>Linear task integration</b> — GraphQL task sync</summary>
+
 ## Linear task integration
 
 PRISM supports [Linear](https://linear.app) as a task provider via GraphQL API:
@@ -824,6 +931,11 @@ When `linear_api_key` is set and no Todoist/GitHub tokens are configured, tasks 
 
 ---
 
+</details>
+
+<details>
+<summary><b>Scheduled reminders</b> — one-shot and recurring proactive triggers</summary>
+
 ## Scheduled reminders
 
 PRISM supports natural language reminder scheduling:
@@ -835,6 +947,11 @@ PRISM supports natural language reminder scheduling:
 Reminders fire via the proactive loop (polling every 60 seconds by default) and can send push notifications if `[push].topic` is configured.
 
 ---
+
+</details>
+
+<details>
+<summary><b>Google Calendar OAuth</b> — calendar read/write setup</summary>
 
 ## Google Calendar OAuth
 
@@ -872,6 +989,11 @@ google_creds  = "~/.prism/google_creds.json"
 
 ---
 
+</details>
+
+<details>
+<summary><b>Multi-user support</b> — per-user scoping</summary>
+
 ## Multi-user support
 
 PRISM scopes the active user from `[user].name` in `prism_config.toml`:
@@ -884,6 +1006,11 @@ name = "Alice"
 Policies, calibration history, and standing instructions use this name as the user key. To support multiple users on the same machine, run separate instances with separate config files.
 
 ---
+
+</details>
+
+<details>
+<summary><b>Installing PRISM on your device</b> — macOS · Linux · Windows · Docker · mobile PWA</summary>
 
 ## Installing PRISM on your device
 
@@ -1115,6 +1242,11 @@ python kde_cli.py reflect
 
 ---
 
+</details>
+
+<details>
+<summary><b>Configuration (`prism_config.toml`)</b> — every config knob, annotated</summary>
+
 ## Configuration (`prism_config.toml`)
 
 The repository ships a ready-to-edit `prism_config.toml`. All sections are optional — PRISM works without any configuration and degrades gracefully when integrations are missing.
@@ -1183,6 +1315,11 @@ watch_path = "~/Downloads/apple_health_export"
 ```
 
 ---
+
+</details>
+
+<details>
+<summary><b>REST API</b> — every HTTP endpoint by subsystem</summary>
 
 ## REST API
 
@@ -1296,6 +1433,11 @@ Open **http://localhost:8742** for the chat UI. The async server handles concurr
 
 ---
 
+</details>
+
+<details>
+<summary><b>How the learning loop works</b> — decision → outcome → weight adjustment</summary>
+
 ## How the learning loop works
 
 1. User sends a message → `PrismAgent` routes the intent
@@ -1309,6 +1451,11 @@ Open **http://localhost:8742** for the chat UI. The async server handles concurr
 Proactive calibration prompts fire every 3 days if no feedback has been given.
 
 ---
+
+</details>
+
+<details>
+<summary><b>Organ system</b> — the 51 bundled organs, manifests, policies, writing your own</summary>
 
 ## Organ system
 
@@ -1324,7 +1471,7 @@ PRISM's organ system is the execution backbone of the personal assistant layer. 
 
 To have PRISM synthesise a new organ: say **"build me an organ that does X"** or **"I need a tool that fetches my Strava runs"**. The LLM generates a complete organ file, the AST safety visitor validates it, and it persists to `~/.prism/organs/` for reuse in all future sessions.
 
-### All 41 bundled organs
+### The bundled organs (51 and counting)
 
 | Intent | Module | Risk | Approval | Description |
 |---|---|---|---|---|
@@ -1468,6 +1615,11 @@ Run on first boot via `python3 prism_daemon.py --ceremony`.  Guides the user thr
 Systemd-compatible — exits cleanly on SIGTERM.  Run with `--daemon` to detach, `--ceremony` to trigger identity onboarding.
 
 ---
+
+</details>
+
+<details>
+<summary><b>Project structure</b> — every module, one line each</summary>
 
 ## Project structure
 
@@ -1660,6 +1812,11 @@ PRISM/
 
 ---
 
+</details>
+
+<details>
+<summary><b>Validated sports domains</b> — the physics-model sports coverage</summary>
+
 ## Validated sports domains
 
 | Sport | Configured moments |
@@ -1677,17 +1834,27 @@ PRISM/
 
 ---
 
+</details>
+
+<details>
+<summary><b>Running the tests</b> — pytest invocation and coverage</summary>
+
 ## Running the tests
 
 ```bash
 python -m pytest tests/ -q --ignore=tests/test_device_agent.py
-# 2,030 tests pass in ~180 seconds
+# 4,100+ tests
 
 # With coverage report:
 python -m pytest tests/ -q --ignore=tests/test_device_agent.py --cov=. --cov-report=term-missing:skip-covered
 ```
 
 ---
+
+</details>
+
+<details>
+<summary><b>Extending PRISM</b> — new sports, domains, organs, executors</summary>
 
 ## Extending PRISM
 
@@ -1782,9 +1949,14 @@ agent.register("my_tool", ["my", "tool", "keywords"],
 
 ---
 
+</details>
+
+<details>
+<summary><b>Current state</b> — authoritative feature-status table</summary>
+
 ## Current state
 
-All major capabilities are implemented and tested. The table below is the authoritative feature status as of the last full audit (2,650+ tests, 0 failing).
+All major capabilities are implemented and tested. The table below is the authoritative feature status as of the last full audit (4,100+ tests, 0 failing).
 
 | Capability | Status | Notes |
 |---|---|---|
@@ -1802,9 +1974,9 @@ All major capabilities are implemented and tested. The table below is the author
 | Token refresh for Google OAuth | **Working** | Auto-refresh via `google_creds.json` — stores `access_token`, `refresh_token`, `client_id`, `client_secret`, `expiry` |
 | Nucleus-Organ topology | **Working** | L1 Constitution → L2 ORGAN_POLICY → L3 BudManager three-layer security gate |
 | LogicPolicy chain loop | **Working** | risk/caps/L1-verdict injected into chain state after every step |
-| Organ capability manifests | **Working** | All 41 organs declare capability type; BudManager scopes ctx to declared caps only |
+| Organ capability manifests | **Working** | All 51 organs declare capability type; BudManager scopes ctx to declared caps only |
 | Horizon goals | `prism_horizon.py` | **Working** — cross-session goal watching; say "watch for X when Y" in chat |
-| Organ library | `organs/` + `~/.prism/organs/` | **Working** — 41 bundled organs; user-creatable; LLM-synthesisable on demand; portable Organ Pack import/export via `prism_organ_pack` |
+| Organ library | `organs/` + `~/.prism/organs/` | **Working** — 51 bundled organs; user-creatable; LLM-synthesisable on demand; portable Organ Pack import/export via `prism_organ_pack` |
 | Identity layer | `prism_soul.py` | Working — belief graph, user-defined lenses, stated vs observed delta, LLM context injection |
 | Identity ceremony | `prism_identity_ceremony.py` | Working — 7-question LLM-facilitated onboarding, heuristic fallback; web ceremony at `/identity/onboard` |
 | Identity dashboard | `prism_routes_identity.py` | Working — visual phase, traits, beliefs, growth, tensions at `/identity/dashboard` (HTML at `/identity/ui`) |
@@ -1840,6 +2012,11 @@ All major capabilities are implemented and tested. The table below is the author
 
 ---
 
+</details>
+
+<details>
+<summary><b>Docker</b> — compose stack with bundled Ollama</summary>
+
 ## Docker
 
 ```bash
@@ -1848,6 +2025,11 @@ docker run -p 8742:8742 prism
 ```
 
 ---
+
+</details>
+
+<details>
+<summary><b>Dependencies</b> — what gets installed and why</summary>
 
 ## Dependencies
 
@@ -1870,6 +2052,8 @@ playwright        browser automation (pip install playwright && playwright insta
 No torch · no langchain · no openai required. Core decision mathematics is pure Python arithmetic. The optional `ml` extra (`pip install ".[ml]"`) adds scikit-learn + XGBoost + numpy for the Surgical ML Assembler. The `torch` extra (`pip install ".[torch]"`) adds MLP/LSTM/GRU deep models via PyTorch; all other subsystems remain numpy-free.
 
 ---
+
+</details>
 
 ## License
 

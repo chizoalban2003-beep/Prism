@@ -10,7 +10,7 @@ git clone https://github.com/chizoalban2003-beep/Prism.git
 cd Prism
 python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-pytest -q                      # 2 800+ tests, runs in ~3 min
+pytest -q                      # 4 100+ tests
 python3 -m ruff check .
 python3 -m mypy --follow-imports=skip prism_daemon.py prism_asgi.py
 ```
