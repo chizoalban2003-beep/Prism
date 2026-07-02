@@ -75,7 +75,7 @@ def parse_llm_json(raw: str) -> Optional[dict]:
 class LLMOption:
     """One available LLM."""
     provider:    str          # "claude"|"ollama"|"openai_compat"|"stdlib"
-    model:       str          # e.g. "claude-sonnet-4-20250514"|"mistral"|"deepseek-r1"
+    model:       str          # e.g. "claude-opus-4-8"|"mistral"|"deepseek-r1"
     endpoint:    str          # base URL
     available:   bool
     latency_ms:  float = 0.0  # measured on last ping
@@ -84,7 +84,7 @@ class LLMOption:
 
 # Capability ranking — higher = preferred for complex tasks
 MODEL_CAPABILITY: dict[str, int] = {
-    "claude-sonnet": 3, "claude-opus": 3,
+    "claude-sonnet": 3, "claude-opus": 3, "claude-fable": 3, "claude-haiku": 2,
     "deepseek-r1": 3, "deepseek-v3": 2,
     "llama3": 2, "llama3.1": 2, "llama3.2": 2,
     "mistral": 2, "mixtral": 2,
@@ -547,9 +547,14 @@ class LLMRouter:
     # ── Discovery helpers ────────────────────────────────────────────────
 
     def _ping_claude(self, api_key: str) -> LLMOption:
+        # claude-sonnet-4-20250514 (the old hardcoded default) retired on
+        # 2026-06-15 — requests to it 404. The served model is configurable
+        # via [llm].claude_model; the ping stays on Haiku (cheapest 1-token
+        # probe) regardless of which model will serve real traffic.
+        model = self._config.get("claude_model") or "claude-opus-4-8"
         t = time.time()
         try:
-            payload = json.dumps({"model":"claude-haiku-4-5-20251001",
+            payload = json.dumps({"model":"claude-haiku-4-5",
                 "max_tokens":1,
                 "messages":[{"role":"user","content":"hi"}]}).encode()
             req = urllib.request.Request(
@@ -559,11 +564,11 @@ class LLMRouter:
                          "anthropic-version":"2023-06-01",
                          "x-api-key":api_key})
             urllib.request.urlopen(req, timeout=3)
-            return LLMOption("claude","claude-sonnet-4-20250514",
+            return LLMOption("claude",model,
                 "https://api.anthropic.com",True,
                 (time.time()-t)*1000,3,"Claude API configured")
         except Exception as e:
-            return LLMOption("claude","claude-sonnet-4-20250514",
+            return LLMOption("claude",model,
                 "https://api.anthropic.com",False,0,0,str(e)[:80])
 
     def _discover_ollama(self) -> list[LLMOption]:

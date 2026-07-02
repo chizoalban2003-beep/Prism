@@ -321,7 +321,7 @@ class TestLLMRouterFullConfig:
         from prism_llm_router import LLMOption, LLMRouter
         r = LLMRouter(config={"claude_api_key": "sk-fake"})
         with patch.object(r, "discover", return_value=[
-            LLMOption("claude", "claude-sonnet-4-20250514", "https://api.anthropic.com",
+            LLMOption("claude", "claude-opus-4-8", "https://api.anthropic.com",
                       available=True, capability=3),
             LLMOption("stdlib", "stdlib", "", available=True, capability=0),
         ]):

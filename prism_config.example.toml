@@ -13,6 +13,7 @@ fallback       = "ollama"
 ollama_host    = "http://localhost:11434"
 ollama_model   = "llama3.2:3b"
 # claude_api_key = "sk-ant-..."
+# claude_model   = "claude-opus-4-8"    # or "claude-sonnet-5" / "claude-haiku-4-5"
 # openai_api_key = "sk-..."
 # openai_host    = "https://api.openai.com"
 

@@ -159,6 +159,8 @@ class PrismAgent:
             ollama_host    = _planner_host,
             ollama_model   = _planner_model,
             claude_api_key = claude_api_key,
+            # Planning follows the provider picked in /settings/llm.
+            llm_router     = self._router,
             # Slow-hardware lever: some machines run local models at a few
             # tokens/sec, where the default 30s can't finish even a short
             # plan. Config beats an error card.

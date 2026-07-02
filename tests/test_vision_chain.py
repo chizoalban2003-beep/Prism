@@ -80,7 +80,7 @@ class TestLLMRouterCallImagesClaudeParam:
         """_call_claude builds correct Anthropic vision content blocks."""
         router = _make_router()
         router._config = {"claude_api_key": "test-key"}
-        opt = LLMOption("claude", "claude-sonnet-4-20250514",
+        opt = LLMOption("claude", "claude-opus-4-8",
                         "https://api.anthropic.com", True, 0, 3)
         captured = {}
 
@@ -114,7 +114,7 @@ class TestLLMRouterCallImagesClaudeParam:
         """Multiple images are all prepended before the text block."""
         router = _make_router()
         router._config = {"claude_api_key": "test-key"}
-        opt = LLMOption("claude", "claude-sonnet-4-20250514",
+        opt = LLMOption("claude", "claude-opus-4-8",
                         "https://api.anthropic.com", True, 0, 3)
         captured = {}
 
@@ -140,7 +140,7 @@ class TestLLMRouterCallImagesClaudeParam:
         """Without images, user content remains a plain string."""
         router = _make_router()
         router._config = {"claude_api_key": "test-key"}
-        opt = LLMOption("claude", "claude-sonnet-4-20250514",
+        opt = LLMOption("claude", "claude-opus-4-8",
                         "https://api.anthropic.com", True, 0, 3)
         captured = {}
 

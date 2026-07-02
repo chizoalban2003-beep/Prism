@@ -33,7 +33,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
 from prism_llm_router import parse_llm_json
 
@@ -219,11 +219,20 @@ class PrismPlanner:
         claude_api_key: Optional[str] = None,
         prefer_claude:  bool = True,
         request_timeout: float = 30.0,
+        claude_model: str = "claude-opus-4-8",
+        llm_router: Optional[Any] = None,
     ):
         self.ollama_host    = ollama_host
         self.ollama_model   = ollama_model
         self.claude_api_key = claude_api_key
+        self.claude_model   = claude_model
         self.prefer_claude  = prefer_claude and bool(claude_api_key)
+        # When the agent hands us its LLMRouter, planning follows whatever
+        # provider the user picked in /settings/llm (Ollama / Claude /
+        # OpenAI-compatible) — including hot config changes — instead of
+        # this module's own boot-time Claude/Ollama wiring. The direct
+        # paths below remain as fallback for standalone use.
+        self._llm_router    = llm_router
         # Interactive chat path uses this planner too — 120s was killing
         # the UX for greetings like "good morning" (which legitimately
         # routes here) when the local Ollama model was slow. 30s is
@@ -421,13 +430,21 @@ class PrismPlanner:
         )
 
     def _call_llm(self, prompt: str) -> str:
+        if self._llm_router is not None:
+            try:
+                text, _model = self._llm_router.call(
+                    prompt, min_capability=2, max_tokens=1500)
+                if text:
+                    return text
+            except Exception as exc:
+                logger.warning("Planner via LLMRouter failed: %s", exc)
         if self.prefer_claude and self.claude_api_key:
             return self._call_claude(prompt)
         return self._call_ollama(prompt)
 
     def _call_claude(self, prompt: str) -> str:
         payload = json.dumps({
-            "model": "claude-sonnet-4-20250514",
+            "model": self.claude_model,
             "max_tokens": 1500,
             "messages": [{"role": "user", "content": prompt}]
         }).encode()

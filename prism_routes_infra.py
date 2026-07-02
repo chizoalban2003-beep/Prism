@@ -305,6 +305,18 @@ async def settings_llm_post(request: Request):
     model = body.get("model", "")
     updates: dict = {}
 
+    # The settings page renders stored keys masked ("••••1234"). A save
+    # that only changes the model (or host) sends the mask back — keep
+    # the stored key instead of overwriting it with dots.
+    if not key or key.startswith("•"):
+        try:
+            from prism_settings_llm import read_llm_config
+            stored = read_llm_config()
+            key = stored.get(
+                "claude_api_key" if p == "claude" else "openai_api_key", "")
+        except Exception:
+            key = ""
+
     if p == "ollama":
         updates = {
             "ollama_host":  host or "http://localhost:11434",
@@ -312,7 +324,11 @@ async def settings_llm_post(request: Request):
             "preferred":    f"ollama/{model or 'mistral'}",
         }
     elif p == "claude":
-        updates = {"claude_api_key": key, "preferred": "claude"}
+        updates = {
+            "claude_api_key": key,
+            "claude_model":   model or "claude-opus-4-8",
+            "preferred":      "claude",
+        }
     elif p == "openai":
         updates = {
             "openai_api_key": key,

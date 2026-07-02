@@ -84,7 +84,7 @@ def _test_claude(api_key: str) -> dict:
         req = urllib.request.Request(
             "https://api.anthropic.com/v1/messages",
             data=json.dumps({
-                "model": "claude-haiku-4-5-20251001",
+                "model": "claude-haiku-4-5",
                 "max_tokens": 10,
                 "messages": [{"role": "user", "content": "ping"}]
             }).encode(),
@@ -140,6 +140,7 @@ def _test_openai(host: str, api_key: str) -> dict:
 def get_llm_settings_html() -> str:
     cfg = read_llm_config()
     claude_key    = cfg.get("claude_api_key", "")
+    claude_model  = cfg.get("claude_model",   "claude-opus-4-8")
     oai_key       = cfg.get("openai_api_key", "")
     oai_host      = cfg.get("openai_host",    "https://api.openai.com")
     ollama_host   = cfg.get("ollama_host",    "http://localhost:11434")
@@ -147,6 +148,8 @@ def get_llm_settings_html() -> str:
     preferred     = cfg.get("preferred",      "")
 
     def _mask(k): return ("•" * 8 + k[-4:]) if len(k) > 8 else ("•" * len(k) if k else "")
+
+    def _sel(model_id): return "selected" if claude_model == model_id else ""
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -315,6 +318,17 @@ def get_llm_settings_html() -> str:
                placeholder="sk-ant-..." autocomplete="off"
                onfocus="if(this.value.startsWith('•'))this.value=''">
       </div>
+      <div class="field">
+        <label>Model</label>
+        <select id="claude_model">
+          <option value="claude-opus-4-8" {_sel("claude-opus-4-8")}>
+            Claude Opus 4.8 — most capable (recommended)</option>
+          <option value="claude-sonnet-5" {_sel("claude-sonnet-5")}>
+            Claude Sonnet 5 — fast, near-Opus quality</option>
+          <option value="claude-haiku-4-5" {_sel("claude-haiku-4-5")}>
+            Claude Haiku 4.5 — fastest, cheapest</option>
+        </select>
+      </div>
       <div class="actions">
         <button class="btn secondary sm" onclick="testProvider('claude')">Test connection</button>
         <button class="btn primary sm" onclick="saveProvider('claude')">Save &amp; use Claude</button>
@@ -432,7 +446,10 @@ async function saveProvider(p) {{
     body.host  = document.getElementById('ollama_host').value;
     body.model = document.getElementById('ollama_model').value;
   }}
-  if (p === 'claude')        body.key  = document.getElementById('claude_api_key').value;
+  if (p === 'claude') {{
+    body.key   = document.getElementById('claude_api_key').value;
+    body.model = document.getElementById('claude_model').value;
+  }}
   if (p === 'openai')        body.key  = document.getElementById('openai_api_key').value;
   if (p === 'openai_compat') {{
     body.host = document.getElementById('compat_host').value;
