@@ -17,6 +17,7 @@ Routes:
   POST   /settings/llm
   POST   /settings/llm/test
   GET    /organs
+  GET    /organs/health
   GET    /organs/{name}
   POST   /organs/{name}/enable
   POST   /organs/{name}/disable
@@ -837,6 +838,22 @@ async def organs_intents():
     if loader is None:
         return {"organs": {}}
     return {"organs": loader.known_intents(), "count": len(loader.list_organs())}
+
+
+@router.get("/organs/health")
+async def organs_health():
+    """Self-check: every organ file on disk must be registered. Declared
+    before ``/organs/{name}`` so the dynamic route doesn't shadow it
+    (same ordering constraint as /organs/intents, issue #28-45).
+    """
+    loader = _get_organ_loader()
+    if loader is None:
+        return JSONResponse(
+            {"ok": False, "error": "organ_loader not initialised"},
+            status_code=503,
+        )
+    report = loader.health_report()
+    return JSONResponse(report, status_code=200 if report["ok"] else 503)
 
 
 @router.get("/organs/{name}")

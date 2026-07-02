@@ -252,6 +252,13 @@ class OrganLoader:
         self._organ_sources: dict[str, str] = {}  # intent → "bundled" | "user"
         # {intent: {path, hash, version, description, compiled, safe, created_at}}
         self._index: dict[str, dict] = {}
+        # {filename: reason} — organ files present on disk that did NOT
+        # register in the last load pass (unsafe AST, import error, no
+        # execute()). Basis for health_report().
+        self._skipped: dict[str, str] = {}
+        # {filename: intent} — which intent each successfully loaded file
+        # registered under (intent may differ from the file stem).
+        self._file_intents: dict[str, str] = {}
         self._user.mkdir(parents=True, exist_ok=True)
         self._load_all()
 
@@ -398,6 +405,42 @@ class OrganLoader:
             "compiled_count": compiled,
             "entries":        {k: dict(v) for k, v in self._index.items()},
         }
+
+    def health_report(self) -> dict:
+        """
+        Self-check: does every organ file on disk correspond to a registered
+        organ?  Catches the whole class of "file ships, tests pass, daemon
+        silently skips it" failures (unsafe AST, import error, missing
+        execute()) — not just the AST case the CI gate covers.
+        """
+        report: dict = {"directories": {}, "disabled": sorted(self._disabled)}
+        missing_total = 0
+        for directory, source in ((self._bundled, "bundled"), (self._user, "user")):
+            if not directory.exists():
+                report["directories"][source] = {
+                    "path": str(directory), "files": 0, "registered": 0,
+                    "missing": [],
+                }
+                continue
+            files = sorted(
+                p.name for p in directory.glob("*.py")
+                if not p.name.startswith("_")
+            )
+            missing = [
+                {"file": f, "reason": self._skipped.get(f, "not registered")}
+                for f in files
+                if self._file_intents.get(f) not in self._organs
+            ]
+            missing_total += len(missing)
+            report["directories"][source] = {
+                "path":       str(directory),
+                "files":      len(files),
+                "registered": len(files) - len(missing),
+                "missing":    missing,
+            }
+        report["total_registered"] = len(self._organs)
+        report["ok"] = missing_total == 0
+        return report
 
     def reload(self) -> int:
         """Re-scan bundled and user dirs. Returns number of organs now loaded."""
@@ -782,6 +825,8 @@ class OrganLoader:
 
     def _load_all(self):
         self._index = self._load_index()
+        self._skipped.clear()
+        self._file_intents.clear()
         index_dirty = False
 
         for directory, source in ((self._bundled, "bundled"), (self._user, "user")):
@@ -806,6 +851,7 @@ class OrganLoader:
                     continue
                 meta   = getattr(fn, "_organ_meta", {})
                 intent = meta.get("intent") or path.stem
+                self._file_intents[path.name] = intent
                 self._register(intent, fn, meta, source=source)
 
                 if source == "user":
@@ -828,6 +874,13 @@ class OrganLoader:
         if index_dirty:
             self._save_index()
 
+        if self._skipped:
+            logger.warning(
+                "[organ_loader] HEALTH: %d organ file(s) on disk did NOT "
+                "register: %s — see GET /organs/health for details.",
+                len(self._skipped), ", ".join(sorted(self._skipped)),
+            )
+
     def _load_file(self, path: Path, trusted: bool = False, strict: bool = False) -> Optional[Callable]:
         """Load an organ from *path*.  When *trusted* is True, skip AST safety
         scan. When *strict* is True (user organs), also reject file-write
@@ -839,6 +892,7 @@ class OrganLoader:
             if not safe:
                 logger.warning("[organ_loader] Skipping unsafe organ %s: %s",
                                path.name, reason)
+                self._skipped[path.name] = f"unsafe: {reason}"
                 return None
         try:
             spec   = importlib.util.spec_from_file_location(
@@ -849,11 +903,14 @@ class OrganLoader:
             spec.loader.exec_module(module)
         except Exception as exc:
             logger.warning("[organ_loader] Failed to load %s: %s", path.name, exc)
+            self._skipped[path.name] = f"import error: {exc}"
             return None
         fn = getattr(module, "execute", None)
         if not callable(fn):
             logger.warning("[organ_loader] No execute() in %s", path.name)
+            self._skipped[path.name] = "no execute() function"
             return None
+        self._skipped.pop(path.name, None)
         fn._organ_meta   = getattr(module, "ORGAN_META", {})
         fn._organ_policy = getattr(module, "ORGAN_POLICY", {})
         return fn
