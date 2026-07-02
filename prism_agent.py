@@ -913,6 +913,16 @@ class PrismAgent:
                 "identity profile · developer tasks (scan files, search code).",
                 "PRISM — What I can do",
             )
+        if intent == "conversation_recall":
+            if not self._memory:
+                return text_card(
+                    "Memory isn't initialised yet, so I can't look back at "
+                    "our conversation. Try restarting the daemon.",
+                    "Memory unavailable",
+                )
+            from prism_conversation_recall import recall_card
+            return recall_card(self._memory, message or "")
+
         if intent == "memory_recall":
             if not self._memory:
                 return text_card(

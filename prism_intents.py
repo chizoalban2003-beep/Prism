@@ -53,6 +53,21 @@ INTENTS: list[tuple[str, str]] = [
      r"lonely|depressed|worried|nervous|angry|frustrated|upset|low|unmotivated|lost|"
      r"happy|great|good|amazing|excited|energi[sz]ed|motivated|proud)\b",
      "general_chat"),
+    # Conversation-history recall — "what did we talk about yesterday",
+    # "summarise today's conversation". Time-windowed, answered from the
+    # conversation store, not similarity search (which can't match a
+    # query that shares no tokens with the stored turns). Must precede
+    # universal_plan (bare "today"/"morning" keywords claim these) and
+    # memory_recall ("do you remember what we talked about" contains the
+    # fact-recall verb cluster). See issue #28-81.
+    (r"what (?:did|have) we (?:talk(?:ed)?|chat(?:ted)?|speak|spoke(?:n)?|discuss(?:ed)?)|"
+     r"what (?:were|was) we (?:talking|chatting|discussing)|"
+     r"what we (?:talked|spoke|chatted) about|"
+     r"summari[sz]e (?:our|this|the|today'?s|yesterday'?s) "
+     r"(?:conversation|chat|session|discussion)|"
+     r"(?:our|the) last conversation|"
+     r"what did we do (?:yesterday|today|last week|this week)",
+     "conversation_recall"),
     # Live financial/crypto data — must precede plan ("today") and wikipedia ("what is")
     (r"stock (?:price|market|quote)|share price|market cap|"
      r"bitcoin|ethereum|crypto (?:price|market)|coin price|"

@@ -110,6 +110,34 @@ class PrismMemory:
         scored.sort(key=lambda r: r.score, reverse=True)
         return [r for r in scored[:top_n] if r.score > 0.15]
 
+    def conversation_between(self, start_ts: float, end_ts: float,
+                             role: str | None = None,
+                             limit: int = 50) -> list[MemoryEntry]:
+        """Return conversation turns in [start_ts, end_ts), oldest first.
+
+        Time-windowed recall for "what did we talk about yesterday" —
+        similarity search can't answer that because the query shares no
+        tokens with the stored content. Filters to ``role:<role>`` when
+        given (recall sites usually want the user's side only; assistant
+        turns echo hedged LLM output back as if it were ground truth,
+        issue #28-6).
+        """
+        with sqlite3.connect(self._db, timeout=30.0) as c:
+            rows = c.execute(
+                "SELECT * FROM memory WHERE source='conversation' "
+                "AND timestamp >= ? AND timestamp < ? "
+                "ORDER BY timestamp ASC LIMIT ?",
+                (start_ts, end_ts, limit)).fetchall()
+        entries = [
+            MemoryEntry(entry_id=r[0], content=r[1], source=r[2], title=r[3],
+                        tags=json.loads(r[4]), timestamp=r[6])
+            for r in rows
+        ]
+        if role is not None:
+            wanted = f"role:{role}"
+            entries = [e for e in entries if wanted in (e.tags or [])]
+        return entries
+
     def delete_by_tag(self, tag: str, source: str | None = None) -> int:
         """Delete all entries carrying *tag*, optionally limited to one source.
 
