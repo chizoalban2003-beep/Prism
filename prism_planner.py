@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 import urllib.error
 import urllib.request
@@ -263,6 +264,13 @@ class PrismPlanner:
         logger.info("Extracting task structure for: %s", task_description[:60])
         task_profile = self._extract_task_profile(task_description, context)
         if task_profile is None:
+            # Degrade before giving up: small local models routinely time
+            # out or emit unparseable JSON on the big extraction prompt,
+            # but can still answer a tiny plain-text prompt. A quick plan
+            # beats an error card.
+            simple = self._simple_plan(task_description)
+            if simple is not None:
+                return simple
             return self._fallback_plan(task_description)
 
         # Step 2: Decision engine ranks strategies
@@ -441,19 +449,25 @@ class PrismPlanner:
             logger.warning("Claude call failed: %s", e)
             return self._call_ollama(prompt)
 
-    def _call_ollama(self, prompt: str) -> str:
-        payload = json.dumps({
+    def _call_ollama(self, prompt: str, *,
+                     num_predict: Optional[int] = None,
+                     timeout: Optional[float] = None) -> str:
+        body: dict = {
             "model":  self.ollama_model,
             "prompt": prompt,
             "stream": False,
-        }).encode()
+        }
+        if num_predict:
+            body["options"] = {"num_predict": num_predict}
+        payload = json.dumps(body).encode()
         req = urllib.request.Request(
             f"{self.ollama_host}/api/generate",
             data    = payload,
             headers = {"Content-Type": "application/json"},
         )
         try:
-            with urllib.request.urlopen(req, timeout=self.request_timeout) as resp:
+            with urllib.request.urlopen(
+                    req, timeout=timeout or self.request_timeout) as resp:
                 return json.loads(resp.read()).get("response", "")
         except urllib.error.HTTPError as e:
             logger.warning("Ollama call failed: HTTP %s — model '%s' may not exist",
@@ -471,6 +485,76 @@ class PrismPlanner:
                 self._last_ollama_error = f"{etype}: {e}"
             logger.warning("Ollama call failed: %s", e)
             return ""
+
+    SIMPLE_PLAN_PROMPT = (
+        "Make a short practical plan for: {task}\n\n"
+        "Answer in EXACTLY this format and nothing else:\n"
+        "GOAL: <the goal in one short line>\n"
+        "1. <first step, under 15 words>\n"
+        "2. <second step>\n"
+        "3. <third step>\n"
+        "You may add steps 4 and 5 if genuinely needed."
+    )
+
+    def _simple_plan(self, task: str) -> Optional[PlanOfAction]:
+        """Single-shot degraded planning for weak/slow local models.
+
+        Plain numbered lines instead of nested JSON, a capped response
+        length, and a bounded timeout — a model that fails the full
+        extraction prompt can usually still manage this. Returns None
+        when even this fails, letting _fallback_plan explain honestly.
+        """
+        raw = self._call_ollama(
+            self.SIMPLE_PLAN_PROMPT.format(task=task[:300]),
+            num_predict=220,
+            timeout=min(self.request_timeout, 20.0),
+        )
+        if not raw:
+            return None
+        goal = ""
+        steps_txt: list[str] = []
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if line.upper().startswith("GOAL:"):
+                goal = line[5:].strip()
+                continue
+            m = re.match(r"^(\d+)[.)]\s*(.+)$", line)
+            if m:
+                steps_txt.append(m.group(2).strip())
+        if not steps_txt:
+            return None
+        steps = [
+            ActionStep(order=i + 1, action=s, timeline="", resource="",
+                       outcome="")
+            for i, s in enumerate(steps_txt[:6])
+        ]
+        strat = StrategyPlan(
+            name             = goal or "Quick plan",
+            position         = 0.5,
+            activation       = 1.0,
+            expected_value   = 0,
+            risk_score       = 0,
+            steps            = steps,
+            timeline         = "",
+            resources        = [],
+            expected_outcome = goal,
+            risks            = [],
+            why_recommended  = (
+                "Quick single-shot plan — your local model is too small for "
+                "full multi-strategy planning. For ranked alternatives try "
+                "`ollama pull llama3.2:3b`."
+            ),
+        )
+        return PlanOfAction(
+            task=task, domain="general", entity="user", timeline="",
+            fulcrum_position=0.5, recommended=strat, all_strategies=[strat],
+            context_summary=(
+                "Quick plan (simple mode — structured planning needs a "
+                "stronger local model)."
+            ),
+        )
 
     def _fallback_plan(self, task: str) -> PlanOfAction:
         """Return a minimal plan when LLM is unavailable."""
