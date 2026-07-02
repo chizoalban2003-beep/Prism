@@ -145,7 +145,10 @@ async def identity_dashboard():
                     {
                         "name": ln.name,
                         "description": ln.description,
-                        "trend": round(ln.trend, 3) if hasattr(ln, "trend") else None,
+                        # trend is a property (hasattr is always True) and is
+                        # None until the lens has observations — round(None)
+                        # would blank the whole soul section with an error.
+                        "trend": round(t, 3) if (t := getattr(ln, "trend", None)) is not None else None,
                     }
                     for ln in lenses
                 ],
