@@ -487,9 +487,18 @@ else:
 
 def serve(host: str = "127.0.0.1", port: int = 8743, log_level: str = "info") -> None:
     """Run the ASGI server directly (used by prism_daemon shadow thread)."""
-    assert host == "127.0.0.1", (
-        "SECURITY: prism_asgi must only bind to 127.0.0.1. "
-        "Use a reverse proxy with authentication for remote access."
+    # Containers are the one sanctioned exception to the loopback-only rule:
+    # inside Docker the app must bind the container's interfaces or the
+    # published port maps to nothing (the compose file still publishes to
+    # the HOST's 127.0.0.1, so the local-only security model is preserved,
+    # and bearer auth guards every data endpoint regardless).
+    allow_all = os.environ.get("PRISM_BIND_ALL_INTERFACES", "").lower() in (
+        "1", "true", "yes")
+    assert host == "127.0.0.1" or (allow_all and host == "0.0.0.0"), (
+        "SECURITY: prism_asgi must only bind to 127.0.0.1. Set "
+        "PRISM_BIND_ALL_INTERFACES=1 and host=0.0.0.0 only inside a "
+        "container whose port is published to the host's loopback; use a "
+        "reverse proxy with authentication for remote access."
     )
     try:
         import uvicorn

@@ -20,6 +20,11 @@ RUN useradd -m prismuser \
 USER prismuser
 EXPOSE 8742
 ENV KDE_CONFIG=/app/prism_config.toml
+# Inside the container the app must bind all interfaces or the published
+# port maps to nothing; compose publishes only to the host's loopback,
+# so the local-only model is preserved.
+ENV PRISM_HOST=0.0.0.0
+ENV PRISM_BIND_ALL_INTERFACES=1
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -f http://localhost:8742/_health || exit 1
 CMD ["python", "prism_daemon.py"]
