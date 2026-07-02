@@ -25,33 +25,35 @@ ORGAN_POLICY = {
 }
 
 
-def _lock_command() -> list[str]:
+def _lock_commands() -> list[list[str]]:
+    """Return candidate lock commands in preference order.
+
+    loginctl can be installed yet fail at runtime (no logind session —
+    containers, WSL, some window managers), so callers must try each
+    candidate until one succeeds rather than trusting PATH detection.
+    """
     import sys
 
     from prism_device_executor import which
 
     if sys.platform == "darwin":
-        return [
+        return [[
             "/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession",
             "-suspend",
-        ]
+        ]]
     if sys.platform.startswith("win"):
-        return ["rundll32.exe", "user32.dll,LockWorkStation"]
-    # Linux / *nix — prefer loginctl (logind), then fall back to common
-    # desktop-specific lockers if loginctl is missing.
-    if which("loginctl"):
-        return ["loginctl", "lock-session"]
-    for cand in (
+        return [["rundll32.exe", "user32.dll,LockWorkStation"]]
+    # Linux / *nix — prefer loginctl (logind), then common desktop lockers.
+    candidates = [
+        ["loginctl", "lock-session"],
         ["xdg-screensaver", "lock"],
         ["gnome-screensaver-command", "--lock"],
         ["dm-tool", "lock"],
         ["xscreensaver-command", "-lock"],
         ["i3lock"],
         ["swaylock"],
-    ):
-        if which(cand[0]):
-            return cand
-    return []
+    ]
+    return [cand for cand in candidates if which(cand[0])]
 
 
 def execute(intent: str, message: str, ctx: dict):
@@ -60,8 +62,8 @@ def execute(intent: str, message: str, ctx: dict):
     from prism_device_executor import run_argv
     from prism_responses import text_card
 
-    cmd = _lock_command()
-    if not cmd:
+    commands = _lock_commands()
+    if not commands:
         return text_card(
             "No screen-lock command found on this system. Install loginctl "
             "(systemd) or one of: xdg-screensaver, gnome-screensaver, "
@@ -69,7 +71,11 @@ def execute(intent: str, message: str, ctx: dict):
             "Lock screen",
         )
 
-    res = run_argv(cmd, timeout=5)
+    res = cmd = None
+    for cmd in commands:
+        res = run_argv(cmd, timeout=5)
+        if res.success:
+            break
     if not res.success:
         card = text_card(
             f"Could not lock the screen: {res.error}\nCommand: {' '.join(cmd)}",
