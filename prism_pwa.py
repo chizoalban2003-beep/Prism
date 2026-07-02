@@ -770,22 +770,69 @@ function escHtml(s) {
     .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 }
 
+// ── Auth gate ─────────────────────────────────────────────────────────────
+function showTokenGate() {
+  document.getElementById('s-text').textContent = 'Locked';
+  const div = document.createElement('div');
+  div.className = 'msg system';
+  div.id = 'token-gate';
+  div.innerHTML =
+    '<div style="margin-bottom:.5rem">🔒 PRISM is locked. Paste your auth token' +
+    ' (<code>cat ~/.prism/auth_token</code> on the host) to connect:</div>' +
+    '<div style="display:flex;gap:.4rem">' +
+    '<input id="token-input" type="password" placeholder="Auth token"' +
+    ' autocomplete="off" style="flex:1;padding:.5rem .6rem;border-radius:8px;' +
+    'border:1px solid var(--border);background:transparent;color:var(--text)">' +
+    '<button id="token-btn" style="padding:.5rem .9rem;border-radius:8px;' +
+    'border:none;background:var(--accent);color:#082117;font-weight:700">Connect</button>' +
+    '</div><div id="token-err" style="display:none;color:#e24b4a;font-size:.8rem;margin-top:.4rem"></div>';
+  messages.appendChild(div);
+  const btn = div.querySelector('#token-btn');
+  const inp = div.querySelector('#token-input');
+  async function connect() {
+    const tok = (inp.value || '').trim();
+    if (!tok) { inp.focus(); return; }
+    btn.disabled = true; btn.textContent = '…';
+    try {
+      const r = await fetch(API + '/status?token=' + encodeURIComponent(tok));
+      if (r.ok) { div.remove(); init(); return; }
+      const err = div.querySelector('#token-err');
+      err.style.display = 'block';
+      err.textContent = r.status === 401
+        ? 'Token rejected — check for stray whitespace.'
+        : 'Unexpected response (' + r.status + ').';
+    } catch (e) {
+      const err = div.querySelector('#token-err');
+      err.style.display = 'block';
+      err.textContent = 'Could not reach the daemon.';
+    }
+    btn.disabled = false; btn.textContent = 'Connect';
+  }
+  btn.addEventListener('click', connect);
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); connect(); }
+  });
+  inp.focus();
+}
+
 // ── Init ──────────────────────────────────────────────────────────────────
 async function init() {
   showPanel('chat');
   setupVoice();
 
-  // Greet
-  appendMsg('system', 'PRISM mobile — connected to ' + API);
-
-  // Load status in background for the status badge
+  // Load status for the badge; a 401 means the browser has no auth cookie
+  // yet — show the token gate instead of pretending to be connected.
   try {
-    const s = await fetch(API+'/status').then(r=>r.json());
+    const r = await fetch(API+'/status');
+    if (r.status === 401) { showTokenGate(); return; }
+    const s = await r.json();
+    appendMsg('system', 'PRISM mobile — connected to ' + API);
     const dot = document.getElementById('s-dot');
     dot.className = 'dot' + (s.ollama_available ? ' online' : '');
     document.getElementById('s-text').textContent =
       (s.profile||'PRISM') + (s.ollama_available ? ' · online' : ' · LLM offline');
   } catch (e) {
+    appendMsg('system', 'PRISM mobile — offline');
     document.getElementById('s-text').textContent = 'Offline';
   }
 }

@@ -89,7 +89,16 @@ if _FASTAPI_AVAILABLE:
     # WatchdogSec, k8s livenessProbe, docker HEALTHCHECK, uptime monitors)
     # can distinguish "process down" from "auth misconfigured". The route
     # reveals only {"ok": True, "server": "prism-asgi"} — no internal state.
-    _AUTH_EXEMPT_PATHS = frozenset({"/_health"})
+    # The static UI shell is also exempt: these routes serve repo-public
+    # HTML/JS/SVG with no user data, and a browser cannot render the
+    # token-prompt UI (or install the PWA, which needs sw.js + manifest)
+    # if the shell itself answers 401. Every data endpoint stays gated —
+    # an unauthenticated page shows the prompt and nothing else.
+    _AUTH_EXEMPT_PATHS = frozenset({
+        "/_health",
+        "/", "/app", "/index.html", "/mobile",
+        "/manifest.json", "/sw.js", "/icon.svg",
+    })
 
     _AUTH_COOKIE = "prism_auth"
 
