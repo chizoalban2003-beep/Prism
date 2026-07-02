@@ -76,3 +76,16 @@ class TestTokenCookieExchange:
         # Subsequent request: no header, no query param — cookie carries it.
         r2 = client.get("/organs")
         assert r2.status_code == 200
+
+    def test_cookie_requests_slide_expiry(self, client):
+        """Every cookie-authenticated response re-issues the cookie so an
+        active browser session never expires mid-use (issue #28-84)."""
+        client.get("/organs", params={"token": TOKEN})
+        r = client.get("/organs")
+        set_cookie = r.headers.get("set-cookie", "")
+        assert "prism_auth=" in set_cookie
+        assert "Max-Age=86400" in set_cookie
+
+    def test_bearer_requests_do_not_set_cookie(self, client):
+        r = client.get("/organs", headers={"Authorization": f"Bearer {TOKEN}"})
+        assert "prism_auth" not in r.headers.get("set-cookie", "")

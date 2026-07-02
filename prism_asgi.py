@@ -122,9 +122,23 @@ if _FASTAPI_AVAILABLE:
             # Cookie path: once a successful `?token=` exchange has set the
             # prism_auth cookie, the browser auto-attaches it on subsequent
             # fetches and EventSource connections (which can't set headers).
+            # Sliding expiry: re-issue the cookie on every authenticated
+            # request so an active user never has to re-paste the token;
+            # only a browser idle for the full max_age falls back to the
+            # token prompt.
             cookie_token = request.cookies.get(_AUTH_COOKIE, "")
             if cookie_token and hmac.compare_digest(cookie_token.strip(), token):
-                return await call_next(request)
+                response = await call_next(request)
+                response.set_cookie(
+                    key      = _AUTH_COOKIE,
+                    value    = token,
+                    max_age  = 86400,
+                    httponly = True,
+                    samesite = "strict",
+                    secure   = request.url.scheme == "https",
+                    path     = "/",
+                )
+                return response
 
             # Browser fallback: `?token=<token>` query parameter. Mirrors the
             # WebSocket auth path. Trades a small log-leak risk (query strings
