@@ -494,7 +494,9 @@ def serve(host: str = "127.0.0.1", port: int = 8743, log_level: str = "info") ->
     # and bearer auth guards every data endpoint regardless).
     allow_all = os.environ.get("PRISM_BIND_ALL_INTERFACES", "").lower() in (
         "1", "true", "yes")
-    assert host == "127.0.0.1" or (allow_all and host == "0.0.0.0"), (
+    # B104: the literal below is the *guard* — it restricts non-loopback
+    # binding to the explicit container opt-in rather than enabling it.
+    assert host == "127.0.0.1" or (allow_all and host == "0.0.0.0"), (  # nosec B104
         "SECURITY: prism_asgi must only bind to 127.0.0.1. Set "
         "PRISM_BIND_ALL_INTERFACES=1 and host=0.0.0.0 only inside a "
         "container whose port is published to the host's loopback; use a "
