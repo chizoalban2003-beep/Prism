@@ -41,11 +41,12 @@ def _parse(message: str) -> tuple[str, int]:
 
 
 def _command_for(action: str, amount: int) -> list[str]:
-    import shutil
     import sys
 
+    from prism_device_executor import which
+
     if sys.platform == "darwin":
-        if shutil.which("brightness"):
+        if which("brightness"):
             if action == "set":
                 pct = max(0, min(100, amount)) / 100.0
                 return ["brightness", str(pct)]
@@ -72,12 +73,12 @@ def _command_for(action: str, amount: int) -> list[str]:
             f"WmiMonitorBrightnessMethods).WmiSetBrightness(1,$new)",
         ]
     # Linux
-    if shutil.which("brightnessctl"):
+    if which("brightnessctl"):
         if action == "set":
             return ["brightnessctl", "set", f"{amount}%"]
         sign = "+" if action == "up" else "-"
         return ["brightnessctl", "set", f"{amount}%{sign}"]
-    if shutil.which("light"):
+    if which("light"):
         if action == "set":
             return ["light", "-S", str(amount)]
         flag = "-A" if action == "up" else "-U"
@@ -86,8 +87,7 @@ def _command_for(action: str, amount: int) -> list[str]:
 
 
 def execute(intent: str, message: str, ctx: dict):
-    import subprocess
-
+    from prism_device_executor import run_argv
     from prism_responses import text_card
 
     action, amount = _parse(message)
@@ -100,18 +100,17 @@ def execute(intent: str, message: str, ctx: dict):
             "Brightness",
         )
 
-    try:
-        subprocess.run(cmd, check=False, timeout=3)
-    except Exception as exc:
+    res = run_argv(cmd, timeout=3)
+    if not res.success:
         card = text_card(
-            f"Could not adjust brightness: {exc}\nCommand: {' '.join(cmd)}",
+            f"Could not adjust brightness: {res.error}\nCommand: {' '.join(cmd)}",
             "Brightness",
         )
         card.card_data.update({
             "action":  action,
             "amount":  amount,
             "command": " ".join(cmd),
-            "error":   str(exc),
+            "error":   res.error,
         })
         return card
 

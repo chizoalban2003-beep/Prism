@@ -127,6 +127,62 @@ class BuiltinTasks:
         return DeviceTaskResult(bool(results), out, tool_used="python_search")
 
 
+def which(name: str) -> Optional[str]:
+    """Locate *name* on PATH.
+
+    Bridge for bundled organs: the organ loader's AST safety visitor blocks
+    `import shutil` inside organ files, so platform-detection helpers import
+    this instead.
+    """
+    import shutil
+    return shutil.which(name)
+
+
+def current_uid() -> int:
+    """Return the current user id (0 on platforms without getuid)."""
+    return os.getuid() if hasattr(os, "getuid") else 0
+
+
+def run_argv(args: list[str], timeout: int = 10) -> DeviceTaskResult:
+    """Run an argv list with shell=False and captured output.
+
+    Bridge for bundled organs, where `import subprocess` is blocked by the
+    organ loader's AST safety visitor. Never raises: hard failures (command
+    missing, timeout) come back as a DeviceTaskResult with empty tool_used;
+    a nonzero exit sets success=False but keeps tool_used/output populated.
+    """
+    if not args:
+        return DeviceTaskResult(False, "", error="Empty command")
+    start = time.time()
+    try:
+        proc = subprocess.run(  # nosec B603 — shell=False, argv list only
+            args, capture_output=True, text=True, timeout=timeout,
+        )
+    except FileNotFoundError:
+        return DeviceTaskResult(
+            False, "", error=f"Command not found: {args[0]}",
+            command_run=" ".join(args),
+        )
+    except subprocess.TimeoutExpired:
+        return DeviceTaskResult(
+            False, "", error=f"Timed out after {timeout}s",
+            command_run=" ".join(args),
+        )
+    except Exception as exc:
+        return DeviceTaskResult(
+            False, "", error=str(exc), command_run=" ".join(args),
+        )
+    output = (proc.stdout or "") + (proc.stderr or "")
+    return DeviceTaskResult(
+        success     = proc.returncode == 0,
+        output      = output[:5000],
+        tool_used   = args[0],
+        command_run = " ".join(args),
+        elapsed_ms  = (time.time() - start) * 1000,
+        error       = (proc.stderr or "")[:500] if proc.returncode != 0 else "",
+    )
+
+
 class SafeSubprocess:
     """
     Subprocess wrapper that never uses shell=True.

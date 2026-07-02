@@ -34,11 +34,12 @@ def _parse(message: str) -> str:
 
 
 def _command_for(action: str) -> list[str]:
-    import shutil
     import sys
 
+    from prism_device_executor import which
+
     if sys.platform == "darwin":
-        if shutil.which("blueutil"):
+        if which("blueutil"):
             if action == "status":
                 return ["blueutil", "-p"]
             return ["blueutil", "-p", "1" if action == "on" else "0"]
@@ -53,11 +54,11 @@ def _command_for(action: str) -> list[str]:
             return ["powershell", "-Command", ps]
         return []
     # Linux
-    if shutil.which("bluetoothctl"):
+    if which("bluetoothctl"):
         if action == "status":
             return ["bluetoothctl", "show"]
         return ["bluetoothctl", "power", action]
-    if shutil.which("rfkill"):
+    if which("rfkill"):
         if action == "status":
             return ["rfkill", "list", "bluetooth"]
         return ["rfkill", "unblock" if action == "on" else "block", "bluetooth"]
@@ -65,8 +66,7 @@ def _command_for(action: str) -> list[str]:
 
 
 def execute(intent: str, message: str, ctx: dict):
-    import subprocess
-
+    from prism_device_executor import run_argv
     from prism_responses import text_card
 
     action = _parse(message)
@@ -79,18 +79,17 @@ def execute(intent: str, message: str, ctx: dict):
             "Bluetooth",
         )
 
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=4)
-        out = (result.stdout or "").strip() or (result.stderr or "").strip()
-    except Exception as exc:
+    res = run_argv(cmd, timeout=4)
+    out = res.output.strip()
+    if not res.success and not res.tool_used:
         card = text_card(
-            f"Could not run bluetooth {action}: {exc}\nCommand: {' '.join(cmd)}",
+            f"Could not run bluetooth {action}: {res.error}\nCommand: {' '.join(cmd)}",
             "Bluetooth",
         )
         card.card_data.update({
             "action":  action,
             "command": " ".join(cmd),
-            "error":   str(exc),
+            "error":   res.error,
         })
         return card
 

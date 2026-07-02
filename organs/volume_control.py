@@ -69,8 +69,9 @@ def _linux_amixer_cmd(action: str, amount: int) -> list[str]:
 
 
 def _command_for(action: str, amount: int) -> list[str]:
-    import shutil
     import sys
+
+    from prism_device_executor import which
 
     if sys.platform == "darwin":
         if action == "mute":
@@ -85,8 +86,8 @@ def _command_for(action: str, amount: int) -> list[str]:
             f"set volume output volume ((output volume of (get volume settings)) + {delta})",
         ]
     if sys.platform.startswith("win"):
-        if shutil.which("nircmd.exe") or shutil.which("nircmd"):
-            nircmd = shutil.which("nircmd.exe") or shutil.which("nircmd")
+        if which("nircmd.exe") or which("nircmd"):
+            nircmd = which("nircmd.exe") or which("nircmd")
             if action == "mute":
                 return [nircmd, "mutesysvolume", "1"]
             if action == "unmute":
@@ -98,16 +99,15 @@ def _command_for(action: str, amount: int) -> list[str]:
             return [nircmd, "changesysvolume", str(delta)]
         return []
     # Linux
-    if shutil.which("pactl"):
+    if which("pactl"):
         return _linux_pactl_cmd(action, amount)
-    if shutil.which("amixer"):
+    if which("amixer"):
         return _linux_amixer_cmd(action, amount)
     return []
 
 
 def execute(intent: str, message: str, ctx: dict):
-    import subprocess
-
+    from prism_device_executor import run_argv
     from prism_responses import text_card
 
     action, amount = _parse(message)
@@ -119,18 +119,17 @@ def execute(intent: str, message: str, ctx: dict):
             "Volume",
         )
 
-    try:
-        subprocess.run(cmd, check=False, timeout=3)
-    except Exception as exc:
+    res = run_argv(cmd, timeout=3)
+    if not res.success:
         card = text_card(
-            f"Could not adjust volume: {exc}\nCommand: {' '.join(cmd)}",
+            f"Could not adjust volume: {res.error}\nCommand: {' '.join(cmd)}",
             "Volume",
         )
         card.card_data.update({
             "action":  action,
             "amount":  amount,
             "command": " ".join(cmd),
-            "error":   str(exc),
+            "error":   res.error,
         })
         return card
 

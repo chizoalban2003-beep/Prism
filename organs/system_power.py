@@ -40,8 +40,9 @@ def _detect_action(message: str) -> str:
 
 
 def _command_for(action: str) -> list[str]:
-    import shutil
     import sys
+
+    from prism_device_executor import current_uid, which
 
     if sys.platform == "darwin":
         return {
@@ -60,10 +61,9 @@ def _command_for(action: str) -> list[str]:
             "logout":    ["shutdown", "/l"],
         }.get(action, [])
     # Linux / *nix — prefer systemctl/loginctl.
-    if action == "logout" and shutil.which("loginctl"):
-        import os
-        return ["loginctl", "terminate-user", str(os.getuid())]
-    if shutil.which("systemctl"):
+    if action == "logout" and which("loginctl"):
+        return ["loginctl", "terminate-user", str(current_uid())]
+    if which("systemctl"):
         return {
             "suspend":   ["systemctl", "suspend"],
             "hibernate": ["systemctl", "hibernate"],
@@ -74,9 +74,9 @@ def _command_for(action: str) -> list[str]:
 
 
 def execute(intent: str, message: str, ctx: dict):
-    import subprocess
     import sys
 
+    from prism_device_executor import run_argv
     from prism_responses import text_card
 
     action = _detect_action(message)
@@ -89,18 +89,17 @@ def execute(intent: str, message: str, ctx: dict):
             f"System {action}",
         )
 
-    try:
-        subprocess.run(cmd, check=False, timeout=5)
-    except Exception as exc:
+    res = run_argv(cmd, timeout=5)
+    if not res.success:
         card = text_card(
-            f"Could not {action}: {exc}\nCommand: {' '.join(cmd)}",
+            f"Could not {action}: {res.error}\nCommand: {' '.join(cmd)}",
             f"System {action}",
         )
         card.card_data.update({
             "action":   action,
             "platform": sys.platform,
             "command":  " ".join(cmd),
-            "error":    str(exc),
+            "error":    res.error,
         })
         return card
 

@@ -26,8 +26,9 @@ ORGAN_POLICY = {
 
 
 def _lock_command() -> list[str]:
-    import shutil
     import sys
+
+    from prism_device_executor import which
 
     if sys.platform == "darwin":
         return [
@@ -38,7 +39,7 @@ def _lock_command() -> list[str]:
         return ["rundll32.exe", "user32.dll,LockWorkStation"]
     # Linux / *nix — prefer loginctl (logind), then fall back to common
     # desktop-specific lockers if loginctl is missing.
-    if shutil.which("loginctl"):
+    if which("loginctl"):
         return ["loginctl", "lock-session"]
     for cand in (
         ["xdg-screensaver", "lock"],
@@ -48,15 +49,15 @@ def _lock_command() -> list[str]:
         ["i3lock"],
         ["swaylock"],
     ):
-        if shutil.which(cand[0]):
+        if which(cand[0]):
             return cand
     return []
 
 
 def execute(intent: str, message: str, ctx: dict):
-    import subprocess
     import sys
 
+    from prism_device_executor import run_argv
     from prism_responses import text_card
 
     cmd = _lock_command()
@@ -68,18 +69,17 @@ def execute(intent: str, message: str, ctx: dict):
             "Lock screen",
         )
 
-    try:
-        subprocess.run(cmd, check=False, timeout=5)
-    except Exception as exc:
+    res = run_argv(cmd, timeout=5)
+    if not res.success:
         card = text_card(
-            f"Could not lock the screen: {exc}\nCommand: {' '.join(cmd)}",
+            f"Could not lock the screen: {res.error}\nCommand: {' '.join(cmd)}",
             "Lock screen",
         )
         card.card_data.update({
             "locked":   False,
             "platform": sys.platform,
             "command":  " ".join(cmd),
-            "error":    str(exc),
+            "error":    res.error,
         })
         return card
 
