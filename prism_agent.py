@@ -912,15 +912,26 @@ class PrismAgent:
                     identity_data = self._kde.reflect() or {}
                 except Exception:
                     identity_data = {}
+            if not identity_data.get("domains"):
+                # Empty data renders as a bare card frame in the chat UI —
+                # happens whenever KDE is offline or no decisions are logged.
+                return text_card(
+                    "No decision profile yet — it crystallises as you log "
+                    "decisions. Start with the onboarding ceremony at "
+                    "/identity/onboard, or just keep chatting and deciding.",
+                    "Your Decision Profile",
+                )
             return identity_card(identity_data)
 
         if intent == "artifacts":
             return text_card("Artifacts are available via the /artifacts endpoint.", "Artifacts")
         if intent == "help":
             return text_card(
-                "I can help with: plan my day · match prediction · squad risk · moment analysis · "
-                "session footage · medical triage · financial portfolio · legal strategy · "
-                "identity profile · developer tasks (scan files, search code).",
+                "I can help with: plan my day · reminders and notes · weather · "
+                "calendar and email · conversation recall · identity profile · "
+                "developer tasks (scan files, search code, shell with approval) · "
+                "domain analysis (medical triage, financial portfolio, legal strategy, "
+                "match prediction, squad risk).",
                 "PRISM — What I can do",
             )
         if intent == "conversation_recall":

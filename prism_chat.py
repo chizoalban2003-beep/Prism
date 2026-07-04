@@ -26,10 +26,6 @@ def get_chat_html() -> str:
       <div class="nav">
         <button data-mode="General">General</button>
         <button data-mode="Daily">Daily tasks</button>
-        <button data-mode="Medical">Medical</button>
-        <button data-mode="Financial">Financial</button>
-        <button data-mode="Legal">Legal</button>
-        <button data-mode="Sport">Sport</button>
         <button data-mode="Developer">Developer</button>
       </div>
     </div>
@@ -37,7 +33,6 @@ def get_chat_html() -> str:
       <p class="group-title">Identity</p>
       <div class="identity">
         <button data-demo="identity profile">Profile</button>
-        <button data-demo="artifacts">Artifacts</button>
       </div>
     </div>
     <div class="status">Status: <span id="statusText">checking\u2026</span></div>
@@ -78,8 +73,8 @@ const statusText=document.getElementById('statusText');
 const roleText=document.getElementById('roleText');
 const ttsBtn=document.getElementById('ttsBtn');
 const notifBanner=document.getElementById('notifBanner');
-const quickPrompts=['Plan my day','Help me plan: run a marathon in 6 months','How do I get my first 100 customers?','Predict City vs Arsenal','Show squad risk','Medical triage','Portfolio invest','Identity profile','Log wearables: HRV 58ms, sleep 7hrs',"What's my current context?"];
-const MODE_CHIPS={General:["What can you do?","Plan my day","Help me reach a goal","What's my current context?","Log a decision"],Daily:["What's on my calendar today?","Check my emails","List files in my Downloads","Plan my day","Turn off the lights"],Medical:['Medical triage','Assess injury risk','Recovery protocol','HRV analysis','Squad health overview'],Financial:['Portfolio invest','Risk assessment','Market analysis','Budget planning','Investment strategy'],Legal:['Legal case strategy','Contract review','Compliance check','Risk assessment','Case outcome prediction'],Sport:['Predict City vs Arsenal','Show squad risk','Duel network analysis','Moment prediction','Training load'],Developer:['Show system status','Run diagnostics','Search in files','Git status','Install package']};
+const quickPrompts=['Plan my day','What can you do?','Weather?','Remind me to stretch in 2 hours','What did we talk about today?','Identity profile',"What's my current context?"];
+const MODE_CHIPS={General:["What can you do?","Plan my day","Help me reach a goal","What did we talk about today?","What's my current context?"],Daily:["What's on my calendar today?","Check my emails","Weather?","Remind me to stretch in 2 hours","Take a note: "],Developer:['Show system status','Run diagnostics','Search in files','Git status','Install package']};
 function esc(value){return String(value==null?'':value).replace(/[&<>"]/g,function(ch){return({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'})[ch];});}
 function pct(value){const n=Number(value);if(!Number.isFinite(n))return 0;return Math.max(0,Math.min(100,Math.round((n<=1?n*100:n))));}
 function bubble(role,html){const wrap=document.createElement('div');wrap.className='msg '+role;wrap.innerHTML='<div class="label">'+(role==='user'?'You':'PRISM')+'</div>'+html;messages.appendChild(wrap);messages.scrollTop=messages.scrollHeight;}
