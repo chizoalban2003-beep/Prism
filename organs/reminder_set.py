@@ -189,10 +189,22 @@ def execute(intent: str, message: str, ctx: dict):
     fire_at = now + datetime.timedelta(seconds=delay_seconds)
     reminder_id = f"reminder_{int(time.time())}"
 
-    # Load, append, save
+    # Load, prune, append, save. Fired reminders used to accumulate
+    # forever (189 on one live install) — keep 30 days for "what did I
+    # set?" queries, drop the rest.
     try:
         existing = (json.loads(reminders_file.read_text(encoding="utf-8"))
                     if reminders_file.exists() else [])
+        cutoff = now - datetime.timedelta(days=30)
+
+        def _keep(item):
+            if item.get("status") != "fired":
+                return True
+            try:
+                return datetime.datetime.fromisoformat(item["fire_at"]) >= cutoff
+            except Exception:
+                return True
+        existing = [i for i in existing if _keep(i)]
         existing.append({
             "id": reminder_id,
             "text": reminder_text,

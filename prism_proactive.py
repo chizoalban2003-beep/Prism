@@ -361,6 +361,18 @@ def build_advanced_triggers(
             ]
             for item in due:
                 item["status"] = "fired"
+            # Prune while we're rewriting anyway — fired reminders used
+            # to accumulate forever (mirrors reminder_set's 30-day keep).
+            cutoff = now - datetime.timedelta(days=30)
+
+            def _keep(item):
+                if item.get("status") != "fired":
+                    return True
+                try:
+                    return datetime.datetime.fromisoformat(item["fire_at"]) >= cutoff
+                except Exception:
+                    return True
+            items = [i for i in items if _keep(i)]
             f.write_text(json.dumps(items, indent=2), encoding="utf-8")
             if not due:
                 return "Reminder due."
