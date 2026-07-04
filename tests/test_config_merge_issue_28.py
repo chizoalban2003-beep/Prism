@@ -16,6 +16,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+
 from prism_agent_bootstrap import DEFAULT_CONFIG, _deep_merge, load_toml_config
 
 
@@ -50,6 +52,12 @@ class TestDeepMerge:
 class TestLoadTomlConfigMerges:
     """The headline regression — user [llm]-only config must not erase
     the repo's [agent] block."""
+
+    @pytest.fixture(autouse=True)
+    def _non_hermetic(self, monkeypatch):
+        # Every test here builds its own repo/user files and asserts on the
+        # merge — opt out of the suite-wide hermetic mode (conftest.py).
+        monkeypatch.delenv("PRISM_HERMETIC_CONFIG", raising=False)
 
     def test_user_llm_only_preserves_repo_agent(self, tmp_path):
         repo = tmp_path / "repo.toml"

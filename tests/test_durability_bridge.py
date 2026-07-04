@@ -85,7 +85,11 @@ def test_mirror_noop_without_entry_id(tmp_path):
 
 # ── End-to-end: chat() drives the bridge, pipeline commits, recovery works ───────
 
-def test_chat_populates_graph_and_recovers(tmp_path):
+def test_chat_populates_graph_and_recovers(tmp_path, offline_llm):
+    # offline_llm: the statement below routes to the chat LLM path; on a
+    # dev machine with a slow local model that's a real multi-minute
+    # generation (timed out locally while fail-fast passing in CI). The
+    # graph mirroring under test happens regardless of what the LLM says.
     agent = PrismAgent()
     g = _graph(tmp_path)
     agent._memory_graph = g

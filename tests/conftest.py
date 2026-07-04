@@ -9,6 +9,13 @@ import sys
 # this before any prism_* import ensures prism_asgi sees the override.
 os.environ["PRISM_AUTH_DISABLE"] = "1"
 
+# Hermetic config: don't read the developer's untracked prism_config.toml
+# or ~/.prism/prism_config.toml. Their contents (a preferred cloud provider,
+# a rotated-out key, an uninstalled ollama model) leak network latency and
+# nondeterminism into every test that constructs a PrismAgent. CI has
+# neither file, so this makes local runs match CI.
+os.environ["PRISM_HERMETIC_CONFIG"] = "1"
+
 sys.path.insert(0, str(pathlib.Path(__file__).parent.parent))
 
 import pytest

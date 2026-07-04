@@ -26,7 +26,10 @@ from prism_memory import PrismMemory
 
 
 @pytest.fixture()
-def agent(tmp_path: Path):
+def agent(tmp_path: Path, offline_llm):
+    # offline_llm: recall queries that miss the fact store fall through to
+    # LLM paths — on a dev machine with a slow local model that's a real
+    # multi-minute generation (timed out locally, fail-fast passed in CI).
     a = PrismAgent()
     # Swap the agent's memory for a fresh, empty store under tmp_path so
     # other tests' state and the user's real ~/.prism/memory.db don't leak in.

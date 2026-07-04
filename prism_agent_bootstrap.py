@@ -99,6 +99,16 @@ def load_toml_config(path: Path) -> dict:
         except Exception:
             return {}
 
+    # Hermetic mode (set by tests/conftest.py): skip both untracked config
+    # files. The repo prism_config.toml and ~/.prism/prism_config.toml are
+    # per-developer state — a dev whose config prefers a cloud provider
+    # with a rotated-out key had every agent-constructing test paying real
+    # network timeouts (one full suite ran 4h14m instead of ~15min, with
+    # 3 spurious timeout failures). CI has neither file, so hermetic runs
+    # match what CI has always tested: DEFAULT_CONFIG only.
+    if os.environ.get("PRISM_HERMETIC_CONFIG", "").lower() in ("1", "true", "yes"):
+        return dict(DEFAULT_CONFIG)
+
     repo_cfg = _safe_load(path)
     user_cfg = _safe_load(Path.home() / ".prism" / "prism_config.toml")
     # Defaults first → repo overrides defaults → user overrides repo.

@@ -215,7 +215,11 @@ class TestAgentLLMRouterConfigPath:
         cfg.write_text("\n".join(lines) + "\n")
         return cfg
 
-    def test_agent_reads_ollama_host_from_config(self, tmp_path):
+    def test_agent_reads_ollama_host_from_config(self, tmp_path, monkeypatch):
+        # This test IS about config loading — opt out of the suite-wide
+        # hermetic mode so load_toml_config reads the file we build.
+        monkeypatch.delenv("PRISM_HERMETIC_CONFIG", raising=False)
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path / "no-home"))
         cfg = self._make_agent_config(tmp_path, {
             "ollama_host": "http://myhost:9999",
             "ollama_model": "llama3",
@@ -250,7 +254,10 @@ class TestAgentLLMRouterConfigPath:
         for key in ("preferred", "ollama_host", "claude_api_key", "openai_api_key"):
             assert key in cfg, f"Expected {key!r} in router config"
 
-    def test_agent_router_fallback_list(self, tmp_path):
+    def test_agent_router_fallback_list(self, tmp_path, monkeypatch):
+        # Config-loading test — opt out of suite-wide hermetic mode.
+        monkeypatch.delenv("PRISM_HERMETIC_CONFIG", raising=False)
+        monkeypatch.setattr(Path, "home", staticmethod(lambda: tmp_path / "no-home"))
         cfg = self._make_agent_config(tmp_path, {
             "preferred": "claude",
             "fallback": ["ollama/mistral", "openai"],

@@ -26,7 +26,11 @@ def test_route_currency_still_works():
     assert agent._route("exchange 50 dollars to euros") == "currency_convert"
 
 
-def test_chat_never_raises():
+def test_chat_never_raises(offline_llm):
+    # offline_llm: these messages route to LLM-touching paths. In CI no
+    # Ollama exists so the calls fail fast, but on a dev machine with a
+    # slow local model each message is a real multi-minute generation —
+    # this test timed out at 300s locally while "passing" in CI.
     for message in ["random", "???", "what is this", "search code"]:
         assert isinstance(PrismAgent().chat(message), PrismCard)
 
