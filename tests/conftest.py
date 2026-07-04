@@ -2,6 +2,17 @@
 import os
 import pathlib
 import sys
+import tempfile
+
+# Hermetic home: agent-constructing tests write conversation stores,
+# reminders, notes, and a dozen sqlite DBs under ~/.prism — on a dev
+# machine that leaks test data into the user's REAL databases (observed
+# live: a durability-bridge test sentence surfaced in the user's "what
+# did we talk about today?" recall). CI runs in a throwaway home; give
+# local runs one too. Must happen before any prism_* import — several
+# modules capture Path.home() in module-level constants.
+os.environ["HOME"] = tempfile.mkdtemp(prefix="prism-test-home-")
+os.environ["USERPROFILE"] = os.environ["HOME"]  # Path.home() on Windows
 
 # Disable HTTP bearer auth in tests. The middleware enforces auth when a
 # token is configured via env or ~/.prism/auth_token; tests would fail if
