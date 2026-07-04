@@ -21,7 +21,6 @@ from prism_device_agent import (
     PrismDeviceAgent,
     ToolResolver,
 )
-from prism_device_resolver import ToolResolver as StandaloneToolResolver
 from prism_responses import PrismCard, device_result_card
 
 pytestmark = pytest.mark.requires_hardware
@@ -199,48 +198,3 @@ def test_device_result_card():
     assert card.card_data["tool_used"] == "stdlib"
     assert card.card_data["undo_available"] is True
     assert "Undo this action" in card.actions
-
-
-# ---------------------------------------------------------------------------
-# prism_device_resolver.py — standalone ToolResolver tests
-# ---------------------------------------------------------------------------
-
-def test_resolver_stdlib_first():
-    """StandaloneToolResolver resolves zip → stdlib (import zipfile)."""
-    resolver = StandaloneToolResolver()
-    caps = _make_caps()
-    resolution = resolver.resolve("zip", "create a zip archive", caps)
-    assert resolution.resolved is True
-    assert resolution.method == "stdlib"
-    assert "zipfile" in resolution.implementation
-
-
-def test_resolver_suggests_install_when_missing():
-    """StandaloneToolResolver suggests pip install when PIL is absent."""
-    from unittest.mock import patch
-    resolver = StandaloneToolResolver()
-    caps = _make_caps(py_packages=[], cli_tools={})
-    # Simulate PIL not being installed by making find_spec return None
-    with patch("prism_device_resolver.importlib.util.find_spec", return_value=None):
-        resolution = resolver.resolve("image_resize", "resize an image", caps)
-    assert resolution.requires_install or not resolution.resolved
-
-
-def test_resolver_installed_pip_package():
-    """StandaloneToolResolver returns py_package when the package is importable."""
-    resolver = StandaloneToolResolver()
-    caps = _make_caps()
-    # json is always available as stdlib; "json" key triggers stdlib path
-    resolution = resolver.resolve("json", "parse json data", caps)
-    assert resolution.resolved is True
-    assert resolution.method == "stdlib"
-
-
-def test_resolver_manual_fallback():
-    """StandaloneToolResolver returns manual fallback for unknown task types."""
-    resolver = StandaloneToolResolver()
-    caps = _make_caps(py_packages=[], cli_tools={})
-    resolution = resolver.resolve("unknown_exotic_task_xyz", "do something weird", caps)
-    assert resolution.resolved is False
-    assert resolution.method == "manual"
-    assert resolution.user_message

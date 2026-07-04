@@ -59,15 +59,12 @@ py-modules = [
     "kde_agent",
     "kde_cli",
     "kde_config",
-    "kde_dashboard",
     "kde_profiles",
-    "kde_ui",
     "ksa_agent",
     "ksa_cli",
     "ksa_config",
     "ksa_executor",
     "ksa_fixes",
-    "ksa_jarvis",
     "ksa_lever",
     "ksa_optimizer",
     "ksa_registry",
@@ -76,7 +73,6 @@ py-modules = [
     "moment_analyzer",
     "moment_configs_ext",
     "moment_pipeline",
-    "moment_validator",
     "prediction_engine",
     "prism_agent",
     "prism_autonomous",
@@ -95,7 +91,6 @@ py-modules = [
     "prism_conversation_recall",
     "prism_device_agent",
     "prism_device_executor",
-    "prism_device_resolver",
     "prism_device_scanner",
     "prism_email",
     "prism_executor_agent",
@@ -248,7 +243,6 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 # HTML/SVG/JS embedded strings cannot be wrapped
 "prism_chat.py" = ["E501"]
-"kde_ui.py" = ["E501"]
 "prism_pwa.py" = ["E501"]
 # HTML/SVG/JS embedded strings cannot be wrapped
 "prism_routes_identity.py" = ["E501"]

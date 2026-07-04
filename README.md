@@ -1633,7 +1633,6 @@ PRISM/
 ├── KSA — developer agent
 │   ├── ksa_agent.py            KSAgent — task routing + execution
 │   ├── ksa_executor.py         FileIndex, Search, Shell executors
-│   ├── ksa_jarvis.py           Jarvis — artifact memory + learning
 │   ├── ksa_router.py           MasterFulcrum intent router
 │   ├── ksa_fixes.py            LiveWeightInjector, GroundTruthOptimizer
 │   ├── ksa_optimizer.py        Iterative fulcrum tuning + adaptive thresholds
@@ -1651,11 +1650,9 @@ PRISM/
 │   ├── prism_visual_perception.py  LLaVA scene analysis + audio feature extraction
 │   ├── prism_causality.py      Causal DAG over beliefs — counterfactual explanations
 │   ├── prism_pwa.py            PWA mobile companion — installable app at /mobile
-│   ├── kde_dashboard.py        HTML reports + terminal dashboard
 │   ├── kde_cli.py              CLI entry point
 │   ├── kde_config.py           Config loader
 │   ├── kde_profiles.py         Profile catalogue and role defaults
-│   └── kde_ui.py               SPA served at localhost:8742
 │
 ├── Sport intelligence
 │   ├── sport_spectrum.py       SportConfig, DuelModel, ALL_SPORTS
@@ -1666,7 +1663,6 @@ PRISM/
 │   ├── moment_analyzer.py      Real-time moment analysis, ALL_MOMENT_CONFIGS
 │   ├── moment_configs_ext.py   Extended sport moment configs
 │   ├── moment_pipeline.py      StatsBomb batch + live tracking pipeline
-│   ├── moment_validator.py     Season-scale accuracy validation
 │   └── sport_data.py           StatsBomb open-data connector
 │
 ├── Device integration
@@ -1769,7 +1765,6 @@ PRISM/
 │   ├── prism_browser_agent.py  Headless web navigation and scraping
 │   ├── prism_device_agent.py   On-device task execution (files, shell, apps)
 │   ├── prism_device_executor.py Safe subprocess and file-system executor
-│   ├── prism_device_resolver.py App and tool resolver for installed software
 │   └── prism_device_scanner.py Installed-app and capability scanner
 │
 ├── Execution intelligence

@@ -16,7 +16,7 @@ the device unless the user explicitly triggers an integration (email send, calen
 | Prefix | Role |
 |--------|------|
 | `prism_*` | Core agent runtime: memory, chain reasoning, planning, soul, organs, perception, policy, LLM routing, task queue, daemon. |
-| `kde_*` | HTTP server + CLI interface: ASGI app (`prism_asgi.py`), browser UI (`kde_ui.py`), config, profiles, and the `kde` / `prism` CLI entry points. |
+| `kde_*` | HTTP server + CLI interface: ASGI app (`prism_asgi.py`), config, profiles, and the `kde` / `prism` CLI entry points. |
 | `ksa_*` | Knowledge / Skills Agent subsystem: skill registry, optimizer, executor, router, and the `ksa` CLI entry point. |
 
 Supporting modules with no prefix (`artifact_store`, `digital_identity`, `identity_bus`,
@@ -30,7 +30,7 @@ capabilities used by the three primary namespaces above.
 ```
 ┌─────────────────────────────────────────────────┐
 │  Layer 1 — Interfaces                           │
-│  kde_cli · prism_asgi · kde_ui · ksa_cli         │
+│  kde_cli · prism_asgi · prism_chat · ksa_cli         │
 ├─────────────────────────────────────────────────┤
 │  Layer 2 — Agent                                │
 │  prism_agent · prism_chat · prism_daemon        │
