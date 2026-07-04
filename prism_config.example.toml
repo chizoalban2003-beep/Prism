@@ -12,6 +12,8 @@ preferred      = "ollama/llama3.2:3b"   # "ollama/<model>" | "claude" | "openai"
 fallback       = "ollama"
 ollama_host    = "http://localhost:11434"
 ollama_model   = "llama3.2:3b"
+# request_timeout = 30.0                # seconds per LLM call; raise on slow
+                                        # hardware (a few tokens/sec)
 # claude_api_key = "sk-ant-..."
 # claude_model   = "claude-opus-4-8"    # or "claude-sonnet-5" / "claude-haiku-4-5"
 # openai_api_key = "sk-..."

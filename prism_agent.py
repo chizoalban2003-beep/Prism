@@ -147,6 +147,10 @@ class PrismAgent:
             fallback    = _llm_cfg["fallback"],
             ollama_host = _llm_cfg["ollama_host"],
             config      = _llm_cfg,
+            # Slow-hardware lever, mirroring [agent].planner_timeout: a
+            # CPU-only host running a small model at a few tokens/sec
+            # can't finish chat generations inside the 30s default.
+            request_timeout = float(_llm_cfg.get("request_timeout", 30.0)),
         )
 
         self._queue  = TaskQueue()

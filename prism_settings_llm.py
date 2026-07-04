@@ -13,7 +13,25 @@ import json
 import urllib.request
 from pathlib import Path
 
-_CONFIG_PATH = Path(__file__).parent / "prism_config.toml"
+_REPO_CONFIG = Path(__file__).parent / "prism_config.toml"
+
+# Explicit override (tests monkeypatch this; None = auto-resolve).
+_CONFIG_PATH: Path | None = None
+
+
+def _config_path() -> Path:
+    """The config file this page reads and writes.
+
+    load_toml_config() layers ~/.prism/prism_config.toml OVER the repo
+    file, so when the user overlay exists it is the only file whose
+    [llm] section actually wins. Writing to the repo file in that case
+    silently loses the save — a pasted API key would be masked by the
+    overlay's stale empty string (observed live, issue #28-91).
+    """
+    if _CONFIG_PATH is not None:
+        return _CONFIG_PATH
+    user = Path.home() / ".prism" / "prism_config.toml"
+    return user if user.exists() else _REPO_CONFIG
 
 
 # ── Config read/write ─────────────────────────────────────────────────────────
@@ -21,8 +39,9 @@ _CONFIG_PATH = Path(__file__).parent / "prism_config.toml"
 def read_llm_config() -> dict:
     try:
         import tomllib
-        if _CONFIG_PATH.exists():
-            data = tomllib.loads(_CONFIG_PATH.read_text())
+        path = _config_path()
+        if path.exists():
+            data = tomllib.loads(path.read_text())
             return data.get("llm", {})
     except Exception:
         pass
@@ -32,7 +51,8 @@ def read_llm_config() -> dict:
 def write_llm_config(updates: dict) -> None:
     """Merge updates into [llm] section of prism_config.toml."""
     import re
-    text = _CONFIG_PATH.read_text() if _CONFIG_PATH.exists() else ""
+    path = _config_path()
+    text = path.read_text() if path.exists() else ""
     existing = read_llm_config()
     merged = {**existing, **updates}
 
@@ -57,7 +77,7 @@ def write_llm_config(updates: dict) -> None:
     else:
         new_text = text.rstrip("\n") + "\n\n" + block
 
-    _CONFIG_PATH.write_text(new_text)
+    path.write_text(new_text)
 
 
 # ── Connection testers ────────────────────────────────────────────────────────

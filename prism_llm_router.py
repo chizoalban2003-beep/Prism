@@ -586,8 +586,13 @@ class LLMRouter:
 
     def _discover_ollama(self) -> list[LLMOption]:
         try:
+            # 5s, not 2s: /api/tags is metadata-only but on a loaded
+            # CPU-only host ollama can take >2s to answer, and a missed
+            # ping marks every local model unavailable for the whole
+            # discovery window (observed live: chat fell to stdlib canned
+            # replies while ollama was healthy).
             resp = urllib.request.urlopen(
-                f"{self._ollama_host}/api/tags", timeout=2)
+                f"{self._ollama_host}/api/tags", timeout=5)
             data = json.loads(resp.read())
             opts = []
             for m in data.get("models",[]):
@@ -610,6 +615,16 @@ class LLMRouter:
         # _rank() saw "gpt-4"-the-string, not the real model.
         model = (self._config.get("openai_model")
                  or os.environ.get("OPENAI_MODEL", "gpt-4o-mini"))
+        # A cloud (https) endpoint with no key can never serve a call —
+        # don't probe it. Some providers answer /v1/models unauthenticated,
+        # which used to mark the option "available"; every real call then
+        # burned a slow 401 before falling back (observed live after a key
+        # rotation left preferred=openai_compat with an empty key).
+        # Keyless stays legitimate for local/http hosts (LM Studio,
+        # llama.cpp).
+        if not api_key and host.startswith("https://"):
+            return LLMOption("openai_compat", model, host, False, 0, 0,
+                             "no API key configured")
         try:
             req = urllib.request.Request(f"{host}/v1/models",
                 headers={"Authorization": "Bearer " + api_key})
