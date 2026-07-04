@@ -91,7 +91,6 @@ py-modules = [
     "prism_conversation_recall",
     "prism_device_agent",
     "prism_device_executor",
-    "prism_device_scanner",
     "prism_email",
     "prism_executor_agent",
     "prism_instructions",

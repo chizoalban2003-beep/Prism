@@ -1764,8 +1764,7 @@ PRISM/
 │   ├── prism_tasks.py          Task management (local + Todoist + GitHub)
 │   ├── prism_browser_agent.py  Headless web navigation and scraping
 │   ├── prism_device_agent.py   On-device task execution (files, shell, apps)
-│   ├── prism_device_executor.py Safe subprocess and file-system executor
-│   └── prism_device_scanner.py Installed-app and capability scanner
+│   └── prism_device_executor.py Safe subprocess and file-system executor
 │
 ├── Execution intelligence
 │   ├── prism_policy.py         Resource allocation + policy engine
