@@ -288,6 +288,11 @@ INTENTS: list[tuple[str, str]] = [
      r"\bload\s+average\b|"
      r"\bhow\s+long\s+(?:has\s+)?(?:this|the\s+(?:system|machine))\s+been\s+(?:up|running|on)\b",
      "hardware_status"),
+    # Also before generic "status": "git status" is a shell command, not a
+    # daemon-status query — the Developer chip sends exactly that text and
+    # used to get the "Connected. KDE… KSA…" card back. shell_run keeps the
+    # same approval flow as every other shell request.
+    (r"\bgit\s+(?:status|log|diff|branch|stash|remote|show)\b", "shell_run"),
     (r"\bstatus\b|connected|device|\bsync\b", "status"),
     # Perception / fused-context snapshot — "what's my current context",
     # "show my context", "perception status". Placed before memory_recall

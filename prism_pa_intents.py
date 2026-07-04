@@ -85,7 +85,9 @@ def _hardware_status_card(message: str) -> PrismCard:
             m = psutil.virtual_memory()
             free_gb = m.available / (1024 ** 3)
             total_gb = m.total / (1024 ** 3)
-            bar = "█" * (m.percent // 5) + "░" * (20 - int(m.percent // 5))
+            # m.percent is a float; str * float raises TypeError (battery
+            # and disk cast first — this branch rendered "unavailable").
+            bar = "█" * int(m.percent // 5) + "░" * (20 - int(m.percent // 5))
             lines.append(
                 f"• Memory: {free_gb:.1f} GB free of {total_gb:.1f} GB "
                 f"[{bar}] {int(m.percent)}% used"

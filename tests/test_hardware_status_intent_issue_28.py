@@ -111,6 +111,13 @@ class TestNoRegression:
     def test_bare_status(self):
         assert _route("status") == "status"
 
+    def test_git_status_is_shell_not_daemon_status(self):
+        # The Developer chip sends the literal text "Git status" — it used
+        # to hit the generic \bstatus\b pattern and answer with the
+        # daemon-connectivity card instead of anything git-related.
+        assert _route("git status") == "shell_run"
+        assert _route("git diff") == "shell_run"
+
     def test_what_day_is_it(self):
         assert _route("what day is it") == "clock_query"
 
@@ -168,3 +175,12 @@ class TestHandlerErrorIsolation:
             card = _hardware_status_card("system status")
         assert "Battery: unavailable" in card.body
         assert "• Disk" in card.body
+
+    def test_memory_line_actually_renders(self):
+        # Regression: psutil's virtual_memory().percent is a FLOAT, and
+        # "█" * float raises TypeError — the umbrella test above passed
+        # because "• Memory" is also a prefix of the fallback line
+        # "• Memory: unavailable (TypeError)". Pin real GB output.
+        card = _hardware_status_card("memory usage")
+        assert "Memory: unavailable" not in card.body
+        assert "GB free of" in card.body
