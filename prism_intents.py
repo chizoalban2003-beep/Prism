@@ -426,6 +426,15 @@ INTENTS: list[tuple[str, str]] = [
      # organ when reminder_set already does the job.
      r"set (?:an )?alarm|wake me (?:up )?(?:at|in)",
      "reminder_set"),
+    # complete_task must precede add_task and list_tasks — the engine has
+    # complete() (with Todoist/GitHub/Linear sync) but nothing routed to
+    # it: "remove task X" fell into list_tasks and just echoed the list.
+    (r"(?:complete|finish|close|remove|delete|drop|did|done with) "
+     r"(?:the |my |a )?(?:task|todo)\b|"
+     r"\btask done\b|"
+     r"\b(?:done|finished) with\b.{0,50}\b(?:task|todo)\b|"
+     r"\bmark (?:the |my |a )?(?:task )?.{0,60}(?:as )?(?:done|complete[d]?|finished)\b",
+     "complete_task"),
     (r"(?:add|create|make|new) (?:a )?(?:task|todo|reminder|ticket|issue)|"
      r"(?:i need to|i have to|remember to|don't forget)",
      "add_task"),

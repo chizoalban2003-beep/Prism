@@ -492,6 +492,46 @@ def handle_pa_intent(agent: Any, intent: str, message: str,
         task = agent._task_mgr.add(title=message[:80])
         return text_card(f"Added: {task.title}", "Task added")
 
+    if intent == "complete_task":
+        open_tasks = [t for t in agent._task_mgr.list_tasks(done=False)
+                      if (t.title or "").strip()]
+        if not open_tasks:
+            return text_card("No open tasks.", "Tasks")
+        # Strip command words; what's left names the task.
+        frag = re.sub(
+            r"(?i)\b(?:complete|finish|close|remove|delete|drop|did|done"
+            r"|with|mark|as|completed?|finished|task|todo|the|my|a)\b|[:—-]",
+            " ", message)
+        frag = " ".join(frag.split()).lower()
+        if not frag:
+            return text_card(
+                "Which task? Say e.g. 'complete task buy milk'.", "Tasks")
+        matches = [t for t in open_tasks if frag in (t.title or "").lower()]
+        if not matches:
+            # Token overlap fallback — "done with the milk one" still hits
+            # "buy milk" if the overlap is unambiguous.
+            ftok = set(frag.split())
+            scored = sorted(
+                ((len(ftok & set((t.title or "").lower().split())), t)
+                 for t in open_tasks),
+                key=lambda x: x[0], reverse=True)
+            scored = [s for s in scored if s[0] > 0]
+            if len(scored) == 1 or (len(scored) > 1 and scored[0][0] > scored[1][0]):
+                matches = [scored[0][1]]
+            else:
+                matches = [t for _, t in scored]
+        if len(matches) == 1:
+            t = matches[0]
+            agent._task_mgr.complete(t.task_id)
+            return text_card(f"Done: {t.title} ✓",
+                             f"Task completed · {t.source}")
+        if matches:
+            lines = "\n".join(f"· {t.title}" for t in matches[:8])
+            return text_card(
+                f"Several tasks match '{frag}':\n{lines}\n\n"
+                "Say more of the title to pick one.", "Tasks")
+        return text_card(f"No open task matching '{frag}'.", "Tasks")
+
     if intent == "list_tasks":
         tasks = [t for t in agent._task_mgr.list_tasks(done=False)
                  if (t.title or "").strip()]
