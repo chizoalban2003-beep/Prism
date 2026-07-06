@@ -81,9 +81,23 @@ class TestPhoneDegrade:
 
 
 class TestRouting:
-    def test_notify_vs_reminder(self):
-        assert _route("notify me that build finished") == "notify_desktop"
-        assert _route("alert me: server down") == "notify_desktop"
-        assert _route("send me a notification") == "notify_desktop"
+    def test_notification_phrasings_owned_by_send_push(self):
+        # #28-125: notify/alert phrasings route to send_push (which now
+        # degrades credential-free via prism_local_notify); the notify_desktop
+        # organ stays callable by the tool loop but has no fast-path intent.
+        assert _route("send me a notification") == "send_push"
+        assert _route("notify me of progress") == "send_push"
         assert _route("remind me to stretch in 2 hours") == "reminder_set"
-        assert _route("remind me to call mum") == "reminder_set"
+
+
+class TestSendPushDegrade:
+    def test_unconfigured_push_degrades_to_local(self, monkeypatch):
+        import types
+
+        from prism_pa_intents import handle_pa_intent
+        monkeypatch.setattr(ln, "_fire_popup", lambda *a, **k: None)
+        push = types.SimpleNamespace(configured=False)
+        agent = types.SimpleNamespace(_push=push)
+        card = handle_pa_intent(agent, "send_push", "server is down", {})
+        assert "local alert" in card.body.lower() or "inbox" in card.body.lower()
+        assert any("server is down" in r["body"] for r in ln.recent(5))

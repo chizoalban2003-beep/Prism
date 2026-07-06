@@ -567,10 +567,25 @@ def handle_pa_intent(agent: Any, intent: str, message: str,
 
     if intent == "send_push":
         if not agent._push.configured:
-            return text_card(
-                "Push not configured. Add topic to prism_config.toml [push]. "
-                "Get the free ntfy app at ntfy.sh — no account needed.",
-                "Push notifications")
+            # #28-125: degrade credential-free instead of a wall — raise a
+            # local notification (native popup where possible, always logged
+            # to the PRISM inbox). Remote push still just needs an ntfy topic.
+            try:
+                from prism_local_notify import deliver
+                report = deliver("PRISM", message.strip(), source="send_push")
+                where = (f"popup via {report['popup']}" if report["popup"]
+                         else "your PRISM inbox")
+                return text_card(
+                    f"Remote push isn't configured, so I raised a local alert "
+                    f"({where}):\n  “{message.strip()}”\n\n"
+                    "For push to your phone, add a topic to prism_config.toml "
+                    "[push] — the free ntfy app (ntfy.sh) needs no account.",
+                    "Notification")
+            except Exception:
+                return text_card(
+                    "Push not configured. Add topic to prism_config.toml [push]. "
+                    "Get the free ntfy app at ntfy.sh — no account needed.",
+                    "Push notifications")
         agent._push.alert(message)
         return text_card("Notification sent to your device.", "Push")
 

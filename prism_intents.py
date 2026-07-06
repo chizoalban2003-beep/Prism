@@ -272,13 +272,12 @@ INTENTS: list[tuple[str, str]] = [
      r"\bbring\s+(?:up\s+)?[\w .-]+?\s+(?:to\s+(?:the\s+)?front|up)\b|"
      r"\bwindow\s+(?:control|manager?|list)\b",
      "window_control"),
-    # Local desktop notification (credential-free alert). Distinct from
-    # reminder_set (scheduled "remind me … in N minutes") — this fires now.
-    (r"\b(?:desktop|local|system)\s+notification\b|"
-     r"\b(?:notify|alert|ping)\s+me\b|"
-     r"\bpop\s*up\s+(?:a\s+)?(?:notification|alert|message)\b|"
-     r"\bsend\s+me\s+a\s+(?:notification|desktop\s+alert)\b",
-     "notify_desktop"),
+    # NOTE: notification phrasings ("notify me", "send me a notification",
+    # "alert me") are owned by send_push, which now degrades credential-free
+    # to a local popup/inbox via prism_local_notify when remote push isn't
+    # configured (#28-125). The notify_desktop organ remains callable by the
+    # tool loop but has no dedicated fast-path intent to avoid stealing
+    # send_push's routing — see tests/test_send_push_modifier_issue_28.py.
     # Device inventory: PRISM's core mission is bridging the user to
     # their hardware. Hoisted above all domain matchers because:
     #   * "hardware inventory" was eaten by domain_supply's `inventory`.
