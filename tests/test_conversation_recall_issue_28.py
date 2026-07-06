@@ -67,12 +67,25 @@ class TestWindow:
 
 
 def _memory_with_turns(tmp_path, turns):
-    """turns: list of (role, content, ts_offset_days_ago)."""
+    """turns: list of (role, content, ts_offset_days_ago).
+
+    Offsets under one day are placed proportionally inside TODAY's
+    midnight-anchored window rather than at ``now - offset``: the recall
+    window starts at midnight, so "now - 0.2 days" crossed into
+    yesterday whenever the suite ran before ~04:48 — the 'today' tests
+    failed only on early-morning runs (observed on a 03:44 run).
+    """
     mem = PrismMemory(db_path=str(tmp_path / "memory.db"))
+    now = time.time()
+    midnight = datetime.now().replace(
+        hour=0, minute=0, second=0, microsecond=0).timestamp()
     for role, content, days_ago in turns:
         entry_id = mem.ingest_conversation(role, content)
         assert entry_id, f"turn too short to store: {content!r}"
-        ts = time.time() - days_ago * 86400
+        if days_ago < 1:
+            ts = midnight + (now - midnight) * (1 - days_ago)
+        else:
+            ts = now - days_ago * 86400
         with sqlite3.connect(tmp_path / "memory.db") as c:
             c.execute("UPDATE memory SET timestamp=? WHERE id=?",
                       (ts, entry_id))
