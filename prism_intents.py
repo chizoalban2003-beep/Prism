@@ -235,6 +235,19 @@ INTENTS: list[tuple[str, str]] = [
      r"help me (?:with|plan|reach|achieve|set|accomplish|hit|build|launch|"
      r"finish|complete|start|tackle|prepare)|"
      r"what(?:'s| is) the best way|i want to|i need to|my goal is", "universal_plan"),
+    # Desktop-control reach: "what can you control on this machine". Distinct
+    # from device_inventory (hardware/CLI tools) — this answers the GUI/
+    # command-centre question honestly (windows, notifications, screenshots,
+    # audio) with per-category availability + install hints. Hoisted above
+    # device_inventory so the explicit "control" phrasing wins over the
+    # broader "what can this machine do".
+    (r"what\s+can\s+(?:you|prism)\s+control\b|"
+     r"\b(?:desktop|gui|screen|window)\s+(?:control\s+)?"
+     r"(?:capabilit(?:y|ies)|reach|support)\b|"
+     r"can\s+you\s+control\s+(?:my\s+)?"
+     r"(?:desktop|windows?|screen|apps?|machine)\b|"
+     r"what\s+(?:desktop|gui)\s+(?:features?|things?)\s+can\s+you\b",
+     "desktop_capabilities"),
     # Device inventory: PRISM's core mission is bridging the user to
     # their hardware. Hoisted above all domain matchers because:
     #   * "hardware inventory" was eaten by domain_supply's `inventory`.

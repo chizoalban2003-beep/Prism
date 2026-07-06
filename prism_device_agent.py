@@ -36,6 +36,12 @@ class CapabilityMap:
     py_packages: list[str]
     platform:    str
     has_browser: bool
+    # Session/display awareness — populated by the scanner. Without a display
+    # (headless / container / SSH) GUI organs cannot act no matter which
+    # binaries are installed, so the report must say so plainly.
+    session_type: str = ""      # "wayland" | "x11" | "" (unknown / headless)
+    has_display:  bool = False  # a DISPLAY or WAYLAND_DISPLAY is set
+    desktop_env:  str = ""      # XDG_CURRENT_DESKTOP (e.g. "KDE", "GNOME")
 
     # Category → stdlib fallback flag (always available)
     _STDLIB_CATEGORIES: frozenset = field(
@@ -72,12 +78,54 @@ class CapabilityMap:
             lines.append(f"Packages: {', '.join(self.py_packages[:10])}")
         return " | ".join(lines)
 
+    def can_control_gui(self) -> bool:
+        """True only when a display is present AND at least one GUI-control
+        backend is installed. Both are required — a wmctrl binary is useless
+        on a headless session, and a display is useless with no tools."""
+        if not self.has_display:
+            return False
+        return any(self.cli_tools.get(cat) for cat in _DESKTOP_CATEGORIES)
+
+    def desktop_report(self) -> str:
+        """Human-readable 'what can I actually control on this machine' map:
+        each desktop category marked available (with the chosen backend) or
+        unavailable (with an install hint). Honest by construction."""
+        sess = self.session_type or "unknown"
+        disp = "yes" if self.has_display else "no (headless / no display)"
+        de = self.desktop_env or "—"
+        lines = [
+            f"**Platform:** {self.platform}   **Session:** {sess}   "
+            f"**Desktop:** {de}   **Display:** {disp}",
+            "",
+        ]
+        if not self.has_display:
+            lines.append(
+                "⚠️  No graphical display detected — GUI control (windows, "
+                "notifications, screenshots, audio) is unavailable here even "
+                "where the tools are installed. File, web, and comms "
+                "capabilities are unaffected.")
+            lines.append("")
+        lines.append("**Desktop control:**")
+        for cat in _DESKTOP_CATEGORIES:
+            tool = self.best_tool(cat)
+            if tool and self.has_display:
+                lines.append(f"  ✓ {cat} → {tool}")
+            elif tool and not self.has_display:
+                lines.append(f"  ◌ {cat} → {tool} (installed, but no display)")
+            else:
+                hint = _INSTALL_HINTS.get(cat, "")
+                lines.append(f"  ✗ {cat} — {hint}" if hint else f"  ✗ {cat}")
+        lines.append("")
+        lines.append(f"**Browser automation:** {'yes' if self.has_browser else 'no'}")
+        return "\n".join(lines)
+
 
 # ---------------------------------------------------------------------------
 # DeviceCapabilityScanner
 # ---------------------------------------------------------------------------
 
-# Map from category → candidate CLI names
+# Map from category → candidate CLI names.
+# Ordered by preference: the first installed candidate wins (best_tool).
 _CLI_CANDIDATES: dict[str, list[str]] = {
     "compress_zip":    ["zip", "7z", "tar"],
     "compress_tar":    ["tar", "7z"],
@@ -89,6 +137,42 @@ _CLI_CANDIDATES: dict[str, list[str]] = {
     "find_file":       ["find", "fd", "locate"],
     "open_app":        ["xdg-open", "open", "start"],
     "package_manager": ["pip", "pip3", "brew", "apt", "apt-get", "choco"],
+    # ── Desktop / GUI control (the command-centre surface) ──────────────
+    # These make PRISM honest about what it can actually drive on the
+    # current session: an organ consults can_do()/best_tool() before acting
+    # and degrades with an install hint when nothing is available.
+    "window_manage":   ["wmctrl", "xdotool", "kdotool"],
+    "input_synth":     ["ydotool", "xdotool", "wtype"],
+    "notify":          ["notify-send", "kdialog", "zenity"],
+    "screenshot":      ["grim", "spectacle", "scrot", "gnome-screenshot",
+                        "maim", "import"],
+    "audio_control":   ["wpctl", "pactl", "amixer", "pamixer"],
+    "brightness":      ["brightnessctl", "light"],
+    "clipboard":       ["wl-copy", "xclip", "xsel", "pbcopy"],
+    "lock_screen":     ["loginctl", "xdg-screensaver", "gnome-screensaver-command"],
+    "media_keys":      ["playerctl"],
+}
+
+# Desktop categories, kept apart from the file/media/dev tools so the
+# capabilities report can render "what can I control on this machine" as a
+# first-class section.
+_DESKTOP_CATEGORIES: tuple[str, ...] = (
+    "window_manage", "input_synth", "notify", "screenshot",
+    "audio_control", "brightness", "clipboard", "lock_screen", "media_keys",
+)
+
+# One-line install hint per desktop category (Debian/Ubuntu package names;
+# the point is directional guidance, not an exact recipe for every distro).
+_INSTALL_HINTS: dict[str, str] = {
+    "window_manage": "apt install wmctrl   (X11)  ·  kdotool (KDE Wayland)",
+    "input_synth":   "apt install ydotool  (Wayland)  ·  xdotool (X11)",
+    "notify":        "apt install libnotify-bin   (provides notify-send)",
+    "screenshot":    "apt install grim (Wayland) / scrot (X11)  ·  pip install mss",
+    "audio_control": "apt install pipewire-utils (wpctl) / pulseaudio-utils (pactl)",
+    "brightness":    "apt install brightnessctl",
+    "clipboard":     "apt install wl-clipboard (Wayland) / xclip (X11)",
+    "lock_screen":   "systemd-logind (loginctl) is usually already present",
+    "media_keys":    "apt install playerctl",
 }
 
 # Python packages to check for
@@ -127,11 +211,31 @@ class DeviceCapabilityScanner:
             # macOS: Safari and built-in browsers
             has_browser = has_browser or Path("/Applications/Safari.app").exists()
 
+        # Session / display awareness. macOS and Windows always have a display
+        # when a GUI session is present; on Linux we key off the X11/Wayland
+        # environment variables, which are absent on headless / container /
+        # bare-SSH sessions.
+        session_type = (os.environ.get("XDG_SESSION_TYPE") or "").lower()
+        desktop_env = os.environ.get("XDG_CURRENT_DESKTOP", "")
+        if sys.platform in ("darwin", "win32"):
+            has_display = True
+            session_type = session_type or ("aqua" if sys.platform == "darwin"
+                                            else "windows")
+        else:
+            has_display = bool(os.environ.get("WAYLAND_DISPLAY")
+                               or os.environ.get("DISPLAY"))
+            if not session_type and has_display:
+                session_type = ("wayland" if os.environ.get("WAYLAND_DISPLAY")
+                                else "x11")
+
         return CapabilityMap(
             cli_tools=cli_tools,
             py_packages=py_packages,
             platform=sys.platform,
             has_browser=has_browser,
+            session_type=session_type,
+            has_display=has_display,
+            desktop_env=desktop_env,
         )
 
 
