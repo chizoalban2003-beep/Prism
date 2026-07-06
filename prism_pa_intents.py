@@ -153,8 +153,72 @@ def _hardware_status_card(message: str) -> PrismCard:
     return text_card(body, section_title)
 
 
+def _pipeline_store(agent: Any):
+    store = getattr(agent, "_pipelines", None)
+    if store is None:
+        from prism_pipelines import PipelineStore
+        store = PipelineStore()
+        agent._pipelines = store
+    return store
+
+
 def handle_pa_intent(agent: Any, intent: str, message: str,
                      ctx: dict) -> Optional[PrismCard]:
+    if intent.startswith("pipeline_"):
+        from prism_pipelines import human_schedule, parse_save
+        store = _pipeline_store(agent)
+
+        if intent == "pipeline_save":
+            try:
+                name, instruction, secs = parse_save(message)
+                pipe = store.save(name, instruction, secs)
+            except ValueError as exc:
+                return text_card(str(exc), "Pipeline")
+            sched = (f" · runs {human_schedule(pipe.schedule_secs)}"
+                     if pipe.schedule_secs else " · manual (say \"run "
+                     f"pipeline {pipe.name}\")")
+            return text_card(
+                f"Saved pipeline **{pipe.name}**{sched}.\n\nSteps: "
+                f"{pipe.instruction}", "Pipeline saved")
+
+        if intent == "pipeline_list":
+            pipes = store.list_all()
+            if not pipes:
+                return text_card(
+                    "No pipelines yet. Save one with:\n"
+                    "\"save pipeline morning: check the weather and my "
+                    "calendar, then summarise — every day\"", "Pipelines")
+            lines = "\n".join(
+                f"· **{p.name}** ({human_schedule(p.schedule_secs)}"
+                f"{'' if p.enabled else ', disabled'}) — {p.instruction[:80]}"
+                for p in pipes)
+            return text_card(lines, f"Pipelines ({len(pipes)})")
+
+        if intent == "pipeline_delete":
+            m = re.search(r"(?:pipeline|routine|workflow|pipe)\s+(.+)",
+                          message, re.IGNORECASE)
+            name = (m.group(1).strip() if m else "").rstrip("?.!")
+            if name and store.delete(name):
+                return text_card(f"Deleted pipeline **{name.lower()}**.",
+                                 "Pipeline deleted")
+            return text_card(
+                f"No pipeline named '{name}'. Say \"list pipelines\" to see "
+                "them.", "Pipeline")
+
+        if intent == "pipeline_run":
+            m = re.search(r"(?:pipeline|routine|workflow|pipe)\s+(.+)",
+                          message, re.IGNORECASE)
+            name = (m.group(1).strip() if m else "").rstrip("?.!")
+            pipe = store.get(name)
+            if pipe is None:
+                return text_card(
+                    f"No pipeline named '{name}'. Say \"list pipelines\".",
+                    "Pipeline")
+            card = agent.run_pipeline(pipe.instruction, ctx)
+            store.mark_run(pipe.name)
+            return card or text_card(
+                f"Ran **{pipe.name}** but it produced no output.", "Pipeline")
+
     if intent == "smart_home":
         if not agent._smarthome.configured:
             return text_card(

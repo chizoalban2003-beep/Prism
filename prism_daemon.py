@@ -180,6 +180,38 @@ def _surprise_reflection_worker(agent, interval: int = 3600):
             logger.warning("Surprise reflection error: %s", exc, exc_info=True)
 
 
+def _pipeline_worker(agent, interval: int = 60):
+    """Fire scheduled pipelines whose interval has elapsed (gap 2).
+
+    Each due pipeline runs through agent.run_pipeline (the multistep tool
+    loop) and its result card is delivered as a proactive notification —
+    same surface as a reminder, so nothing new has to reach the UI.
+    """
+    while not _SHUTDOWN.wait(timeout=interval):
+        try:
+            from prism_pipelines import PipelineStore
+        except Exception:
+            continue
+        store = getattr(agent, "_pipelines", None)
+        if store is None:
+            store = PipelineStore()
+            agent._pipelines = store
+        proactive = getattr(agent, "_proactive", None)
+        for pipe in store.due():
+            try:
+                card = agent.run_pipeline(pipe.instruction,
+                                          {"source": "pipeline_schedule"})
+                store.mark_run(pipe.name)
+                body = (getattr(card, "body", "") or "").strip()
+                summary = body.split("\n")[0][:180] if body else "done"
+                logger.info("[pipeline] ran '%s' → %s", pipe.name, summary)
+                if proactive is not None:
+                    proactive.schedule_in(
+                        f"Pipeline '{pipe.name}': {summary}", 0.0)
+            except Exception as exc:
+                logger.warning("[pipeline] '%s' failed: %s", pipe.name, exc)
+
+
 def _crystalliser_worker(agent, interval: int = 3600):
     """Hourly deep analysis of recent interactions."""
     while not _SHUTDOWN.wait(timeout=interval):
@@ -745,6 +777,7 @@ def main():
         threading.Thread(target=_outcome_feed_worker,       args=(agent,), daemon=True, name="outcome-feed"),
         threading.Thread(target=_surprise_reflection_worker,args=(agent,), daemon=True, name="surprise-refl"),
         threading.Thread(target=_crystalliser_worker,       args=(agent,), daemon=True, name="crystalliser"),
+        threading.Thread(target=_pipeline_worker,           args=(agent,), daemon=True, name="pipeline"),
         threading.Thread(target=_narrative_worker,          args=(agent,), daemon=True, name="narrative"),
         threading.Thread(target=_lora_weekly_worker,        args=(agent,), daemon=True, name="lora-weekly"),
         threading.Thread(target=_federation_push_worker,    args=(agent,), daemon=True, name="federation-push"),

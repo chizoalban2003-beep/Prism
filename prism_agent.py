@@ -762,11 +762,42 @@ class PrismAgent:
         self._route_memo = (message, intent)
         return intent
 
+    #: Intents that are commands about Prism's own trajectories rather than
+    #: tasks to execute. They must be recognised before the multi-step tiers,
+    #: because their operands (a pipeline instruction, a horizon description)
+    #: often contain the very "and"/"then"/task keywords those tiers trigger on.
+    _CONTROL_INTENTS = frozenset({
+        "pipeline_save", "pipeline_run", "pipeline_list", "pipeline_delete",
+        "horizon_add", "horizon_list", "horizon_abandon",
+    })
+
+    def _priority_route(self, message: str) -> str:
+        """Regex-only route (no LLM round-trip) returning the intent iff it is
+        a control-plane command that must win over the chain/composer fold.
+        Returns "" for everything else so normal tiering proceeds."""
+        intent = route_intent(message, self.INTENTS, lambda _m: "")
+        return intent if intent in self._CONTROL_INTENTS else ""
+
     def _should_suppress_logging(self, message: str) -> bool:
         """True when the message routes (by regex, no LLM call) to a
         constitution ``never_log`` intent (e.g. email_send / phone_call), so
         its content is kept out of conversation history, memory, and sessions."""
         return should_suppress(message, self.INTENTS, self._constitution)
+
+    def run_pipeline(self, instruction: str,
+                     ctx: Optional[dict] = None) -> Optional[PrismCard]:
+        """Execute a saved pipeline's instruction (gap 2). Runs through the
+        multistep tool loop — the same LLM→policy→organ machinery as an
+        ad-hoc multi-step chat — and falls back to the normal chat path
+        when the loop declines (offline / disabled)."""
+        ctx = dict(ctx or {})
+        ctx.setdefault("source", "pipeline")
+        card = self._run_tool_loop(instruction, ctx, multistep=True)
+        if card is not None:
+            return card
+        # Loop unavailable — the chat path still handles it (planner,
+        # composer, or single intent), just without cross-tool sequencing.
+        return self.chat(instruction, ctx)
 
     def _run_tool_loop(self, message: str, ctx: dict,
                        multistep: bool = False) -> Optional[PrismCard]:
@@ -827,6 +858,7 @@ class PrismAgent:
                 composer=self._composer,
                 execute=self._execute,
                 route=self._route,
+                priority_route=self._priority_route,
                 tool_loop=self._run_tool_loop,
                 fold_tiers=bool(
                     self._config.get("tool_loop", {}).get("fold_tiers", True)),

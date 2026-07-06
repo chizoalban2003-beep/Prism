@@ -43,11 +43,17 @@ class _Recorder:
 
 
 def _dispatcher(*, loop_card="loop answer", fold=True,
-                chain_wants=True, compose_wants=True, orch=None):
+                chain_wants=True, compose_wants=True, orch=None,
+                priority_route=None):
     chain = _Recorder("chain", card=text_card("chain answer", "Chain"),
                       wants=chain_wants)
     composer = _Recorder("composer", wants=compose_wants)
     loop_calls = []
+    executed = []
+
+    def execute(intent, m, c):
+        executed.append(intent)
+        return text_card("single intent", "Fallback")
 
     def tool_loop(message, context, multistep=False):
         loop_calls.append({"message": message, "multistep": multistep})
@@ -58,11 +64,13 @@ def _dispatcher(*, loop_card="loop answer", fold=True,
         chain_expert=_Recorder("expert", wants=False),
         chain=chain,
         composer=composer,
-        execute=lambda intent, m, c: text_card("single intent", "Fallback"),
+        execute=execute,
         route=lambda m: "general_chat",
+        priority_route=priority_route,
         tool_loop=tool_loop,
         fold_tiers=fold,
     )
+    d._executed = executed  # test-visible
     return d, chain, composer, loop_calls
 
 
@@ -103,3 +111,27 @@ class TestFold:
         card = d.dispatch("short message here please thanks kindly", {})
         assert card.body == "single intent"
         assert loop_calls == []
+
+
+class TestControlPlanePrecedence:
+    """A control-plane command whose operand *looks* multi-step must be
+    recognised (priority_route) before the chain/composer fold — otherwise
+    "save pipeline X: do A and B" runs the task instead of saving it."""
+
+    def _pr(self, m):
+        return "pipeline_save" if m.lower().startswith("save pipeline") else ""
+
+    def test_priority_route_wins_over_fold(self):
+        # message contains " and " → chain would normally fold into the loop
+        d, chain, _, loop_calls = _dispatcher(priority_route=self._pr)
+        card = d.dispatch(
+            "save pipeline umbrella: check weather and tell me to pack", {})
+        assert d._executed == ["pipeline_save"]
+        assert loop_calls == []      # loop never engaged
+        assert chain.ran is False    # legacy chain never engaged
+
+    def test_priority_route_empty_falls_through(self):
+        d, _, _, loop_calls = _dispatcher(priority_route=self._pr)
+        card = d.dispatch(MULTISTEP_MSG, {})
+        assert card.body == "loop answer"   # ordinary fold still happens
+        assert d._executed == []

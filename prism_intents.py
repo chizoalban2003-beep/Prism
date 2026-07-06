@@ -29,6 +29,22 @@ INTENTS: list[tuple[str, str]] = [
      r"(?:book|buy|do|send|run) (?:it |that )?when |"
      r"horizon goal|long.?term goal|background goal",
      "horizon_add"),
+    # Persistent pipelines (gap 2, docs/command-centre-assessment.md).
+    # Hoisted to the very top (just below horizon) because a pipeline's
+    # INSTRUCTION often contains hoisted keywords ("save pipeline x: check
+    # the weather") — the distinctive save/run/list/delete-pipeline VERB
+    # must win over weather/news/task before the instruction is even read.
+    # A pipeline is a named saved multi-step instruction replayed through
+    # the tool loop, optionally on a schedule.
+    (r"(?:save|create|define|make)\s+(?:a\s+)?(?:pipeline|routine|workflow|pipe)\b",
+     "pipeline_save"),
+    (r"(?:run|execute|trigger|start)\s+(?:the\s+|my\s+)?(?:pipeline|routine|workflow|pipe)\b",
+     "pipeline_run"),
+    (r"(?:list|show|view|what)\s+(?:are\s+)?(?:my\s+|the\s+|all\s+)?"
+     r"(?:pipelines?|routines?|workflows?|pipes)\b",
+     "pipeline_list"),
+    (r"(?:delete|remove|forget|drop)\s+(?:the\s+|my\s+)?(?:pipeline|routine|workflow|pipe)\b",
+     "pipeline_delete"),
     # Small talk & emotional check-ins: a companion answers "good morning"
     # with a greeting, not a plan card. universal_plan's bare keywords
     # (morning/today) below would otherwise claim these — live probe showed

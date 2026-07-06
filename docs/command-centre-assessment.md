@@ -55,24 +55,34 @@ schemas + `composable_with()` for wiring producer→consumer; federation
 mesh + mobile sync across devices; IDE extension; PWA; device
 executor/scanner for local apps and files.
 
-**Gap 1 — MCP is dark on this install** (`enabled: false`, zero
-servers). The command-centre story starts by configuring 2-3 MCP
-servers; the loop's belt should then include MCP tools alongside
-organs (they already share the registry — prism_agent_registry).
+**Gap 1 — MCP is dark on this install** — CLOSED (#28-116). MCP
+tools now join the tool-loop belt through the same gates as organs.
+`prism_tool_loop._belt()` returns provider-safe function names
+(`mcp.demo.echo` → `mcp_demo_echo`) and a name→intent map for dispatch;
+any `mcp.*` tool is treated as both untrusted-source and outbound for
+taint purposes. Verified live: the loop engaged with 61 tools incl. 2
+MCP, called `mcp.demo.local_time` through the gate, then correctly
+tainted the belt (→34 low-risk, outbound + MCP denied). Enable via
+`[mcp] enabled=true` + `[[mcp.servers]]` in the config overlay.
 
-**Gap 2 — no persistent pipes.** The loop composes ad-hoc chains
-per-message; a command centre needs *durable* connections ("every
-morning: calendar → weather → brief to phone"). The pieces exist
-(proactive triggers + composer plans + organ schemas) but there is no
-user-facing way to save a pipeline. Shortest path: a `pipeline_save`
-organ that persists a named tool-loop trajectory as a proactive
-trigger.
+**Gap 2 — no persistent pipes** — CLOSED (#28-116). `prism_pipelines`
+adds a `PipelineStore` (`~/.prism/pipelines.db`) and NL grammar
+"save pipeline <name>: <steps> [every N unit]". Four intents
+(`pipeline_save/run/list/delete`) are recognised by a regex-only
+*priority route* that fires BEFORE the chain/composer fold — a saved
+instruction routinely contains "and"/"then" and task keywords that
+would otherwise run the steps instead of saving them. Running a
+pipeline replays its instruction through the policied tool loop
+(`agent.run_pipeline`); scheduled pipelines fire from the daemon's
+`pipeline` worker via the proactive delivery path. Verified live:
+full save/list/run/delete lifecycle + scheduled ("every 15m") parse.
 
-**Gap 3 — desktop control is shallow.** Open apps, lock screen, shell
-with approval, screenshots — yes. Window management, per-app
-automation (draft in the mail client, manipulate a spreadsheet) — no;
-that depth is exactly what MCP servers per app are for, rather than
-PRISM-native code.
+**Gap 3 — desktop control is shallow** — addressed via Gap 1. Deep
+per-app automation (draft in the mail client, manipulate a
+spreadsheet, window management) arrives as per-app MCP servers on the
+now-live belt rather than PRISM-native code — the same gates, taint
+rules, and approval flow apply. No separate PRISM subsystem is
+warranted; the extension point is the MCP config.
 
 ## Honest constraints
 

@@ -123,6 +123,7 @@ py-modules = [
     "prism_perception",
     "prism_persona",
     "prism_pwa",
+    "prism_pipelines",
     "prism_planner",
     "prism_policy",
     "prism_proactive",

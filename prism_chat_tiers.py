@@ -45,6 +45,7 @@ class TierDispatcher:
         composer: Any,
         execute: Callable[..., PrismCard],
         route: Callable[[str], str],
+        priority_route: Optional[Callable[[str], str]] = None,
         tool_loop: Optional[Callable[..., Optional[PrismCard]]] = None,
         fold_tiers: bool = True,
     ) -> None:
@@ -54,6 +55,12 @@ class TierDispatcher:
         self._composer = composer
         self._execute = execute
         self._route = route
+        # Control-plane commands (pipeline_*/horizon_*) are recognised by a
+        # regex-only route BEFORE the multi-step tiers. A saved pipeline's
+        # instruction routinely contains "and"/"then" and task keywords, which
+        # would otherwise trip the chain/composer fold and run the instruction
+        # instead of saving it. See dispatch().
+        self._priority_route = priority_route
         # RFC step 5 (docs/rfc-agentic-loop.md): when a chain/composer
         # trigger fires, try the policied tool loop FIRST — it is the
         # same "decompose and sequence steps" job those tiers hand-roll.
@@ -73,6 +80,13 @@ class TierDispatcher:
         card = initial_card
         msg_ln = len((message or "").split())
         msg_lw = (message or "").lower()
+
+        # Control plane wins over every execution tier: "save pipeline X: do A
+        # and B" is a management command, not the task "do A and B".
+        if card is None and message and self._priority_route:
+            forced = self._priority_route(message)
+            if forced:
+                return self._execute(forced, message, context)
 
         if (card is None and self._orchestrator and message
                 and self._orchestrator.should_orchestrate(message)):
