@@ -29,6 +29,9 @@ max_hops   = 3          # LLM→tool round-trips per message
 max_risk   = "high"     # belt ceiling: "low" | "medium" | "high" | "critical"
 deny       = []         # organ intents the loop may never call
 allow_only = []         # non-empty → restrict the belt to exactly these
+fold_tiers = true       # RFC step 5: chain/composer triggers try the loop
+                        # first (legacy tier still runs if the loop declines)
+max_hops_multistep = 5  # hop budget for folded multi-step requests
 
 [agent]
 # text_model  = "llama3.2:3b"           # overrides [llm].ollama_model for planning

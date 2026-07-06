@@ -45,6 +45,8 @@ class TierDispatcher:
         composer: Any,
         execute: Callable[..., PrismCard],
         route: Callable[[str], str],
+        tool_loop: Optional[Callable[..., Optional[PrismCard]]] = None,
+        fold_tiers: bool = True,
     ) -> None:
         self._orchestrator = orchestrator
         self._chain_expert = chain_expert
@@ -52,6 +54,15 @@ class TierDispatcher:
         self._composer = composer
         self._execute = execute
         self._route = route
+        # RFC step 5 (docs/rfc-agentic-loop.md): when a chain/composer
+        # trigger fires, try the policied tool loop FIRST — it is the
+        # same "decompose and sequence steps" job those tiers hand-roll.
+        # The loop declining (offline / disabled / no belt) falls
+        # through to the legacy tier unchanged, so behaviour without an
+        # LLM is identical. [tool_loop].fold_tiers=false restores the
+        # legacy order outright.
+        self._tool_loop = tool_loop
+        self._fold_tiers = fold_tiers
 
     def dispatch(
         self,
@@ -77,15 +88,28 @@ class TierDispatcher:
                 lambda: self._chain_expert.run(message, self._execute, context),
             )
 
-        if (card is None and message and msg_ln > 5
-                and self._chain.should_chain(message)):
+        chain_wants = (message and msg_ln > 5
+                       and self._chain.should_chain(message))
+        compose_wants = (message and msg_ln > 6
+                         and self._composer.should_compose(message))
+
+        if (card is None and self._fold_tiers and self._tool_loop
+                and (chain_wants or compose_wants)):
+            card = self._safe(
+                "Tool loop (folded tier)",
+                lambda: self._tool_loop(message, context, multistep=True),
+            )
+            if card is not None:
+                logger.debug("[tiers] folded %s trigger into tool loop",
+                             "chain" if chain_wants else "composer")
+
+        if card is None and chain_wants:
             card = self._safe(
                 "Chain",
                 lambda: self._chain.run(message, self._execute, context),
             )
 
-        if (card is None and message and msg_ln > 6
-                and self._composer.should_compose(message)):
+        if card is None and compose_wants:
             card = self._safe("Composer", lambda: self._compose(message, context))
 
         if card is None:

@@ -96,14 +96,18 @@ class ToolLoop:
 
     # ── The loop ─────────────────────────────────────────────────────────
 
-    def run(self, agent: Any, message: str, ctx: dict) -> Optional[PrismCard]:
+    def run(self, agent: Any, message: str, ctx: dict,
+            max_hops: int | None = None) -> Optional[PrismCard]:
         """Run the loop; None means "use the old path" (disabled, no
-        tools, or no LLM backend reachable)."""
+        tools, or no LLM backend reachable). ``max_hops`` overrides the
+        configured budget — folded chain/composer triggers (RFC step 5)
+        pass the larger multistep allowance."""
         if not self._cfg.get("enabled", True):
             return None
         if self._router is None or self._loader is None:
             return None
-        max_hops = int(self._cfg.get("max_hops", 3))
+        if max_hops is None:
+            max_hops = int(self._cfg.get("max_hops", 3))
         max_tokens = int(self._cfg.get("max_tokens", 700))
         tainted = False
         belt = self._belt(tainted)

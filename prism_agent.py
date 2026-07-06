@@ -772,9 +772,12 @@ class PrismAgent:
         its content is kept out of conversation history, memory, and sessions."""
         return should_suppress(message, self.INTENTS, self._constitution)
 
-    def _run_tool_loop(self, message: str, ctx: dict) -> Optional[PrismCard]:
-        """Bounded LLM→policy→organ loop (RFC step 3). Best-effort: any
-        failure returns None and the caller uses the pre-loop path."""
+    def _run_tool_loop(self, message: str, ctx: dict,
+                       multistep: bool = False) -> Optional[PrismCard]:
+        """Bounded LLM→policy→organ loop (RFC steps 3+5). Best-effort:
+        any failure returns None and the caller uses the pre-loop path.
+        multistep=True (folded chain/composer trigger) grants the larger
+        hop budget — those requests are multi-step by definition."""
         try:
             loop = getattr(self, "_tool_loop", None)
             if loop is None:
@@ -787,7 +790,11 @@ class PrismAgent:
                     config=dict(self._config.get("tool_loop", {})),
                 )
                 self._tool_loop = loop
-            return loop.run(self, message, ctx)
+            max_hops = None
+            if multistep:
+                cfg = self._config.get("tool_loop", {})
+                max_hops = int(cfg.get("max_hops_multistep", 5))
+            return loop.run(self, message, ctx, max_hops=max_hops)
         except Exception as exc:
             logger.debug("[tool_loop] failed, falling back: %s", exc)
             return None
@@ -824,6 +831,9 @@ class PrismAgent:
                 composer=self._composer,
                 execute=self._execute,
                 route=self._route,
+                tool_loop=self._run_tool_loop,
+                fold_tiers=bool(
+                    self._config.get("tool_loop", {}).get("fold_tiers", True)),
             )
             self._tier_dispatcher_cache = dispatcher
         return dispatcher

@@ -145,8 +145,30 @@ already handles stays instant, free, and offline-capable.
    consent (full mid-loop resume is future work) (#28-109).
 4. ✅ Shadow rollout — subsumed by 3 (loop runs only on the
    `general_chat` shrug; strictly additive).
-5. Only after that proves itself: fold composer → loop, then chain →
-   loop, then evaluate the orchestrator.
+5. ✅ Tier folding (#28-111). When a chain or composer trigger fires,
+   the dispatcher now tries the tool loop FIRST with the larger
+   ``max_hops_multistep`` budget (default 5) — decomposing and
+   sequencing steps is the loop's native job. The legacy tier still
+   runs whenever the loop declines (offline, disabled, empty belt), so
+   LLM-less behaviour is bit-identical, and
+   ``[tool_loop].fold_tiers = false`` restores the legacy order
+   outright. The chain/composer code stays in the tree as that
+   fallback; deleting it outright is a later decision once tool_loop
+   ledger rows show the folded path handling the traffic.
+
+   **Orchestrator evaluation — keep it.** ``should_orchestrate``
+   claims conditional multi-domain task graphs with horizon pauses:
+   nodes that wait DAYS on a trigger condition, persist across daemon
+   restarts (TaskGraph + HorizonGoal storage), and resume on approval.
+   A bounded synchronous loop cannot express "pause this branch until
+   the physio replies next week" — that requires durable graph state,
+   which the orchestrator owns. The loop and the orchestrator are not
+   competitors: the loop covers minutes-scale multi-step requests, the
+   orchestrator covers cross-session ones. Revisit only if the loop
+   ever gains checkpoint/resume persistence. Expert chain (tier 0.5)
+   keeps precedence for research-heavy requests for the same reason
+   the orchestrator does: its evaluate-and-retry machinery is not yet
+   expressible in the loop.
 
 ## Answer in one line
 
