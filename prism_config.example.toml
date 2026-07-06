@@ -19,6 +19,17 @@ ollama_model   = "llama3.2:3b"
 # openai_api_key = "sk-..."
 # openai_host    = "https://api.openai.com"
 
+# ── Tool loop (RFC: docs/rfc-agentic-loop.md) ────────────────────────────────
+# Runs only where routing shrugs (general_chat). User policy lives here;
+# PRISM's own self-preservation (constitution, approval gates, taint rule,
+# provider budget ceilings) is mechanical and cannot be configured away.
+[tool_loop]
+enabled    = true
+max_hops   = 3          # LLM→tool round-trips per message
+max_risk   = "high"     # belt ceiling: "low" | "medium" | "high" | "critical"
+deny       = []         # organ intents the loop may never call
+allow_only = []         # non-empty → restrict the belt to exactly these
+
 [agent]
 # text_model  = "llama3.2:3b"           # overrides [llm].ollama_model for planning
 # planner_timeout = 30.0                # seconds per planner LLM call; raise on

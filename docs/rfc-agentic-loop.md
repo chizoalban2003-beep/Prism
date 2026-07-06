@@ -128,14 +128,23 @@ already handles stays instant, free, and offline-capable.
 1. ✅ `OrganLoader.organ_tool_schemas()` — organs as OpenAI-format tool
    definitions, policy facts in the description, `max_risk` belt filter
    (#28-108, tested).
-2. `LLMRouter.call_tools(messages, tools)` — structured tool-call
-   round-trip for openai_compat/ollama/claude backends (all three
-   support function calling).
-3. `prism_tool_loop.py` — the bounded loop, replacing the LLM-classifier
-   fallback in `route_intent`'s miss path. Approval resume via the
-   existing `_pending_approval` machinery.
-4. Shadow rollout: run the loop only when the classifier returns
-   `general_chat`/None (today's "shrug" outcomes) — strictly additive.
+2. ✅ `LLMRouter.call_tools(messages, tools)` — structured tool-call
+   round-trip for openai_compat / ollama / claude backends, provider
+   budget ceilings applied per hop, calls ledgered as `tool_loop`
+   (#28-109).
+3. ✅ `prism_tool_loop.py` — the bounded loop, wired as the shadow
+   rollout of step 4: PrismAgent runs it exactly where routing lands on
+   `general_chat`. Policy is split deliberately: the **user** owns the
+   `[tool_loop]` config (enabled / max_hops / max_risk / deny /
+   allow_only); the **Prism's self-preservation** is mechanical and
+   non-configurable — dispatch_organ's L1/L2/L3 gates unchanged, taint
+   rule (untrusted content → low-risk belt, outbound organs denied),
+   critical organs excluded from the default belt, offline → old path
+   by construction. A `requires_approval` organ surfaces the approval
+   card as the turn's outcome; the existing approve flow executes it on
+   consent (full mid-loop resume is future work) (#28-109).
+4. ✅ Shadow rollout — subsumed by 3 (loop runs only on the
+   `general_chat` shrug; strictly additive).
 5. Only after that proves itself: fold composer → loop, then chain →
    loop, then evaluate the orchestrator.
 

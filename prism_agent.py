@@ -772,6 +772,26 @@ class PrismAgent:
         its content is kept out of conversation history, memory, and sessions."""
         return should_suppress(message, self.INTENTS, self._constitution)
 
+    def _run_tool_loop(self, message: str, ctx: dict) -> Optional[PrismCard]:
+        """Bounded LLM→policy→organ loop (RFC step 3). Best-effort: any
+        failure returns None and the caller uses the pre-loop path."""
+        try:
+            loop = getattr(self, "_tool_loop", None)
+            if loop is None:
+                from prism_organ_dispatch import dispatch_organ
+                from prism_tool_loop import ToolLoop
+                loop = ToolLoop(
+                    router=getattr(self, "_router", None),
+                    organ_loader=getattr(self, "_organ_loader", None),
+                    dispatch_fn=dispatch_organ,
+                    config=dict(self._config.get("tool_loop", {})),
+                )
+                self._tool_loop = loop
+            return loop.run(self, message, ctx)
+        except Exception as exc:
+            logger.debug("[tool_loop] failed, falling back: %s", exc)
+            return None
+
     def _llm_classify(self, message: str) -> Optional[str]:
         classifier = getattr(self, "_llm_classifier", None)
         if classifier is None:
@@ -1062,6 +1082,13 @@ class PrismAgent:
             reply = _trivial_chat_reply(message)
             if reply is not None:
                 return text_card(reply, "Chat")
+            # RFC step 3 shadow rollout (docs/rfc-agentic-loop.md): the
+            # policied tool loop runs exactly where routing shrugged.
+            # It returns None when disabled, tool-less, or offline —
+            # then the plain free-chat path below is unchanged.
+            loop_card = self._run_tool_loop(message, ctx)
+            if loop_card is not None:
+                return loop_card
             router = getattr(self, "_router", None)
             if router is None:
                 return text_card(

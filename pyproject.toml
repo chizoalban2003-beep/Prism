@@ -145,6 +145,7 @@ py-modules = [
     "prism_smart_home",
     "prism_task_queue",
     "prism_tasks",
+    "prism_tool_loop",
     "prism_tool_finder",
     "prism_tts",
     "prism_voice",

@@ -99,6 +99,43 @@ def _rank(option: LLMOption) -> int:
             return cap
     return 1 if option.available else 0
 
+
+def _openai_msgs_to_anthropic(messages: list[dict]) -> tuple[str, list[dict]]:
+    """Convert OpenAI chat messages (incl. tool_calls / role:"tool") to
+    Anthropic Messages format. Returns (system_text, messages)."""
+    system = ""
+    out: list[dict] = []
+    for m in messages:
+        role = m.get("role", "user")
+        if role == "system":
+            system = (system + "\n" + str(m.get("content") or "")).strip()
+        elif role == "tool":
+            out.append({"role": "user", "content": [{
+                "type": "tool_result",
+                "tool_use_id": m.get("tool_call_id", ""),
+                "content": str(m.get("content") or ""),
+            }]})
+        elif role == "assistant" and m.get("tool_calls"):
+            blocks: list[dict] = []
+            if m.get("content"):
+                blocks.append({"type": "text", "text": str(m["content"])})
+            for tc in m["tool_calls"]:
+                fn = tc.get("function", {})
+                try:
+                    args = (fn.get("arguments")
+                            if isinstance(fn.get("arguments"), dict)
+                            else json.loads(fn.get("arguments") or "{}"))
+                except Exception:
+                    args = {}
+                blocks.append({"type": "tool_use",
+                               "id": tc.get("id", ""),
+                               "name": fn.get("name", ""),
+                               "input": args})
+            out.append({"role": "assistant", "content": blocks})
+        else:
+            out.append({"role": role, "content": str(m.get("content") or "")})
+    return system, out
+
 # CRYSTAL-phase ("fast") selection caps the local-preference at this avg
 # latency. If the only local option is slower than this (e.g. tinyllama
 # on a CPU-only host averaging tens of seconds), fall through to the
@@ -543,6 +580,149 @@ class LLMRouter:
             logger.debug("[speculative] fallback to normal call: %s", e)
             return self.call(prompt, system=system,
                              conversation_history=conversation_history or [])
+
+    # ── Structured tool calling (RFC step 2, docs/rfc-agentic-loop.md) ────
+
+    def call_tools(
+        self,
+        messages: list[dict],
+        tools: list[dict] | None,
+        max_tokens: int = 1500,
+        min_capability: int = 1,
+        source: str = "tool_loop",
+    ) -> dict:
+        """One structured tool-calling round-trip.
+
+        ``messages`` is OpenAI chat format, including prior assistant
+        ``tool_calls`` entries and ``role:"tool"`` results; ``tools`` is
+        OpenAI function-calling format (see organ_tool_schemas()).
+
+        Returns ``{"content": str, "tool_calls": [{"id","name","arguments"}],
+        "model": "provider/model"}`` — empty ``tool_calls`` means the model
+        answered directly. ``model == "none"`` means no backend was
+        reachable (callers fall back to the non-loop path). Provider
+        budget ceilings apply exactly as in call().
+        """
+        for opt in self.discover():
+            if (not opt.available or opt.provider == "stdlib"
+                    or opt.capability < min_capability):
+                continue
+            if self._budget_policy is not None:
+                try:
+                    _decision = self._budget_policy.check(opt.provider)
+                    if not _decision.allowed:
+                        logger.info("[llm_router] budget blocked tools %s/%s: %s",
+                                    opt.provider, opt.model, _decision.reason)
+                        continue
+                except Exception as _be:
+                    logger.debug("[llm_router] budget check error: %s", _be)
+            try:
+                _t0 = time.time()
+                if opt.provider in ("openai", "openai_compat"):
+                    result = self._tools_call_openai(opt, messages, tools, max_tokens)
+                elif opt.provider == "ollama":
+                    result = self._tools_call_ollama(opt, messages, tools, max_tokens)
+                elif opt.provider == "claude":
+                    result = self._tools_call_claude(opt, messages, tools, max_tokens)
+                else:
+                    continue
+                try:
+                    from prism_llm_ledger import get_ledger as _get_ledger
+                    _in_tok = sum(len(str(m.get("content") or "")) for m in messages) // 4
+                    _in_tok += sum(len(json.dumps(t)) for t in (tools or [])) // 4
+                    _out_tok = len(result.get("content") or "") // 4 + 16
+                    _get_ledger().record_call(
+                        provider=opt.provider, model=opt.model,
+                        input_tokens=_in_tok, output_tokens=_out_tok,
+                        latency_ms=(time.time() - _t0) * 1000, source=source)
+                except Exception:
+                    pass
+                result["model"] = f"{opt.provider}/{opt.model}"
+                return result
+            except Exception as e:
+                logger.warning("LLM tools %s/%s failed: %s", opt.provider, opt.model, e)
+                opt.available = False
+                continue
+        return {"content": "", "tool_calls": [], "model": "none"}
+
+    def _tools_call_openai(self, opt, messages, tools, max_tokens) -> dict:
+        api_key = (self._config.get("openai_api_key")
+                   or os.environ.get("OPENAI_API_KEY", ""))
+        body: dict = {"model": opt.model, "max_tokens": max_tokens,
+                      "messages": messages}
+        if tools:
+            body["tools"] = tools
+            body["tool_choice"] = "auto"
+        req = urllib.request.Request(
+            f"{opt.endpoint}/v1/chat/completions",
+            data=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json",
+                     "Authorization": "Bearer " + api_key})
+        resp = urllib.request.urlopen(req, timeout=self.request_timeout)
+        msg = json.loads(resp.read())["choices"][0]["message"]
+        calls = []
+        for tc in msg.get("tool_calls") or []:
+            fn = tc.get("function", {})
+            try:
+                args = json.loads(fn.get("arguments") or "{}")
+            except Exception:
+                args = {"message": fn.get("arguments") or ""}
+            calls.append({"id": tc.get("id") or f"call_{len(calls)}",
+                          "name": fn.get("name", ""), "arguments": args})
+        return {"content": msg.get("content") or "", "tool_calls": calls}
+
+    def _tools_call_ollama(self, opt, messages, tools, max_tokens) -> dict:
+        body: dict = {"model": opt.model, "messages": messages, "stream": False,
+                      "options": {"num_predict": max_tokens}}
+        if tools:
+            body["tools"] = tools
+        req = urllib.request.Request(
+            f"{self._ollama_host}/api/chat",
+            data=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json"})
+        resp = urllib.request.urlopen(req, timeout=self.request_timeout)
+        msg = json.loads(resp.read()).get("message", {})
+        calls = []
+        for tc in msg.get("tool_calls") or []:
+            fn = tc.get("function", {})
+            args = fn.get("arguments") or {}
+            if not isinstance(args, dict):
+                args = {"message": str(args)}
+            calls.append({"id": f"call_{len(calls)}",
+                          "name": fn.get("name", ""), "arguments": args})
+        return {"content": msg.get("content") or "", "tool_calls": calls}
+
+    def _tools_call_claude(self, opt, messages, tools, max_tokens) -> dict:
+        api_key = self._config.get("claude_api_key", "")
+        system, converted = _openai_msgs_to_anthropic(messages)
+        body: dict = {"model": opt.model, "max_tokens": max_tokens,
+                      "messages": converted}
+        if system:
+            body["system"] = system
+        if tools:
+            body["tools"] = [{
+                "name": t["function"]["name"],
+                "description": t["function"].get("description", ""),
+                "input_schema": t["function"].get("parameters",
+                                                  {"type": "object"}),
+            } for t in tools]
+        req = urllib.request.Request(
+            "https://api.anthropic.com/v1/messages",
+            data=json.dumps(body).encode(),
+            headers={"Content-Type": "application/json",
+                     "anthropic-version": "2023-06-01",
+                     "x-api-key": api_key})
+        resp = urllib.request.urlopen(req, timeout=self.request_timeout)
+        data = json.loads(resp.read())
+        content, calls = "", []
+        for block in data.get("content", []):
+            if block.get("type") == "text":
+                content += block.get("text", "")
+            elif block.get("type") == "tool_use":
+                calls.append({"id": block.get("id") or f"call_{len(calls)}",
+                              "name": block.get("name", ""),
+                              "arguments": block.get("input") or {}})
+        return {"content": content, "tool_calls": calls}
 
     def status_summary(self) -> dict:
         """For /llm/status endpoint and sidebar display."""
