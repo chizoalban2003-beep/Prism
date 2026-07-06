@@ -248,6 +248,17 @@ INTENTS: list[tuple[str, str]] = [
      r"(?:desktop|windows?|screen|apps?|machine)\b|"
      r"what\s+(?:desktop|gui)\s+(?:features?|things?)\s+can\s+you\b",
      "desktop_capabilities"),
+    # Window control: list / focus / close / minimise / maximise desktop
+    # windows. Scoped to the "window(s)" noun, the minimise/maximise verbs
+    # (near-unambiguously window ops), or "bring X to (the) front" so it does
+    # not steal generic focus/close verbs used for tasks/tabs elsewhere.
+    (r"\b(?:list|show)\s+(?:all\s+|the\s+|open\s+)?windows?\b|"
+     r"\bwhat\s+windows?\s+(?:are\s+)?(?:open|running)\b|"
+     r"\b(?:minimi[sz]e|maximi[sz]e|un-?maximi[sz]e|fullscreen)\b|"
+     r"\b(?:focus|activate|close|raise)\s+(?:the\s+|my\s+)?[\w .-]*\bwindow\b|"
+     r"\bbring\s+(?:up\s+)?[\w .-]+?\s+(?:to\s+(?:the\s+)?front|up)\b|"
+     r"\bwindow\s+(?:control|manager?|list)\b",
+     "window_control"),
     # Device inventory: PRISM's core mission is bridging the user to
     # their hardware. Hoisted above all domain matchers because:
     #   * "hardware inventory" was eaten by domain_supply's `inventory`.
