@@ -272,6 +272,14 @@ INTENTS: list[tuple[str, str]] = [
      r"\bbring\s+(?:up\s+)?[\w .-]+?\s+(?:to\s+(?:the\s+)?front|up)\b|"
      r"\bwindow\s+(?:control|manager?|list)\b",
      "window_control"),
+    # Computer-use: the closed screenshot→vision→input loop. Scoped to
+    # explicit "use the computer / control the screen to <goal>" phrasings so
+    # it doesn't grab ordinary requests. High-risk + approval-gated.
+    (r"\buse\s+the\s+computer\s+to\b|"
+     r"\bcomputer[- ]use\b|"
+     r"\bcontrol\s+(?:my\s+)?(?:screen|desktop|computer)\s+to\b|"
+     r"\b(?:look\s+at|use)\s+(?:my\s+)?screen\s+(?:and|to)\b",
+     "computer_use"),
     # Input control: synthesise keyboard/mouse input. Scoped to explicit
     # actuation verbs so it doesn't steal "type of X" (noun) or notify/task
     # phrasings. High-risk + approval-gated in the organ policy.
