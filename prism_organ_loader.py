@@ -391,6 +391,58 @@ class OrganLoader:
         """Return organ_details for all known intents, sorted by intent name."""
         return [d for i in sorted(self._organs.keys()) if (d := self.organ_details(i)) is not None]
 
+    def organ_tool_schemas(self, max_risk: str = "critical") -> list[dict]:
+        """Export enabled organs as OpenAI-function-calling tool definitions.
+
+        The enabling primitive for an LLM→policy→organ tool loop (see
+        docs/rfc-agentic-loop.md): the LLM proposes calls against these
+        schemas, and every proposed call still passes dispatch_organ's
+        L1 constitution / L2 approval+rate / L3 bud gates unchanged — the
+        schema is advisory, the gate is authoritative. Policy facts
+        (risk, approval, irreversibility) are surfaced in the description
+        so the model can prefer cheap safe tools without being trusted
+        to enforce anything.
+
+        ``max_risk`` filters out organs above the given risk tier so a
+        caller can hand an untrusted context a reduced tool belt.
+        """
+        order = {"low": 0, "medium": 1, "high": 2, "critical": 3}
+        ceiling = order.get(str(max_risk).lower(), 3)
+        tools: list[dict] = []
+        for detail in self.list_organ_details():
+            if not detail["enabled"]:
+                continue
+            if order.get(str(detail["risk_level"]).lower(), 1) > ceiling:
+                continue
+            notes = [f"risk: {detail['risk_level']}"]
+            if detail["requires_approval"]:
+                notes.append("requires user approval before running")
+            if detail["irreversible"]:
+                notes.append("irreversible")
+            tools.append({
+                "type": "function",
+                "function": {
+                    "name": detail["intent"],
+                    "description": (
+                        f"{detail['description']} ({'; '.join(notes)})"),
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "message": {
+                                "type": "string",
+                                "description": (
+                                    "Natural-language request for this "
+                                    "organ, including every detail it "
+                                    "needs (organs parse their own "
+                                    "arguments from it)."),
+                            },
+                        },
+                        "required": ["message"],
+                    },
+                },
+            })
+        return tools
+
     def index_status(self) -> dict:
         """
         Return the current in-memory index for user organs.
