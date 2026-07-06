@@ -1140,9 +1140,11 @@ class PrismAgent:
                 avail = [o for o in getattr(router, "_options", [])
                          if o.available and o.provider != "stdlib"]
                 if avail:
-                    top = max(avail, key=lambda o: o.capability)
-                    lines.append(f"• LLM: {top.provider}/{top.model} "
-                                 f"({len(avail)} provider(s) reachable)")
+                    top = max(avail, key=lambda o: getattr(o, "capability", 0))
+                    lines.append(
+                        f"• LLM: {getattr(top, 'provider', '?')}/"
+                        f"{getattr(top, 'model', '?')} "
+                        f"({len(avail)} provider(s) reachable)")
                 else:
                     lines.append("• LLM: none reachable — set one up at "
                                  "/settings/llm")

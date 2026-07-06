@@ -70,6 +70,8 @@ class PrismShadowPipeline:
         self._committed_total = 0
         self._last_commit_ts: float = 0.0
         self._commit_cycles: int = 0
+        # (throttle_reason, max_tokens, capability_ceil) or None when unthrottled
+        self._last_throttle_state: Optional[tuple[str, int, int]] = None
 
     # ── Lifecycle ─────────────────────────────────────────────────────────────
 

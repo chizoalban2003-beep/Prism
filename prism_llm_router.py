@@ -660,7 +660,7 @@ class LLMRouter:
                      "Authorization": "Bearer " + api_key})
         resp = urllib.request.urlopen(req, timeout=self.request_timeout)
         msg = json.loads(resp.read())["choices"][0]["message"]
-        calls = []
+        calls: list[dict] = []
         for tc in msg.get("tool_calls") or []:
             fn = tc.get("function", {})
             try:
@@ -682,7 +682,7 @@ class LLMRouter:
             headers={"Content-Type": "application/json"})
         resp = urllib.request.urlopen(req, timeout=self.request_timeout)
         msg = json.loads(resp.read()).get("message", {})
-        calls = []
+        calls: list[dict] = []
         for tc in msg.get("tool_calls") or []:
             fn = tc.get("function", {})
             args = fn.get("arguments") or {}
@@ -714,7 +714,8 @@ class LLMRouter:
                      "x-api-key": api_key})
         resp = urllib.request.urlopen(req, timeout=self.request_timeout)
         data = json.loads(resp.read())
-        content, calls = "", []
+        content = ""
+        calls: list[dict] = []
         for block in data.get("content", []):
             if block.get("type") == "text":
                 content += block.get("text", "")

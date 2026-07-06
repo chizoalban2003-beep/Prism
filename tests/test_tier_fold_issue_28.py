@@ -124,7 +124,7 @@ class TestControlPlanePrecedence:
     def test_priority_route_wins_over_fold(self):
         # message contains " and " → chain would normally fold into the loop
         d, chain, _, loop_calls = _dispatcher(priority_route=self._pr)
-        card = d.dispatch(
+        d.dispatch(
             "save pipeline umbrella: check weather and tell me to pack", {})
         assert d._executed == ["pipeline_save"]
         assert loop_calls == []      # loop never engaged
