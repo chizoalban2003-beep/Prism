@@ -942,8 +942,35 @@ class PrismAgent:
                 except Exception:
                     identity_data = {}
             if not identity_data.get("domains"):
-                # Empty data renders as a bare card frame in the chat UI —
-                # happens whenever KDE is offline or no decisions are logged.
+                # KDE absent or empty — the living persona is the richer
+                # source anyway (crystallised from every chat turn). One
+                # live install had 11k persona observations while this
+                # card claimed "no profile yet".
+                persona = getattr(self, "_persona", None)
+                if persona is not None:
+                    try:
+                        traits = sorted(
+                            persona.list_traits(),
+                            key=lambda t: -(t.confidence or 0.0))[:6]
+                        if traits:
+                            identity_data = {
+                                "domains": [{
+                                    "label": (t.name.replace("_", " ")
+                                              + ": " + str(t.value)),
+                                    "value": t.confidence,
+                                    "crystallised": (t.confidence or 0.0) >= 0.7,
+                                } for t in traits],
+                                "insight": (
+                                    f"Learned from "
+                                    f"{sum(t.observation_count for t in traits)} "
+                                    f"observations across "
+                                    f"{len(persona.list_traits())} traits."),
+                            }
+                    except Exception:
+                        pass
+            if not identity_data.get("domains"):
+                # Truly nothing yet — point at the ceremony instead of
+                # rendering a bare card frame.
                 return text_card(
                     "No decision profile yet — it crystallises as you log "
                     "decisions. Start with the onboarding ceremony at "
@@ -1483,7 +1510,10 @@ class PrismAgent:
             parts.append(pinned)
         message = "\n\n".join(parts)
         if not self._kde:
-            return text_card("Re-planning requires the KDE module, which isn't available.", "Re-plan unavailable")
+            # No KDE planner in this deployment — run the refinement
+            # through the normal chat path instead; universal_plan hands
+            # it to the LLM planner, same as a typed "plan my day".
+            return self.chat(message)
         try:
             result = self._kde.ask(message)
             output = getattr(result, "output", result)
