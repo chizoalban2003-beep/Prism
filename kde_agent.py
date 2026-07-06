@@ -45,25 +45,6 @@ from ksa_fixes import GroundTruthOptimizer, LiveWeightInjector
 from ksa_registry import PerformanceMetrics, SnapshotRegistry
 from ksa_router import MasterFulcrum
 from media_processor import MediaProcessor
-from prediction_engine import PredictionPlatform
-from sport_executor import (
-    FilmStudyExecutor,
-    HighlightReelExecutor,
-    PerformanceReportExecutor,
-    SessionLogExecutor,
-    VideoAnalysisExecutor,
-    WearableSyncExecutor,
-)
-from sport_tasks import (
-    EmailDraftTask,
-    MatchReportTask,
-    NutritionPlanTask,
-    PerformanceDashboardTask,
-    PredictionReportTask,
-    ScoutingReportTask,
-    SocialMediaTask,
-    TrainingPlanTask,
-)
 from sports_pro import Role, SportsProAssistant, SportsProProfile
 from vision_analyzer import VisionAnalyzer
 
@@ -279,39 +260,6 @@ INTENT_MAP: dict[str, str] = {
     "domain report":  "domain_report",
     "validation report": "domain_report",
     "accuracy":       "domain_report",
-    # video analysis
-    "analyse":        "video_analysis",
-    "analyze":        "video_analysis",
-    "analysis":       "video_analysis",
-    "technique":      "video_analysis",
-    "footage":        "video_analysis",
-    "session video":  "video_analysis",
-    # highlight reel
-    "highlight":      "highlight_reel",
-    "reel":           "highlight_reel",
-    "compilation":    "highlight_reel",
-    "edit":           "highlight_reel",
-    # performance report
-    "report":         "performance_report",
-    "performance":    "performance_report",
-    "stats":          "performance_report",
-    "metrics":        "performance_report",
-    "recovery trend": "performance_report",
-    # film study
-    "opponent":       "film_study",
-    "scout":          "film_study",
-    "film study":     "film_study",
-    "tactical":       "film_study",
-    # wearable sync
-    "sync":           "wearable_sync",
-    "wearable":       "wearable_sync",
-    "hrv":            "wearable_sync",
-    "garmin":         "wearable_sync",
-    "apple watch":    "wearable_sync",
-    # session log
-    "log session":    "session_log",
-    "log my session": "session_log",
-    "record session": "session_log",
     # morning / evening / weekly
     "morning":        "morning_briefing",
     "brief":          "morning_briefing",
@@ -324,36 +272,6 @@ INTENT_MAP: dict[str, str] = {
     "reflect":        "reflect",
     "learned":        "reflect",
     "status":         "status",
-    "what should":    "video_analysis",
-    "technically":    "video_analysis",
-    # sport tasks (prompt-3)
-    "training plan":  "create_training_plan",
-    "weekly plan":    "create_training_plan",
-    "programme":      "create_training_plan",
-    "match report":   "match_report",
-    "post match":     "match_report",
-    "write report":   "match_report",
-    "scouting":       "scouting_report",
-    "opponent report": "scouting_report",
-    "analyse them":   "scouting_report",
-    "nutrition":      "nutrition_plan",
-    "meal plan":      "nutrition_plan",
-    "diet":           "nutrition_plan",
-    "food":           "nutrition_plan",
-    "instagram":      "social_media_post",
-    "twitter":        "social_media_post",
-    "social media":   "social_media_post",
-    "email":          "draft_email",
-    "draft":          "draft_email",
-    "write to":       "draft_email",
-    "message agent":  "draft_email",
-    "dashboard":      "performance_dashboard",
-    "overview":       "performance_dashboard",
-    "how am i doing": "performance_dashboard",
-    "predict":        "prediction_report",
-    "prediction":     "prediction_report",
-    "match preview":  "prediction_report",
-    "odds":           "prediction_report",
 }
 
 
@@ -376,8 +294,7 @@ class KDEAgent:
         self._profile = profile
         self._config  = config or KDEConfig()
         self._capabilities = set(capabilities or [
-            "sports_pro", "daily_workflow", "device_hub", "moment_analyzer",
-            "prediction_engine", "sport_tasks", "domain_configs",
+            "sports_pro", "daily_workflow", "device_hub", "domain_configs",
         ])
         self._display_role = display_role or profile.role.value
         self._user_profile: Optional[UserProfile] = None
@@ -425,52 +342,12 @@ class KDEAgent:
             profile_name    = profile.name,
         )
 
-        # Executors
-        self._executors = {
-            "video_analysis":    VideoAnalysisExecutor(
-                self._hub, self._mp, self._va, self._registry,
-                sport=profile.sport, role=profile.role.value,
-            ),
-            "highlight_reel":    HighlightReelExecutor(
-                self._hub, self._mp,
-                output_dir=str(Path(media_dir) / "highlights"),
-                registry=self._registry,
-            ),
-            "performance_report": PerformanceReportExecutor(
-                self._hub, self._mp, self._registry,
-                output_dir=str(Path(media_dir) / "reports"),
-            ),
-            "film_study":        FilmStudyExecutor(
-                self._hub, self._mp, self._va, self._registry,
-                sport=profile.sport,
-            ),
-            "wearable_sync":     WearableSyncExecutor(self._hub, self._registry),
-            "session_log":       SessionLogExecutor(
-                self._hub, self._mp, self._va, self._registry,
-                sport=profile.sport, role=profile.role.value,
-            ),
-        }
+        # Executors — the sport analytics executors (video analysis,
+        # highlight reels, match/scouting reports, prediction platform)
+        # were removed with the sport-intelligence subsystem (#28-113).
+        self._executors = {}
+        self._platform = None
 
-        # Prediction platform + sport-task executors (prompt-3)
-        self._platform = PredictionPlatform() if self._has_capability("prediction_engine", "sport_tasks") else None
-        if self._platform is not None and self._has_capability("sport_tasks"):
-            _task_kwargs = dict(
-                registry=self._registry,
-                platform=self._platform,
-                output_dir=str(Path(media_dir) / "artifacts"),
-                ollama_host=self._config.ollama_host,
-                text_model=self._config.text_model,
-            )
-            self._executors.update({
-                "create_training_plan": TrainingPlanTask(**_task_kwargs),
-                "match_report": MatchReportTask(**_task_kwargs),
-                "scouting_report": ScoutingReportTask(**_task_kwargs),
-                "nutrition_plan": NutritionPlanTask(**_task_kwargs),
-                "social_media_post": SocialMediaTask(**_task_kwargs),
-                "draft_email": EmailDraftTask(**_task_kwargs),
-                "performance_dashboard": PerformanceDashboardTask(**_task_kwargs),
-                "prediction_report": PredictionReportTask(**_task_kwargs),
-            })
         if self._has_capability("domain_configs"):
             domain_models = {
                 domain: DomainDecisionModel(config)
@@ -713,7 +590,9 @@ class KDEAgent:
         if task_name is None and self._va.is_available():
             task_name, method = self._llm_classify(prompt)
         if task_name is None:
-            task_name = "video_analysis"
+            # Sport video analysis was the old default; the closest
+            # surviving generalist is the daily briefing.
+            task_name = "morning_briefing"
             method    = "keyword"
 
         # Step 3: dispatch

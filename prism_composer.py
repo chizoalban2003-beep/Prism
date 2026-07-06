@@ -57,9 +57,6 @@ LOGIC_REGISTRY: dict[str, str] = {
     # intent_name → what it does / what it returns
     "plan":              "generates a daily plan or schedule",
     "universal_plan":    "creates a multi-strategy action plan for any goal",
-    "predict_match":     "predicts match outcomes with probabilities",
-    "squad_risk":        "assesses player injury/availability risk",
-    "moment":            "analyses a game moment and recommends action",
     "domain_medical":    "triages medical situations and recommends urgency level",
     "domain_financial":  "recommends portfolio allocation and investment strategy",
     "domain_legal":      "recommends legal strategy (settle vs litigate etc.)",

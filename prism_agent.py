@@ -45,11 +45,7 @@ from prism_responses import (
     PrismCard,
     domain_card,
     identity_card,
-    moment_card,
     plan_card,
-    prediction_card,
-    risk_card,
-    squad_card,
     text_card,
 )
 from prism_routing import LLMClassifier, route_intent, should_suppress
@@ -893,43 +889,17 @@ class PrismAgent:
             diagnosis = DomainDecisionModel(config).evaluate(profile, factors)
             return domain_card(domain_key, diagnosis)
 
-        if intent == "squad_risk":
-            if self._kde:
-                try:
-                    result = self._kde.ask(message)
-                    output = getattr(result, 'output', result)
-                    if isinstance(output, list) and output and hasattr(output[0], 'risk_level'):
-                        return squad_card(output)
-                    if isinstance(output, str) and output and "No video" not in output:
-                        return text_card(output, "Squad Risk")
-                except Exception as exc:
-                    logger.debug("KDE squad_risk failed: %s", exc)
-            # Fallback — route message through prediction engine directly
-            try:
-                from prediction_engine import InjuryRiskPredictor
-                predictor = InjuryRiskPredictor()
-                result = predictor.assess(message)
-                return text_card(str(result), "Squad Risk")
-            except Exception:
-                pass
-            return text_card(
-                "Squad risk assessment requires player data. "
-                "Try: 'what is the injury risk for [player name]' or connect a squad data source.",
-                "Squad Risk")
-
-        _KDE_INTENTS = {
-            "predict_match", "moment", "session",
-            "transfer", "reflect",
-        }
-        if self._kde and intent in _KDE_INTENTS:
+        # Sport analytics intents (predict_match / moment / session /
+        # transfer) died with the sport-intelligence subsystem (#28-113);
+        # "reflect" is the surviving KDE conversation.
+        if self._kde and intent == "reflect":
             try:
                 result = self._kde.ask(message)
                 output = getattr(result, 'output', result)
                 try:
-                    from prediction_engine import InjuryRiskPrediction, MatchPrediction
                     from sports_pro import DailyPlan
                 except Exception:
-                    DailyPlan = MatchPrediction = InjuryRiskPrediction = None
+                    DailyPlan = None
                 if DailyPlan and isinstance(output, DailyPlan):
                     self._last_plan = output
                     self._last_plan_request = message
@@ -939,14 +909,6 @@ class PrismAgent:
                         except Exception as exc:
                             logger.debug("plan_telemetry.record_plan failed: %s", exc)
                     return plan_card(output)
-                if MatchPrediction and isinstance(output, MatchPrediction):
-                    return prediction_card(output)
-                if InjuryRiskPrediction and isinstance(output, InjuryRiskPrediction):
-                    return risk_card(output)
-                if isinstance(output, list) and output and hasattr(output[0], 'risk_level'):
-                    return squad_card(output)
-                if hasattr(output, 'recommended') and hasattr(output, 'activations') and hasattr(output, 'moment'):
-                    return moment_card(output)
                 if isinstance(output, str):
                     return text_card(output)
                 return text_card(str(output))
@@ -1016,8 +978,8 @@ class PrismAgent:
                 "I can help with: plan my day · reminders and notes · weather · "
                 "calendar and email · conversation recall · identity profile · "
                 "developer tasks (scan files, search code, shell with approval) · "
-                "domain analysis (medical triage, financial portfolio, legal strategy, "
-                "match prediction, squad risk).",
+                "domain analysis (medical triage, financial portfolio, "
+                "legal strategy).",
                 "PRISM — What I can do",
             )
         if intent == "conversation_recall":

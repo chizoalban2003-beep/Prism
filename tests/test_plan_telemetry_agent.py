@@ -77,13 +77,24 @@ def test_replan_without_prior_plan_skips_summary(stub_agent):
     assert "Previous plan status" not in sent_message
 
 
-def test_replan_no_kde_returns_text_card():
+def test_replan_no_kde_falls_back_to_chat_path():
+    # #28-106: replan without KDE routes the composed refinement through
+    # the normal chat path instead of refusing with "Re-plan unavailable".
     from prism_agent import PrismAgent
+
+    chatted = {}
+
+    def _chat(self, message):
+        chatted["message"] = message
+        return types.SimpleNamespace(body="chat handled it", title="Plan")
 
     agent = types.SimpleNamespace(
         _plan_telemetry=None, _kde=None,
         _last_plan_request="plan my day", _last_plan_id=None, _last_plan=None,
     )
+    agent.chat = types.MethodType(_chat, agent)
     agent.replan = types.MethodType(PrismAgent.replan, agent)
-    card = agent.replan()
-    assert "KDE" in card.body or "isn't available" in card.body
+    card = agent.replan(instructions="move workout earlier")
+    assert card.body == "chat handled it"
+    assert "plan my day" in chatted["message"]
+    assert "move workout earlier" in chatted["message"]

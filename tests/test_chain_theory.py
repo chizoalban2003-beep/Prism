@@ -9,7 +9,6 @@ prism_chain_theory_bench.py in #28-112.)
 from __future__ import annotations
 
 import json
-from dataclasses import fields
 from unittest.mock import MagicMock
 
 from prism_chain_theory import (

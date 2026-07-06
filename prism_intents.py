@@ -219,9 +219,6 @@ INTENTS: list[tuple[str, str]] = [
      r"help me (?:with|plan|reach|achieve|set|accomplish|hit|build|launch|"
      r"finish|complete|start|tackle|prepare)|"
      r"what(?:'s| is) the best way|i want to|i need to|my goal is", "universal_plan"),
-    (r"predict|match|fixture|vs|versus", "predict_match"),
-    (r"injury risk|squad risk|squad injury|player risk|player fitness|"
-     r"\binjury\b|\bsquad\b|\bfitness\b", "squad_risk"),
     # Device inventory: PRISM's core mission is bridging the user to
     # their hardware. Hoisted above all domain matchers because:
     #   * "hardware inventory" was eaten by domain_supply's `inventory`.
@@ -239,9 +236,6 @@ INTENTS: list[tuple[str, str]] = [
      r"what(?:'s| is)?\s+on\s+(?:this|my)\s+(?:computer|machine|laptop|system)\b|"
      r"what\s+can\s+(?:this|my)\s+(?:computer|machine|device)\s+do\b",
      "device_inventory"),
-    (r"moment|1v1|keeper|\bshot\b|attack", "moment"),
-    (r"session|footage|video|analyse.*play", "session"),
-    (r"transfer|market|value|worth", "transfer"),
     (r"triage|chest|pain|fever|symptom|patient", "domain_medical"),
     (r"portfolio|invest|allocation|bonds|equity", "domain_financial"),
     (r"legal|case|litigat|settle|arbitrat", "domain_legal"),

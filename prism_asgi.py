@@ -232,7 +232,6 @@ if _FASTAPI_AVAILABLE:
     from prism_routes_ml import router as ml_router
     from prism_routes_mobile import router as mobile_router
     from prism_routes_perception import router as perception_router
-    from prism_routes_predict import router as predict_router
     from prism_routes_sensors import router as sensors_router
     from prism_routes_sessions import router as sessions_router
     from prism_routes_ui import router as ui_router
@@ -240,7 +239,6 @@ if _FASTAPI_AVAILABLE:
 
     # UI routes first so "/" doesn't get shadowed
     app.include_router(ui_router)
-    app.include_router(predict_router)
     app.include_router(analytics_router)
     app.include_router(agent_router)
     app.include_router(infra_router)

@@ -1,9 +1,7 @@
 """
-Tests for prism_routes_analytics — /domain/*, /moment/*, /duel/*, /analytics/tokens/* endpoints.
+Tests for prism_routes_analytics — /domain/* and /analytics/tokens/* endpoints.
 """
 from __future__ import annotations
-
-from unittest.mock import MagicMock
 
 import pytest
 from fastapi import FastAPI
@@ -75,77 +73,7 @@ class TestDomainList:
 
 
 # ---------------------------------------------------------------------------
-# /moment
-# ---------------------------------------------------------------------------
-
-class TestMomentConfigs:
-    def test_moment_configs_200(self, client):
-        r = client.get("/moment/configs")
-        assert r.status_code == 200
-        assert "configs" in r.json()
-
-    def test_moment_history_empty(self, client):
-        r = client.get("/moment/history?player=NoOne")
-        assert r.status_code == 200
-        data = r.json()
-        assert data["moments"] == []
-
-    def test_moment_analyze_missing_params(self, client):
-        r = client.get("/moment/analyze?sport=Football")
-        assert r.status_code == 400
-
-    def test_moment_analyze_no_analyzer_503(self, client):
-        prism_state._state.pop("moment_analyzer", None)
-        r = client.get("/moment/analyze?sport=Football&moment_type=1v1_keeper&player=Mbappe")
-        assert r.status_code in (200, 503)
-
-    def test_moment_player_stats_missing_player_400(self, client):
-        r = client.get("/moment/player_stats")
-        assert r.status_code == 400
-
-
-# ---------------------------------------------------------------------------
-# /duel
-# ---------------------------------------------------------------------------
-
-class TestDuelEndpoints:
-    def test_duel_network_no_analyzer_503(self, client):
-        r = client.get("/duel/network")
-        assert r.status_code == 503
-
-    def test_duel_player_missing_player_400(self, client):
-        r = client.get("/duel/player")
-        assert r.status_code == 400
-
-    def test_duel_summary_no_analyzer_503(self, client):
-        r = client.get("/duel/summary")
-        assert r.status_code == 503
-
-    def test_duel_add_match_no_analyzer_503(self, client):
-        r = client.post("/duel/add_match", json={"events": []})
-        assert r.status_code == 503
-
-    def test_duel_network_with_mock(self, client):
-        mock_da = MagicMock()
-        mock_da.network._edges = {}
-        prism_state._state["duel_analyzer"] = mock_da
-        r = client.get("/duel/network")
-        assert r.status_code == 200
-        assert "edges" in r.json()
-
-    def test_duel_summary_with_mock(self, client):
-        mock_da = MagicMock()
-        mock_da.network._edges = {
-            ("Mbappe", "Rudiger"): {"total": 10, "won": 7}
-        }
-        prism_state._state["duel_analyzer"] = mock_da
-        data = client.get("/duel/summary").json()
-        assert data["total_duels"] == 10
-        assert data["total_won"] == 7
-
-
-# ---------------------------------------------------------------------------
-# /analytics/tokens (LLM ledger)
+# /analytics/tokens
 # ---------------------------------------------------------------------------
 
 class TestAnalyticsTokens:

@@ -156,25 +156,9 @@ class DailyWorkflow:
         if not self._va.is_available():
             alerts.append("ℹ Ollama not running — vision analysis unavailable")
 
-        # --- Step 7: match intelligence (when match is close) ---
+        # Match intelligence died with the sport-intelligence subsystem
+        # (#28-113); the field stays None for brief-shape compatibility.
         match_intelligence: Optional[dict] = None
-        try:
-            # Retrieve days_to_match from reading-derived context if available
-            _days_to_match: float = 99.0
-            if reading is not None:
-                try:
-                    _dctx = reading.to_daily_context()
-                    _days_to_match = _dctx.days_to_match
-                except Exception:
-                    pass
-            if _days_to_match <= 4:
-                from prediction_engine import PredictionPlatform
-                _plat = PredictionPlatform()
-                match_intelligence = _plat.pre_match_brief(
-                    "Home Team", "Away Team", "football", [], {}, {}
-                )
-        except Exception as _exc:
-            logger.debug("match intelligence skipped: %s", _exc)
 
         return MorningBrief(
             time               = now_str,

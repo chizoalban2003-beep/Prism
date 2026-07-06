@@ -115,7 +115,7 @@ PRISM is a local personal AI assistant that decides, plans, and acts for any use
 
 Concrete capabilities exposed today, not roadmap:
 
-- **Plan / decide** — daily plan, match prediction, squad injury risk, transfer valuation, moment analysis, medical triage, financial portfolio, legal strategy, climate/supply/HR domains.
+- **Plan / decide** — daily plan, medical triage, financial portfolio, legal strategy, climate/supply/HR domains.
 - **Execute on your machine** — read/write files inside user-data roots, scan and search code, open apps, install whitelisted PyPI packages, run git commands, capture and analyse screen.
 - **Reach out** — bearer-token HTTP+WS on `127.0.0.1:8742`, email read/send, calendar read/write, push notifications, contacts lookup, web search and browse, Wikipedia lookup, smart-home control via Home Assistant.
 - **Know you** — soul beliefs, persona traits, identity crystallisation across domains (`/identity/dashboard`), weekly reflection (`/reflection`, cached 1h), narrative and growth reports.
@@ -248,7 +248,7 @@ User input (chat / voice / CLI / REST API)
                │
     ┌──────────▼──────────┐       ┌─────────────────┐
     │  KDEAgent           │       │  KSAgent         │
-    │  Sport + Domain     │       │  Developer tasks │
+    │  Domain analysis    │       │  Developer tasks │
     └──────────┬──────────┘       └────────┬────────┘
                │                           │
     ┌──────────▼───────────────────────────▼────────┐
@@ -376,7 +376,7 @@ GET `/metrics?window_s=300` returns the full JSON report. A canary run is schedu
 </details>
 
 <details>
-<summary><b>Capabilities</b> — decision engine, sports intelligence, domains, personal assistant</summary>
+<summary><b>Capabilities</b> — decision engine, domains, personal assistant</summary>
 
 ## Capabilities
 
@@ -385,13 +385,6 @@ GET `/metrics?window_s=300` returns the full JSON report. A canary run is schedu
 - Named factors, interpretable outputs — no black box
 - Online learning via `AdaptiveFulcrum.observe()` — no retraining
 - Conversational calibration: "that was too aggressive" adjusts factor weights
-
-### Sports Intelligence
-- Match prediction, injury risk, performance, transfer value
-- Real-time moment analysis (1v1, shot, cross, penalty, drive, etc.)
-- Duel network from match events — attacker vs defender win rates
-- StatsBomb open-data pipeline; validated on 10 La Liga seasons
-- Sports: Football, Basketball, Tennis, Rugby, Boxing, MMA, Wrestling, Cricket
 
 ### Domain Decision Framework
 - Medical triage · Financial portfolio · Legal strategy
@@ -1231,12 +1224,10 @@ python ksa_cli.py status
 python ksa_cli.py history file_index_stealth
 ```
 
-### Sports platform (KDE)
+### Daily planning (KDE)
 
 ```bash
 python kde_cli.py morning
-python kde_cli.py ask "predict Manchester City vs Arsenal"
-python kde_cli.py ask "assess my squad injury risk"
 python kde_cli.py reflect
 ```
 
@@ -1343,22 +1334,6 @@ Open **http://localhost:8742** for the chat UI. The async server handles concurr
 | GET | `/identity/onboard` | Web ceremony page (HTML) |
 | GET | `/reflection` | Per-trigger reflection snapshot |
 
-### Sports & Prediction
-
-| Method | Route | Description |
-|---|---|---|
-| GET | `/predict/match?home=X&away=Y&sport=football` | Match prediction |
-| GET | `/predict/injury?name=X&recovery=0.7&load=0.5` | Injury risk |
-| GET | `/predict/performance?name=X&form=0.6` | Performance prediction |
-| GET | `/predict/transfer?name=X&age=24&performance=0.6` | Transfer value |
-| GET | `/predict/brief?home=X&away=Y` | Full pre-match brief |
-| GET | `/moment/analyze?sport=Football&moment_type=1v1_keeper&player=X` | Moment analysis |
-| POST | `/moment/calibrate` | Record outcome, trigger learning |
-| POST | `/moment/live_frame` | Feed live tracking frame |
-| GET | `/moment/history?player=X` | Player moment history |
-| GET | `/duel/network` | Full duel network |
-| GET | `/duel/player?player=X` | Player attack profile |
-
 ### Domain Decisions
 
 | Method | Route | Description |
@@ -1441,7 +1416,7 @@ Open **http://localhost:8742** for the chat UI. The async server handles concurr
 ## How the learning loop works
 
 1. User sends a message → `PrismAgent` routes the intent
-2. If a decision is produced (sport moment, domain, plan), it is saved as `_last_decision`
+2. If a decision is produced (domain, plan), it is saved as `_last_decision`
 3. User gives feedback: "that was too aggressive" / "good call"
 4. `PrismCalibration.detect()` classifies the direction
 5. `PrismCalibration.process()` adjusts the factor weight via `AdaptiveFulcrum.observe()`
@@ -1640,7 +1615,7 @@ PRISM/
 │   └── ksa_config.py           Config loader
 │
 ├── KDE platform
-│   ├── kde_agent.py            KDEAgent — unified sports + domain agent
+│   ├── kde_agent.py            KDEAgent — domain decision agent
 │   ├── prism_asgi.py           FastAPI/ASGI server — 213 async routes + 1 WebSocket on :8742
 │   ├── prism_state.py          Shared dependency-injection state for ASGI routes
 │   ├── prism_routes_*.py       23 FastAPI router modules (predict/analytics/agent/chain/core/horizon/infra/integrations/media/sensors/ui/mobile/users/federation/identity/perception/causality/sessions/kinetic/ml/ide/mcp/mesh)
@@ -1654,16 +1629,9 @@ PRISM/
 │   ├── kde_config.py           Config loader
 │   ├── kde_profiles.py         Profile catalogue and role defaults
 │
-├── Sport intelligence
-│   ├── sport_spectrum.py       SportConfig, DuelModel, ALL_SPORTS
-│   ├── sports_pro.py           SportsProAssistant, DailyPlanner
-│   ├── daily_workflow.py       Morning briefing, session log, evening review
-│   ├── prediction_engine.py    Match, injury, performance, transfer predictions
-│   ├── duel_analyzer.py        1v1 duel network from match events
-│   ├── moment_analyzer.py      Real-time moment analysis, ALL_MOMENT_CONFIGS
-│   ├── moment_configs_ext.py   Extended sport moment configs
-│   ├── moment_pipeline.py      StatsBomb batch + live tracking pipeline
-│   └── sport_data.py           StatsBomb open-data connector
+├── Daily planning
+│   ├── sports_pro.py           Role profiles, DailyPlanner, wearables
+│   └── daily_workflow.py       Morning briefing, session log, evening review
 │
 ├── Device integration
 │   ├── device_hub.py           GoPro, Apple Health, Garmin, Whoop, Oura
@@ -1783,9 +1751,6 @@ PRISM/
 │   ├── prism_lora_registry.py      Registry for personal LoRA adapters
 │   └── prism_lora_trainer.py       DPO pair ingestion from denials + standing rules (M12c)
 │
-├── Sport task executors
-│   ├── sport_executor.py       Video analysis, highlight reel, reports
-│   └── sport_tasks.py          Training plan, scouting, nutrition, social
 │
 ├── Domain framework
 │   ├── domain_configs.py       Medical · Financial · Legal · HR · Supply Chain · Climate
@@ -1807,27 +1772,6 @@ PRISM/
 
 </details>
 
-<details>
-<summary><b>Validated sports domains</b> — the physics-model sports coverage</summary>
-
-## Validated sports domains
-
-| Sport | Configured moments |
-|---|---|
-| Football | 1v1 keeper · winger cross · penalty |
-| Basketball | Drive to basket · isolation · pick-roll · post-up · fast break |
-| Tennis | Serve (deuce) · serve (ad) · baseline rally · net approach |
-| Rugby Union | Ball carrier contact · breakdown · lineout |
-| Boxing | In range · counter |
-| MMA | Clinch · ground top position |
-| Wrestling | Takedown attempt |
-| Cricket | Batting delivery |
-
-**Validation**: 2,732 shot moments analysed against 10 La Liga seasons (2004–2018, StatsBomb open data). 100% model–player action agreement.
-
----
-
-</details>
 
 <details>
 <summary><b>Running the tests</b> — pytest invocation and coverage</summary>
@@ -1847,27 +1791,9 @@ python -m pytest tests/ -q --ignore=tests/test_device_agent.py --cov=. --cov-rep
 </details>
 
 <details>
-<summary><b>Extending PRISM</b> — new sports, domains, organs, executors</summary>
+<summary><b>Extending PRISM</b> — new domains, organs, executors</summary>
 
 ## Extending PRISM
-
-### Adding a new sport moment config
-
-```python
-# In moment_configs_ext.py or a new file:
-from moment_analyzer import MomentSportConfig, MomentOption
-
-MY_SPORT_CONFIG = MomentSportConfig(
-    sport="Volleyball",
-    moment_type="spike",
-    options=[
-        MomentOption("cross_court", position=0.2, ev=0.7),
-        MomentOption("line",        position=0.8, ev=0.6),
-    ],
-    bandwidth=0.3,
-)
-# Register in ALL_MOMENT_CONFIGS and it's live in the API.
-```
 
 ### Adding a new domain
 

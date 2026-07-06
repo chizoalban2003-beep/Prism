@@ -138,21 +138,18 @@ class TestStatus:
 
 class TestAskRouting:
 
-    def test_ask_routes_video(self, agent):
-        result = agent.ask("analyse my session video from yesterday")
-        assert isinstance(result, TaskResult)
-        assert result.task in ("video_analysis", "error")
-        assert result.method in ("keyword", "direct", "error")
-
-    def test_ask_routes_highlight(self, agent):
-        result = agent.ask("make a highlight reel from this week")
-        assert isinstance(result, TaskResult)
-        assert result.task in ("highlight_reel", "error")
-
-    def test_ask_routes_report(self, agent):
-        result = agent.ask("generate a performance report for my coach")
-        assert isinstance(result, TaskResult)
-        assert result.task in ("performance_report", "error")
+    def test_ask_sport_analytics_keywords_no_longer_route_to_sport(self, agent):
+        # The sport executors (video_analysis / highlight_reel /
+        # performance_report) died with the sport-intelligence subsystem
+        # (#28-113) — these prompts must still return a TaskResult
+        # without crashing, routed to whatever generalist claims them.
+        for prompt in ("analyse my session video from yesterday",
+                       "make a highlight reel from this week",
+                       "generate a performance report for my coach"):
+            result = agent.ask(prompt)
+            assert result is not None
+            assert result.task not in ("video_analysis", "highlight_reel",
+                                       "performance_report")
 
     def test_ask_routes_morning(self, agent):
         result = agent.ask("morning briefing")

@@ -119,42 +119,6 @@ def test_health(client):
 # Predict routes (no platform → 503)
 # ---------------------------------------------------------------------------
 
-def test_predict_match_no_platform(client):
-    r = client.get("/predict/match")
-    assert r.status_code == 503
-
-def test_predict_injury_no_platform(client):
-    r = client.get("/predict/injury")
-    assert r.status_code == 503
-
-def test_predict_performance_no_platform(client):
-    r = client.get("/predict/performance")
-    assert r.status_code == 503
-
-def test_predict_transfer_no_platform(client):
-    r = client.get("/predict/transfer")
-    assert r.status_code == 503
-
-def test_predict_brief_no_platform(client):
-    r = client.get("/predict/brief")
-    assert r.status_code == 503
-
-
-def test_predict_match_with_platform(client):
-    platform = MagicMock()
-    platform.match.predict.return_value = MagicMock(
-        home="A", away="B", home_win=0.5, draw=0.3, away_win=0.2, confidence=0.8
-    )
-    _set_state(platform=platform)
-    r = client.get("/predict/match?home=Arsenal&away=Chelsea&sport=football")
-    assert r.status_code == 200
-    _set_state(platform=None)
-
-
-# ---------------------------------------------------------------------------
-# Agent routes
-# ---------------------------------------------------------------------------
-
 def test_status(client):
     with patch("urllib.request.urlopen", side_effect=Exception("no ollama")):
         r = client.get("/status")

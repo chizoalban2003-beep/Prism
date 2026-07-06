@@ -366,38 +366,12 @@ def _build_asgi_state(agent) -> dict:
     state: dict = {"agent": agent, "active_session_id": None}
 
     try:
-        from prediction_engine import PredictionPlatform
-        state["platform"] = _get_or_build(agent, "_platform", PredictionPlatform)
-    except Exception:
-        pass
-
-    try:
-        from moment_analyzer import MomentAnalyzer
-        state["moment_analyzer"] = MomentAnalyzer()
-    except Exception:
-        pass
-
-    try:
-        from duel_analyzer import DuelAnalyzer
-        state["duel_analyzer"] = DuelAnalyzer()
-    except Exception:
-        pass
-
-    try:
         from domain_configs import ALL_DOMAINS, DomainDecisionModel
         state["domain_models"] = {
             name: DomainDecisionModel(cfg) for name, cfg in ALL_DOMAINS.items()
         }
     except Exception:
         state["domain_models"] = {}
-
-    try:
-        from moment_pipeline import LiveMomentPipeline
-        ma = state.get("moment_analyzer")
-        if ma is not None:
-            state["live_pipeline"] = LiveMomentPipeline(ma)
-    except Exception:
-        pass
 
     try:
         from prism_policy import PolicyEngine

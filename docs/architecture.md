@@ -20,7 +20,7 @@ the device unless the user explicitly triggers an integration (email send, calen
 | `ksa_*` | Knowledge / Skills Agent subsystem: skill registry, optimizer, executor, router, and the `ksa` CLI entry point. |
 
 Supporting modules with no prefix (`artifact_store`, `digital_identity`, `identity_bus`,
-`decision_spectrum`, `sport_*`, `moment_*`, `vision_analyzer`, …) provide domain-specific
+`decision_spectrum`, `vision_analyzer`, …) provide domain-specific
 capabilities used by the three primary namespaces above.
 
 ---
