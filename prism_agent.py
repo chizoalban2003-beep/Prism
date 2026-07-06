@@ -1095,11 +1095,39 @@ class PrismAgent:
             except Exception as exc:
                 return text_card(f"LLM call failed: {exc}", "Chat")
         if intent == "status":
-            return text_card(
-                f"Connected. KDE: {'active' if self._kde else 'offline'}. "
-                f"KSA: {'active' if self._ksa else 'offline'}.",
-                "Status",
-            )
+            # Cached state only — a status query must answer instantly,
+            # so never trigger router discovery (it pings providers).
+            lines = []
+            router = getattr(self, "_router", None)
+            if router is not None and getattr(router, "_discovered", False):
+                avail = [o for o in getattr(router, "_options", [])
+                         if o.available and o.provider != "stdlib"]
+                if avail:
+                    top = max(avail, key=lambda o: o.capability)
+                    lines.append(f"• LLM: {top.provider}/{top.model} "
+                                 f"({len(avail)} provider(s) reachable)")
+                else:
+                    lines.append("• LLM: none reachable — set one up at "
+                                 "/settings/llm")
+            else:
+                lines.append("• LLM: not probed yet — first chat will "
+                             "pick a provider")
+            try:
+                open_tasks = len([t for t in self._task_mgr.list_tasks(done=False)
+                                  if (t.title or "").strip()])
+                lines.append(f"• Tasks: {open_tasks} open")
+            except Exception:
+                pass
+            subsystems = [name for name, obj in (
+                ("planner", getattr(self, "_planner", None)),
+                ("memory", self._memory),
+                ("perception", self._perception),
+                ("proactive", getattr(self, "_proactive", None)),
+                ("KDE", self._kde),
+                ("KSA", self._ksa),
+            ) if obj]
+            lines.append("• Subsystems: " + (", ".join(subsystems) or "none"))
+            return text_card("\n".join(lines), "Status")
         if intent == "show_policies":
             from prism_responses import policy_view_card
             if self._policy:

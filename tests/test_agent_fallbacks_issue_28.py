@@ -52,3 +52,14 @@ class TestIdentityCardPersonaFallback:
         agent._persona = None
         card = agent.chat("identity profile")
         assert "onboarding ceremony" in (card.body or "")
+
+
+class TestStatusCard:
+    def test_status_reports_llm_tasks_subsystems(self, offline_llm):
+        # Old reply was "Connected. KDE: offline. KSA: active." — useless
+        # to a user. Must answer from cached state only (no discovery).
+        agent = PrismAgent()
+        card = agent.chat("status")
+        body = card.body or ""
+        assert "LLM:" in body
+        assert "Subsystems:" in body
