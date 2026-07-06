@@ -7,6 +7,19 @@ keep the agent module focused; behaviour is unchanged.
 """
 from __future__ import annotations
 
+# Guard prefix for the desktop *action* intents (window/input/computer-use).
+# These match content keywords ("window control", "computer use", "click")
+# that legitimately appear inside the free text of a CRUD command — e.g.
+# "add task try window control" must stay add_task, not window_control. The
+# guard is a zero-width assertion: the message must NOT start with a CRUD/
+# management verb, and (via the paired lookahead in each pattern) the action
+# phrase must appear somewhere. See tests/test_desktop_intent_guard_issue_28.
+_NOT_CRUD = (
+    r"^(?!\s*(?:please\s+|kindly\s+|can\s+you\s+|could\s+you\s+)?"
+    r"(?:add|create|new|make|save|remind|remember|note|jot|log|"
+    r"complete|finish|mark|update|delete|remove|edit)\b)"
+)
+
 INTENTS: list[tuple[str, str]] = [
     # Horizon goals: abandon/list must precede add because the add pattern
     # includes "horizon goal" as a literal trigger, so "list/show my horizon
@@ -265,34 +278,40 @@ INTENTS: list[tuple[str, str]] = [
     # windows. Scoped to the "window(s)" noun, the minimise/maximise verbs
     # (near-unambiguously window ops), or "bring X to (the) front" so it does
     # not steal generic focus/close verbs used for tasks/tabs elsewhere.
-    (r"\b(?:list|show)\s+(?:all\s+|the\s+|open\s+)?windows?\b|"
-     r"\bwhat\s+windows?\s+(?:are\s+)?(?:open|running)\b|"
-     r"\b(?:minimi[sz]e|maximi[sz]e|un-?maximi[sz]e|fullscreen)\b|"
-     r"\b(?:focus|activate|close|raise)\s+(?:the\s+|my\s+)?[\w .-]*\bwindow\b|"
-     r"\bbring\s+(?:up\s+)?[\w .-]+?\s+(?:to\s+(?:the\s+)?front|up)\b|"
-     r"\bwindow\s+(?:control|manager?|list)\b",
+    (_NOT_CRUD + r"(?=.*(?:"
+     r"(?:list|show)\s+(?:all\s+|the\s+|open\s+)?windows?\b|"
+     r"what\s+windows?\s+(?:are\s+)?(?:open|running)\b|"
+     r"(?:minimi[sz]e|maximi[sz]e|un-?maximi[sz]e|fullscreen)\b|"
+     r"(?:focus|activate|close|raise)\s+(?:the\s+|my\s+)?[\w .-]*\bwindow\b|"
+     r"bring\s+(?:up\s+)?[\w .-]+?\s+(?:to\s+(?:the\s+)?front|up)\b|"
+     r"\bwindow\s+(?:control|manager?|list)\b"
+     r"))",
      "window_control"),
     # Computer-use: the closed screenshot→vision→input loop. Scoped to
     # explicit "use the computer / control the screen to <goal>" phrasings so
     # it doesn't grab ordinary requests. High-risk + approval-gated.
-    (r"\buse\s+the\s+computer\s+to\b|"
-     r"\bcomputer[- ]use\b|"
-     r"\bcontrol\s+(?:my\s+)?(?:screen|desktop|computer)\s+to\b|"
-     r"\b(?:look\s+at|use)\s+(?:my\s+)?screen\s+(?:and|to)\b",
+    (_NOT_CRUD + r"(?=.*(?:"
+     r"use\s+the\s+computer\s+to\b|"
+     r"computer[- ]use\b|"
+     r"control\s+(?:my\s+)?(?:screen|desktop|computer)\s+to\b|"
+     r"(?:look\s+at|use)\s+(?:my\s+)?screen\s+(?:and|to)\b"
+     r"))",
      "computer_use"),
     # Input control: synthesise keyboard/mouse input. Scoped to explicit
     # actuation verbs so it doesn't steal "type of X" (noun) or notify/task
     # phrasings. High-risk + approval-gated in the organ policy.
     (r"^(?:please\s+)?type\b(?!\s+of\b)[:\s]+\S|"
-     r"\b(?:press|hit)\b\s+(?:the\s+)?"
+     r"^click$|"
+     + _NOT_CRUD + r"(?=.*(?:"
+     r"(?:press|hit)\b\s+(?:the\s+)?"
      r"(?:key\b|enter\b|return\b|escape\b|esc\b|tab\b|space\b|backspace\b|"
      r"ctrl\b|alt\b|shift\b|\w+\+\w)|"
-     r"\b(?:left|right|middle|double)[- ]?click\b|"
-     r"\b(?:mouse|double)?[- ]?click\s+(?:at|on\s+\d)|"
-     r"\bmove\s+(?:the\s+)?(?:mouse|cursor)\b|"
-     r"\bscroll\s+(?:up|down)\b|"
-     r"\b(?:keyboard|mouse|cursor)\s+(?:input|control)\b|"
-     r"^click$",
+     r"(?:left|right|middle|double)[- ]?click\b|"
+     r"(?:mouse|double)?[- ]?click\s+(?:at|on\s+\d)|"
+     r"move\s+(?:the\s+)?(?:mouse|cursor)\b|"
+     r"scroll\s+(?:up|down)\b|"
+     r"(?:keyboard|mouse|cursor)\s+(?:input|control)\b"
+     r"))",
      "input_control"),
     # NOTE: notification phrasings ("notify me", "send me a notification",
     # "alert me") are owned by send_push, which now degrades credential-free
