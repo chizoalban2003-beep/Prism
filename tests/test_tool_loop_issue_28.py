@@ -218,3 +218,57 @@ class TestAnthropicConversion:
                              "input": {"message": "time?"}}
         assert msgs[2]["content"][0]["type"] == "tool_result"
         assert msgs[2]["content"][0]["tool_use_id"] == "t1"
+
+
+class TestMcpInTheBelt:
+    """#28-115 gap 1: MCP tools (registered as mcp.<server>.<tool> organs)
+    join the loop belt under provider-safe names, and taint treats them
+    as both untrusted-source and outbound."""
+
+    def _loader_with_mcp(self):
+        loader = OrganLoader()
+
+        def execute(intent, message, ctx):
+            return text_card("mcp ran", intent)
+        execute._organ_meta = {"intent": "mcp.demo.echo",
+                               "description": "[MCP:demo] echo",
+                               "capabilities": ["internet_read"]}
+        execute._organ_policy = {"risk_level": "medium",
+                                 "requires_approval": False}
+        loader._register("mcp.demo.echo", execute, execute._organ_meta,
+                         source="mcp")
+        return loader
+
+    def test_mcp_tool_gets_provider_safe_name(self):
+        loader = self._loader_with_mcp()
+        loop = ToolLoop(ScriptedRouter([_final()]), loader,
+                        RecordingDispatch())
+        belt, name_map = loop._belt(tainted=False)
+        names = {t["function"]["name"] for t in belt}
+        assert "mcp_demo_echo" in names
+        assert "mcp.demo.echo" not in names  # dots rejected by providers
+        assert name_map["mcp_demo_echo"] == "mcp.demo.echo"
+
+    def test_dispatch_resolves_sanitized_name_to_real_intent(self):
+        loader = self._loader_with_mcp()
+        dispatch = RecordingDispatch()
+        router = ScriptedRouter([
+            _tool_call("mcp_demo_echo", "say hi"), _final("done")])
+        loop = ToolLoop(router, loader, dispatch)
+        card = loop.run(None, "echo hi please via demo", {})
+        assert card.body == "done"
+        assert ("mcp.demo.echo", "say hi") in dispatch.calls
+
+    def test_mcp_result_taints_and_mcp_leaves_the_belt(self):
+        loader = self._loader_with_mcp()
+        dispatch = RecordingDispatch()
+        router = ScriptedRouter([
+            _tool_call("mcp_demo_echo", "fetch"),
+            _tool_call("mcp_demo_echo", "again", cid="c2"),
+            _final("done"),
+        ])
+        loop = ToolLoop(router, loader, dispatch)
+        loop.run(None, "use the demo tool twice", {})
+        # First call dispatched; second refused — belt dropped mcp.* after taint.
+        assert len([c for c in dispatch.calls if c[0] == "mcp.demo.echo"]) == 1
+        assert all("mcp" not in n for n in router.offered_belts[1])

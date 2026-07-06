@@ -28,11 +28,19 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any, Callable, Optional
 
 from prism_responses import CardType, PrismCard, text_card
 
 logger = logging.getLogger(__name__)
+
+
+def _fn_name(intent: str) -> str:
+    """Function-calling name for an organ intent. MCP organs register as
+    ``mcp.<server>.<tool>`` but OpenAI-style tool names must match
+    ``[a-zA-Z0-9_-]{1,64}`` — dots are rejected by the providers."""
+    return re.sub(r"[^a-zA-Z0-9_-]", "_", intent)[:64]
 
 # Organs whose output is third-party content an attacker could author.
 UNTRUSTED_SOURCE_INTENTS = frozenset({
@@ -77,22 +85,41 @@ class ToolLoop:
 
     # ── Tool belt (user policy + taint rule) ─────────────────────────────
 
-    def _belt(self, tainted: bool) -> list[dict]:
+    @staticmethod
+    def _is_untrusted_source(intent: str) -> bool:
+        # MCP tools return third-party app data — always treated as
+        # attacker-authorable, same as web/email/documents.
+        return intent in UNTRUSTED_SOURCE_INTENTS or intent.startswith("mcp.")
+
+    @staticmethod
+    def _is_outbound(intent: str) -> bool:
+        # MCP tools can also carry data OUT (a query string, a write,
+        # a post) — denied post-taint along with the native outbound set.
+        return intent in OUTBOUND_INTENTS or intent.startswith("mcp.")
+
+    def _belt(self, tainted: bool) -> tuple[list[dict], dict[str, str]]:
+        """Returns (tool_schemas, {fn_name → organ intent}). Schemas carry
+        provider-safe names; the map recovers the real intent at dispatch."""
         max_risk = "low" if tainted else str(self._cfg.get("max_risk", "high"))
         tools = self._loader.organ_tool_schemas(max_risk=max_risk)
         deny = set(self._cfg.get("deny", []) or [])
-        if tainted:
-            deny |= OUTBOUND_INTENTS
         allow_only = set(self._cfg.get("allow_only", []) or [])
-        out = []
+        out, name_map = [], {}
         for t in tools:
-            name = t["function"]["name"]
-            if name in deny:
+            intent = t["function"]["name"]
+            if intent in deny:
                 continue
-            if allow_only and name not in allow_only:
+            if tainted and self._is_outbound(intent):
                 continue
+            if allow_only and intent not in allow_only:
+                continue
+            fn = _fn_name(intent)
+            if fn != intent:
+                t = {"type": "function",
+                     "function": {**t["function"], "name": fn}}
+            name_map[fn] = intent
             out.append(t)
-        return out
+        return out, name_map
 
     # ── The loop ─────────────────────────────────────────────────────────
 
@@ -110,9 +137,11 @@ class ToolLoop:
             max_hops = int(self._cfg.get("max_hops", 3))
         max_tokens = int(self._cfg.get("max_tokens", 700))
         tainted = False
-        belt = self._belt(tainted)
+        belt, name_map = self._belt(tainted)
         if not belt:
             return None
+        logger.info("[tool_loop] engaged: %d tools, max_hops=%d",
+                    len(belt), max_hops)
 
         messages: list[dict] = [
             {"role": "system", "content": _SYSTEM_PROMPT},
@@ -142,26 +171,26 @@ class ToolLoop:
                 } for c in calls],
             })
 
-            belt_names = {t["function"]["name"] for t in belt}
             for call in calls:
-                name = call["name"]
+                intent = name_map.get(call["name"])
                 organ_msg = str((call.get("arguments") or {}).get("message")
                                 or message)
-                if name not in belt_names:
+                if intent is None:
                     # Model proposed outside its belt (or belt shrank
                     # after taint) — refuse mechanically.
-                    logger.info("[tool_loop] denied off-belt call: %s", name)
+                    logger.info("[tool_loop] denied off-belt call: %s",
+                                call["name"])
                     messages.append({
                         "role": "tool", "tool_call_id": call["id"],
-                        "content": f"'{name}' is not permitted by policy "
-                                   "in this context.",
+                        "content": f"'{call['name']}' is not permitted by "
+                                   "policy in this context.",
                     })
                     continue
-                card = self._dispatch(agent, name, organ_msg, dict(ctx))
+                card = self._dispatch(agent, intent, organ_msg, dict(ctx))
                 if card is None:
                     messages.append({
                         "role": "tool", "tool_call_id": call["id"],
-                        "content": f"No organ named '{name}' is loaded.",
+                        "content": f"No organ named '{intent}' is loaded.",
                     })
                     continue
                 if getattr(card, "card_type", None) == CardType.APPROVAL:
@@ -174,12 +203,13 @@ class ToolLoop:
                     "role": "tool", "tool_call_id": call["id"],
                     "content": result_text,
                 })
-                if name in UNTRUSTED_SOURCE_INTENTS and not tainted:
+                if self._is_untrusted_source(intent) and not tainted:
                     tainted = True
-                    belt = self._belt(tainted=True)
+                    belt, name_map = self._belt(tainted=True)
                     logger.info(
                         "[tool_loop] tainted by %s — belt reduced to "
-                        "%d low-risk tools, outbound denied", name, len(belt))
+                        "%d low-risk tools, outbound+MCP denied",
+                        intent, len(belt))
 
         # Hop cap reached — force a final answer, no more tools.
         messages.append({
