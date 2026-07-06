@@ -66,6 +66,10 @@ _FAKE_BODY = json.dumps({
 class TestStopwordsStripped:
     organ = _load("weather_check")
 
+    @staticmethod
+    def _load_ref():
+        return _load("weather_check")
+
     def _call(self, message: str, ctx: dict | None = None) -> tuple[str, dict]:
         # Capture every URL the organ probes during execute(). The wttr.in
         # request is the one we want to assert on, but other modules in
@@ -153,3 +157,48 @@ class TestStopwordsStripped:
     def test_will_it_snow_tonight_asks_for_city(self):
         url, _ = self._call("will it snow tonight")
         assert url == "", f"stopword query must not hit wttr.in: {url}"
+
+
+class TestCityPersistenceGuard:
+    """#28-110: 'is it good weather for a run right now?' looked up AND
+    persisted the city 'Good Run', silently clobbering the user's
+    remembered home city (observed live: Lagos → 'good run')."""
+
+    organ = TestStopwordsStripped._load_ref()
+
+    def _call(self, message: str):
+        captured: list[str] = []
+
+        def fake_urlopen(url, timeout=6):
+            captured.append(url)
+            return _urlopen(_FAKE_BODY)
+
+        with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            card = self.organ.execute("weather_check", message, {})
+        return next((u for u in captured if "wttr.in" in u), ""), card
+
+    def _saved(self) -> str:
+        section = prism_settings_store.get_settings_store().get_section("user") or {}
+        return str(section.get("home_location", ""))
+
+    def test_good_weather_for_a_run_never_invents_a_city(self):
+        url, _ = self._call("is it good weather for a run right now?")
+        assert "Good" not in url and "Run" not in url.replace("wttr.in", "")
+        assert self._saved() == ""
+
+    def test_conversational_residue_looks_up_but_never_persists(self):
+        url, _ = self._call("weather situation around brooklyn heights then dinner plans")
+        assert self._saved() == "", f"residue must not persist: {self._saved()!r}"
+
+    def test_saved_city_beats_sentence_residue(self):
+        self._call("weather in Lagos")
+        url, _ = self._call("would tonight be pleasant enough to eat outside?")
+        assert "Lagos" in url or "lagos" in url, url
+
+    def test_explicit_in_city_still_persists(self):
+        self._call("weather in Lagos")
+        assert self._saved().lower() == "lagos"
+
+    def test_short_bare_form_still_persists(self):
+        self._call("weather berlin")
+        assert self._saved().lower() == "berlin"

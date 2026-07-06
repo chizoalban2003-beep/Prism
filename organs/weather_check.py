@@ -52,6 +52,15 @@ def execute(intent: str, message: str, ctx: dict):
         "fog", "foggy", "hail", "hailing", "storm", "storming", "stormy",
         "humid", "freezing", "scorching", "wet", "dry", "it",
         "me", "my", "your", "our", "us", "please", "city",
+        # Quality + activity words — "is it good weather for a run" was
+        # looking up (and REMEMBERING) the city "Good Run".
+        "good", "bad", "nice", "great", "lovely", "terrible", "awful",
+        "decent", "okay", "fine", "perfect", "run", "running", "jog",
+        "jogging", "walk", "walking", "cycle", "cycling", "bike",
+        "biking", "ride", "riding", "hike", "hiking", "swim", "swimming",
+        "workout", "training", "picnic", "camping", "laundry",
+        "umbrella", "jacket", "coat", "wear", "bring", "need", "take",
+        "should",
     }
     def _saved_location() -> str:
         try:
@@ -77,11 +86,25 @@ def execute(intent: str, message: str, ctx: dict):
         city = str(ctx["location"]).strip()
     else:
         # Drop apostrophes so "what's" / "hows" collapse to "whats"/"hows".
+        import re as _re
         normalised = message.lower().replace("'", "").replace("\u2019", "")
         words = [w.strip(".,?!\"") for w in normalised.split()]
         candidates = [w for w in words if len(w) > 2 and w not in _STOP]
         city = " ".join(candidates)
-        if city:
+        # Only PERSIST a city the user explicitly named \u2014 "weather in
+        # <city>" or a short bare form ("weather berlin"). Residue from a
+        # conversational question is fine to look up once, but must never
+        # overwrite the remembered home city.
+        _m = _re.search(r"\bin\s+([a-z][\w\s.'-]{1,40})$", normalised.rstrip(".,?! "))
+        _explicit = ""
+        if _m:
+            _explicit = " ".join(
+                w for w in _m.group(1).split()
+                if len(w) > 2 and w not in _STOP)
+        explicitly_named = bool(_explicit) or (city and len(words) <= 3)
+        if _explicit:
+            city = _explicit
+        if city and explicitly_named:
             # Remember the last explicitly named city so a bare "weather?"
             # never falls back to a hardcoded default again.
             previous = _saved_location()
@@ -91,8 +114,15 @@ def execute(intent: str, message: str, ctx: dict):
                     "questions from now on \u2014 name any other city to switch.)"
                 )
         else:
-            city = _saved_location()
-            if not city:
+            # Not explicitly named: a conversational question is about
+            # the user's OWN location \u2014 prefer the remembered city over
+            # sentence residue ("would tonight be pleasant enough to eat
+            # outside?" was looking up the 'city' "Pleasant Enough Eat").
+            # Residue is only a last resort when nothing is remembered.
+            saved = _saved_location()
+            if saved:
+                city = saved
+            elif not city:
                 return text_card(
                     "Which city should I check? Ask e.g. \"weather in Berlin\" "
                     "\u2014 I'll remember it and answer plain \"weather?\" with "
