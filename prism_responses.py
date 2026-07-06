@@ -569,21 +569,3 @@ def task_list_card(tasks: list) -> PrismCard:
         f"{running} running · {len(tasks)} recent",
         {"tasks":items},
         actions=["Cancel running task"] if running else [])
-
-
-def task_progress_card(progress) -> PrismCard:
-    status = (progress.status if isinstance(progress.status,str)
-              else progress.status.value)
-    pct    = int(progress.progress * 100)
-    body   = (f"{progress.current_step}" if status == "running"
-              else "Completed" if status == "completed"
-              else f"Failed: {progress.error[:100]}" if status == "failed"
-              else status.title())
-    return PrismCard(CardType.TEXT,
-        f"{progress.title} — {pct}%", body,
-        {"task_id":progress.task_id,"status":status,
-         "progress":progress.progress,
-         "steps_done":progress.steps_done,
-         "steps_total":progress.steps_total,
-         "result":progress.result},
-        actions=["Cancel"] if status == "running" else [])

@@ -1,7 +1,10 @@
 """
-tests/test_theory_bench.py
+tests/test_chain_theory.py
 ==========================
-15+ tests covering prism_chain_theory.py and prism_chain_theory_bench.py.
+Tests for prism_chain_theory.py — SubChainLogic, SoftLogic,
+InterceptorPolicy, and their wiring into PrismChain.run(). (The
+experiment-runner half of this file died with
+prism_chain_theory_bench.py in #28-112.)
 """
 from __future__ import annotations
 
@@ -14,12 +17,6 @@ from prism_chain_theory import (
     PolicyIntercept,
     SoftLogic,
     SubChainLogic,
-)
-from prism_chain_theory_bench import (
-    ExperimentResult,
-    run_experiment_1_recursive,
-    run_experiment_2_vertical,
-    run_experiment_3_interceptor,
 )
 from prism_responses import text_card
 
@@ -322,69 +319,3 @@ def test_prismchain_no_interceptor_baseline():
     assert card is not None
     # No intercept should have fired — card body from final done answer
     assert "Normal answer" in card.body
-
-
-# ── Benchmark dataclass & experiment runners ──────────────────────────────────
-
-
-def test_experiment_result_dataclass_fields():
-    """ExperimentResult must have all expected fields."""
-    field_names = {f.name for f in fields(ExperimentResult)}
-    assert "name" in field_names
-    assert "llm_calls" in field_names
-    assert "eval_scores" in field_names
-    assert "intercepts_fired" in field_names
-    assert "steps" in field_names
-    assert "notes" in field_names
-
-
-def test_run_experiment_1_returns_experiment_result():
-    """run_experiment_1_recursive() must return an ExperimentResult."""
-    result = run_experiment_1_recursive()
-    assert isinstance(result, ExperimentResult)
-    assert result.name != ""
-    assert isinstance(result.llm_calls, int)
-    assert isinstance(result.eval_scores, list)
-
-
-def test_run_experiment_2_returns_experiment_result():
-    """run_experiment_2_vertical() must return an ExperimentResult."""
-    result = run_experiment_2_vertical()
-    assert isinstance(result, ExperimentResult)
-    assert result.name != ""
-    assert len(result.eval_scores) >= 2
-
-
-def test_run_experiment_3_returns_experiment_result():
-    """run_experiment_3_interceptor() must return an ExperimentResult."""
-    result = run_experiment_3_interceptor()
-    assert isinstance(result, ExperimentResult)
-    assert result.name != ""
-    assert result.intercepts_fired >= 1
-
-
-def test_experiment_1_score_improves_with_subchain():
-    """Sub-chain (score index 1) should beat flat (score index 0) in Exp 1."""
-    result = run_experiment_1_recursive()
-    assert len(result.eval_scores) == 2
-    assert result.eval_scores[1] > result.eval_scores[0]
-
-
-def test_experiment_2_score_improves_with_softlogic():
-    """SoftLogic-enriched score (index 1) should beat raw score (index 0) in Exp 2."""
-    result = run_experiment_2_vertical()
-    assert len(result.eval_scores) == 2
-    assert result.eval_scores[1] > result.eval_scores[0]
-
-
-def test_experiment_3_no_false_positive():
-    """Exp 3 should have 0 false positives (clean scenario passes through)."""
-    policy = InterceptorPolicy()
-    # Clean result — should NOT fire
-    intercept = policy.intercept(
-        "web_search",
-        "Python 3.14 is stable.",
-        "parse_result",
-        "goal",
-    )
-    assert intercept is None

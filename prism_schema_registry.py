@@ -416,15 +416,6 @@ def all_paths() -> list[str]:
     return [s.db_path for s in REGISTRY]
 
 
-def validate_present(prism_dir: Optional[Path] = None) -> dict[str, bool]:
-    """
-    Check which registered databases actually exist on disk.
-    Returns {db_path: exists} mapping.
-    """
-    base = (prism_dir or Path.home() / ".prism").expanduser()
-    return {s.db_path: (base / s.db_path).exists() for s in REGISTRY}
-
-
 # Convention: every owner module that needs schema migration should expose a
 # module-level function `migrate(prism_dir: Path) -> None` that creates tables
 # and applies ALTER TABLE upgrades idempotently.  Legacy modules without this

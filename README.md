@@ -1693,7 +1693,6 @@ PRISM/
 │   ├── prism_orchestrator.py   ChainOrchestrator — TaskGraph DAG, 5 profiles, cross-session pause
 │   ├── prism_chain.py          General alternating LLM→Logic+Policy→Evaluator chain
 │   ├── prism_chain_expert.py   Expert chain — Router/Evaluator/BranchJudge/Synthesiser
-│   ├── prism_chain_bench.py    Benchmark: general vs expert, mock + live modes
 │   └── prism_composer.py       Static DAG composer for multi-step requests
 │
 ├── Autonomous execution
