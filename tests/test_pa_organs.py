@@ -39,13 +39,25 @@ class TestEmailSend:
         e.send.return_value = send_ok
         return e
 
-    def test_not_configured(self):
-        card = self.organ.execute("email_send", "send email", {"email": self._email(configured=False)})
-        assert card.card_data.get("kind") == "setup_form" or "setup" in card.title.lower()
+    def test_not_configured_drafts(self):
+        # #28-121: unconfigured SMTP now composes a credential-free .eml draft
+        # (given a router to parse the request) instead of a setup wall.
+        ctx = {"email": self._email(configured=False), "router": _router()}
+        card = self.organ.execute("email_send", "send email to bob@x.com", ctx)
+        assert card.card_data.get("drafted") is True
+        assert "draft" in card.title.lower() or "draft" in card.body.lower()
 
-    def test_no_email_in_ctx(self):
-        card = self.organ.execute("email_send", "send email", {})
-        assert card.card_data.get("kind") == "setup_form" or "setup" in card.title.lower()
+    def test_no_email_in_ctx_drafts(self):
+        # no email client at all → still drafts (nothing to send through)
+        ctx = {"router": _router()}
+        card = self.organ.execute("email_send", "send email to bob@x.com", ctx)
+        assert card.card_data.get("drafted") is True
+
+    def test_unconfigured_without_router_is_honest(self):
+        # can't parse a freeform request into to/subject/body with no router
+        card = self.organ.execute(
+            "email_send", "send email", {"email": self._email(configured=False)})
+        assert "router" in card.body.lower()
 
     def test_no_router(self):
         card = self.organ.execute("email_send", "send email", {"email": self._email()})
@@ -161,9 +173,13 @@ class TestPhoneCall:
         "from_number": "+15005550006",
     }
 
-    def test_no_credentials(self):
+    def test_no_credentials_degrades_to_local_reminder(self):
+        # #28-122: no Twilio → degrade to a credential-free local reminder
+        # (still names twilio for how to enable real calls) rather than a wall.
         card = self.organ.execute("phone_call", "call +447700900000", {})
-        assert "twilio credentials" in card.body.lower()
+        body = card.body.lower()
+        assert "reminder" in body or "isn't configured" in body
+        assert "twilio" in body  # still tells the user how to enable real calls
 
     def test_twilio_not_installed(self):
         ctx = {"twilio_config": self._CFG}
