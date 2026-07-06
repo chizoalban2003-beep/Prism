@@ -30,40 +30,45 @@ def _resolve_contact_email(name_or_address: str, contacts) -> str:
     return name_or_address
 
 
+def _write_draft(to: str, subject: str, body: str) -> str:
+    """Write an RFC-822 .eml draft to ~/.prism/drafts/ and return the path.
+
+    Bundled organs may use Path.open/write_text; this keeps 'send an email'
+    working credential-free — the message is composed and saved for review /
+    later sending, rather than hitting a setup wall. Built manually (no
+    ``import email``) to avoid shadowing the ctx email client of the same name.
+    """
+    import datetime
+    import re
+    from pathlib import Path
+
+    drafts = Path("~/.prism/drafts").expanduser()
+    drafts.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.datetime.now()
+    slug = re.sub(r"[^a-z0-9]+", "-", (subject or "no-subject").lower()).strip("-")[:40]
+    path = drafts / f"{stamp.strftime('%Y%m%d_%H%M%S')}_{slug or 'draft'}.eml"
+    date_hdr = stamp.strftime("%a, %d %b %Y %H:%M:%S")
+    eml = (
+        f"To: {to}\n"
+        f"Subject: {subject}\n"
+        f"Date: {date_hdr}\n"
+        f"X-PRISM-Draft: unsent (SMTP not configured)\n"
+        f"MIME-Version: 1.0\n"
+        f"Content-Type: text/plain; charset=utf-8\n"
+        f"\n"
+        f"{body}\n"
+    )
+    path.write_text(eml, encoding="utf-8")
+    return str(path)
+
+
 def execute(intent: str, message: str, ctx: dict):
     import json as _j
 
-    from prism_responses import setup_required_card, text_card
+    from prism_responses import text_card
 
     email = ctx.get("email")
-    if email is None or not getattr(email, "configured", False):
-        return setup_required_card(
-            service        = "Email",
-            why            = (
-                "PRISM needs IMAP credentials to read and send mail on your behalf. "
-                "For Gmail you must use an App Password (NOT your normal password) — "
-                "2FA must already be on."
-            ),
-            config_section = "email",
-            snippet        = (
-                'provider  = "gmail"\n'
-                'address   = "you@gmail.com"\n'
-                'imap_host = "imap.gmail.com"\n'
-                'imap_port = 993\n'
-                'smtp_host = "smtp.gmail.com"\n'
-                'smtp_port = 587\n'
-                'password  = "xxxx xxxx xxxx xxxx"   # 16-char App Password\n'
-                'max_fetch = 20'
-            ),
-            steps = [
-                "Open https://myaccount.google.com/apppasswords (Google account, 2FA on)",
-                "Generate an App Password labeled 'PRISM' and copy the 16-char code",
-                "Paste it above as password (with or without spaces, both work)",
-                "Restart PRISM: pkill -f prism_daemon && python3 -m prism_daemon &",
-                "Ask 'check my emails' again",
-            ],
-            docs_url = "https://support.google.com/accounts/answer/185833",
-        )
+    configured = email is not None and getattr(email, "configured", False)
 
     router = ctx.get("router")
     if router is None:
@@ -109,7 +114,37 @@ def execute(intent: str, message: str, ctx: dict):
             "Email",
         )
 
+    # ── Credential-free draft when SMTP isn't configured ────────────────
+    # Rather than a hard setup wall, compose the message and save it as a
+    # reviewable .eml. The user gets a real artifact now and can configure
+    # SMTP later to send. (The L2 approval gate still fronts this organ, so a
+    # draft is only ever written after the user approves the action.)
+    if not configured:
+        try:
+            path = _write_draft(to, subject, body)
+        except Exception as exc:
+            return text_card(
+                f"Couldn't save the draft ({exc}). Configure SMTP in "
+                "prism_config.toml [email] to send directly.", "Email")
+        card = text_card(
+            f"Drafted to {to} — \"{subject}\"\n"
+            f"Saved: {path}\n\n"
+            "SMTP isn't configured, so this wasn't sent. Add an [email] "
+            "section (Gmail: an App Password) to send directly next time.",
+            "Email draft")
+        card.card_data.update({"drafted": True, "to": to,
+                               "subject": subject, "path": path})
+        return card
+
     ok = email.send(to, subject, body)
     if ok:
         return text_card(f"Sent to {to} — \"{subject}\"", "Email")
-    return text_card(f"Failed to send email to {to}. Check SMTP settings.", "Email")
+    # Sending failed at runtime — preserve the message as a draft, don't lose it.
+    try:
+        path = _write_draft(to, subject, body)
+        return text_card(
+            f"Failed to send to {to} (check SMTP settings) — saved a draft "
+            f"instead: {path}", "Email")
+    except Exception:
+        return text_card(
+            f"Failed to send email to {to}. Check SMTP settings.", "Email")
