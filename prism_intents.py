@@ -235,6 +235,19 @@ INTENTS: list[tuple[str, str]] = [
      r"help me (?:with|plan|reach|achieve|set|accomplish|hit|build|launch|"
      r"finish|complete|start|tackle|prepare)|"
      r"what(?:'s| is) the best way|i want to|i need to|my goal is", "universal_plan"),
+    # Organ packs: export/list the shareable capability bundles. This is the
+    # sanctioned safe-extension path (hash-verified, strict-AST-scanned on
+    # import) — exposed here so it's reachable from chat, not only the HTTP
+    # API. Import stays API/approval-gated (installing code) by design.
+    (r"\bexport\s+(?:my\s+)?(?:organs?|capabilit\w+|skills?)\b.*\bpack|"
+     r"\b(?:create|make|build|save)\s+(?:an?\s+)?(?:organ\s+)?pack\b|"
+     r"\bpackage\s+(?:up\s+)?my\s+(?:organs?|capabilit\w+|skills?)\b|"
+     r"\bexport\s+(?:an?\s+)?(?:organ\s+)?pack\b",
+     "organ_pack_export"),
+    (r"\blist\s+(?:my\s+)?(?:organ\s+)?packs?\b|"
+     r"\bwhat\s+(?:organ\s+)?packs?\b|\bshow\s+(?:my\s+)?packs?\b|"
+     r"\bshareable\s+(?:organs?|capabilit\w+|skills?)\b",
+     "organ_pack_list"),
     # Desktop-control reach: "what can you control on this machine". Distinct
     # from device_inventory (hardware/CLI tools) — this answers the GUI/
     # command-centre question honestly (windows, notifications, screenshots,

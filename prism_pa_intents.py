@@ -162,8 +162,76 @@ def _pipeline_store(agent: Any):
     return store
 
 
+def _packs_dir():
+    from pathlib import Path
+    d = Path("~/.prism/packs").expanduser()
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
 def handle_pa_intent(agent: Any, intent: str, message: str,
                      ctx: dict) -> Optional[PrismCard]:
+    if intent.startswith("organ_pack_"):
+        loader = getattr(agent, "_organ_loader", None)
+        if loader is None:
+            return text_card("Organ loader unavailable.", "Organ pack")
+
+        if intent == "organ_pack_list":
+            # shareable = user-synthesised organs; also list any saved packs
+            details = []
+            try:
+                details = loader.list_organ_details()
+            except Exception:
+                details = []
+            user_organs = [d for d in details
+                           if d.get("source") == "user"]
+            packs = sorted(_packs_dir().glob("*.json"))
+            lines = []
+            if user_organs:
+                lines.append(f"**Shareable organs ({len(user_organs)}):**")
+                lines += [f"  • {d['intent']} — {d.get('description', '')[:60]}"
+                          for d in user_organs]
+            else:
+                lines.append("No user-synthesised organs to share yet — the "
+                             "bundled organs ship with PRISM.")
+            if packs:
+                lines.append(f"\n**Saved packs ({len(packs)}):**")
+                lines += [f"  • {p.stem} ({p.stat().st_size} B)" for p in packs]
+            return text_card("\n".join(lines), "Organ packs")
+
+        if intent == "organ_pack_export":
+            import time
+
+            import prism_organ_pack as _pack
+            details = []
+            try:
+                details = loader.list_organ_details()
+            except Exception:
+                details = []
+            intents = [d["intent"] for d in details
+                       if d.get("source") == "user"]
+            if not intents:
+                return text_card(
+                    "There are no user-synthesised organs to export — packs "
+                    "bundle the capabilities *you* taught PRISM. Ask PRISM to "
+                    "do something it lacks a tool for and it will synthesise "
+                    "one, then export it here.", "Organ pack")
+            m = re.search(r"(?:pack|bundle)\s+(?:called\s+|named\s+)?"
+                          r"([\w-]{2,40})", message, re.IGNORECASE)
+            name = m.group(1) if m else f"my-organs-{int(time.time())}"
+            try:
+                pack = _pack.build_pack(loader, intents, name=name,
+                                        description="Exported from PRISM chat")
+                path = _pack.write_pack(pack, _packs_dir() / f"{name}.json")
+            except Exception as exc:
+                return text_card(f"Export failed: {exc}", "Organ pack")
+            return text_card(
+                f"Exported **{name}** — {len(intents)} organ(s):\n"
+                f"  {', '.join(intents)}\n\nSaved: {path}\n\n"
+                "Share this file; importing it re-runs the strict AST safety "
+                "scan on the other PRISM before anything touches disk.",
+                "Organ pack exported")
+
     if intent.startswith("pipeline_"):
         from prism_pipelines import human_schedule, parse_save
         store = _pipeline_store(agent)

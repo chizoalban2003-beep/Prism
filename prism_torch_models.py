@@ -24,9 +24,22 @@ TorchTrainer
 """
 from __future__ import annotations
 
-import torch
-import torch.nn as nn
-from torch.utils.data import DataLoader, TensorDataset
+# PyTorch is an optional heavy dependency. This module is imported lazily and
+# only from inside prism_ml_assembler's guarded try/except, which falls back to
+# sklearn / a mean-predictor when the import fails — so a torch-less box (this
+# one) degrades gracefully rather than crashing. We re-raise with a clear,
+# actionable message instead of a bare ModuleNotFoundError for anyone who
+# imports this directly.
+try:
+    import torch
+    import torch.nn as nn
+    from torch.utils.data import DataLoader, TensorDataset
+except ImportError as _exc:  # pragma: no cover - depends on host having torch
+    raise ImportError(
+        "prism_torch_models needs PyTorch — install with "
+        "`pip install \".[torch]\"`. Without it PRISM automatically falls "
+        "back to sklearn / a mean-predictor (see prism_ml_assembler)."
+    ) from _exc
 
 _ACTIVATIONS: dict[str, type[nn.Module]] = {
     "relu":  nn.ReLU,
