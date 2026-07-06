@@ -688,9 +688,15 @@ class PrismAgent:
 
             attach_persona(context, getattr(self, '_persona', None))
 
-            # 8. Pre-tier short-circuit + tiered routing
-            initial_card = setup_required_short_circuit(
-                message or "", self._calendar, self._email)
+            # 8. Pre-tier short-circuit + tiered routing.
+            # Skip the setup short-circuit for control-plane commands: in
+            # "save pipeline dawn: check my calendar" the calendar mention is
+            # the saved *instruction*, not a live request to read a calendar,
+            # so it must not raise a setup card before the command is stored.
+            initial_card = None
+            if not self._priority_route(message or ""):
+                initial_card = setup_required_short_circuit(
+                    message or "", self._calendar, self._email)
             card = self._tier_dispatcher().dispatch(
                 message or "", context, initial_card=initial_card)
 

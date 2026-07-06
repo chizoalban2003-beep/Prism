@@ -102,6 +102,32 @@ class TestRouting:
         assert _route("list my tasks") == "list_tasks"
 
 
+class TestChatGuards:
+    """chat()-level: a control-plane command must not be intercepted by
+    task-oriented pre-processing just because its saved instruction mentions
+    an unconfigured service (calendar/email) or reads as multi-step."""
+
+    def _agent(self):
+        from prism_agent import PrismAgent
+        return PrismAgent()
+
+    def test_calendar_mention_in_pipeline_does_not_raise_setup_card(
+            self, offline_llm):
+        agent = self._agent()
+        # calendar is unconfigured in the hermetic HOME; the mention here is
+        # part of the instruction, not a live request — must still save.
+        card = agent.chat(
+            "save pipeline dawn: check the weather and my calendar")
+        assert card.title == "Pipeline saved", card.title
+        assert agent._pipelines.get("dawn") is not None
+
+    def test_and_in_instruction_does_not_fold_into_the_loop(self, offline_llm):
+        agent = self._agent()
+        card = agent.chat(
+            "save pipeline umbrella: check the weather and tell me to pack")
+        assert card.title == "Pipeline saved", card.title
+
+
 class TestHandlerWiring:
     def _agent(self, tmp_path, monkeypatch):
         import types
