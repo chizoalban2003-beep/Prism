@@ -94,6 +94,23 @@ _TRIVIAL_CHAT_REPLIES: dict[str, str] = {
 }
 
 
+def _fact_to_second_person(text: str) -> str:
+    """Flip a stored fact from the user's first person to second person.
+
+    Facts are stored in the user's own words ("my favourite tea is
+    oolong"); echoed verbatim the recall card reads as PRISM talking
+    about itself ("My favourite tea is oolong").
+    """
+    subs = [
+        (r"\bmy\b", "your"), (r"\bMy\b", "Your"),
+        (r"\bI am\b", "you are"), (r"\bI'm\b", "you're"),
+        (r"\bI\b", "you"), (r"\bmine\b", "yours"), (r"\bme\b", "you"),
+    ]
+    for pat, rep in subs:
+        text = re.sub(pat, rep, text)
+    return text
+
+
 def _trivial_chat_reply(message: str) -> Optional[str]:
     """Return a fixed reply for trivial acks/greetings, else None."""
     stripped = (message or "").strip().lower().rstrip("!.?,")
@@ -735,7 +752,19 @@ class PrismAgent:
         return False
 
     def _route(self, message: str) -> str:
-        return route_intent(message, self.INTENTS, self._llm_classify)
+        # One-entry memo: chat() routes the same message twice per turn —
+        # once in the tier dispatcher, once to label the turn for the
+        # crystalliser. For any message the regexes don't match, each call
+        # was a full LLM classifier round-trip (~1.1k prompt tokens for a
+        # 24-token label), doubling per-message cost on paid providers.
+        # Memoising also keeps the two answers consistent when the
+        # classifier itself is nondeterministic.
+        memo = getattr(self, "_route_memo", None)
+        if memo is not None and memo[0] == message:
+            return memo[1]
+        intent = route_intent(message, self.INTENTS, self._llm_classify)
+        self._route_memo = (message, intent)
+        return intent
 
     def _should_suppress_logging(self, message: str) -> bool:
         """True when the message routes (by regex, no LLM call) to a
@@ -997,7 +1026,7 @@ class PrismAgent:
                     return False
                 relevant = [h for h in facts if _tag_matches(h)]
                 chosen = relevant[:3] if relevant else facts[:1]
-                lines = [h.entry.content for h in chosen]
+                lines = [_fact_to_second_person(h.entry.content) for h in chosen]
             else:
                 lines = [f"- {h.entry.content}" for h in user_hits[:3]]
             return text_card("\n".join(line for line in lines if line), "Recalled")

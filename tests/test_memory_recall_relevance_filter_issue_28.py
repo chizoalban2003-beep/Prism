@@ -105,3 +105,16 @@ class TestNoFactsStill404s:
     def test_empty_memory_returns_no_memory_card(self, agent):
         card = agent.chat("who is my partner")
         assert "stored" in (card.body or "").lower() or "memory" in (card.title or "").lower()
+
+
+class TestRecallSpeaksToTheUser:
+    def test_fact_echo_is_second_person(self, agent):
+        # Facts are stored in the user's words ("My favourite tea is…");
+        # the recall card used to echo that verbatim, reading as PRISM
+        # talking about itself: "My favourite tea is oolong."
+        _store_fact(agent, "favourite tea", "oolong")
+        card = agent.chat("what is my favourite tea")
+        body = card.body or ""
+        assert "oolong" in body
+        assert "Your favourite tea" in body, f"expected second person: {body!r}"
+        assert not body.startswith("My "), f"first-person echo: {body!r}"
