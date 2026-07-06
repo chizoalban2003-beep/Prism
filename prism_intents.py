@@ -272,6 +272,20 @@ INTENTS: list[tuple[str, str]] = [
      r"\bbring\s+(?:up\s+)?[\w .-]+?\s+(?:to\s+(?:the\s+)?front|up)\b|"
      r"\bwindow\s+(?:control|manager?|list)\b",
      "window_control"),
+    # Input control: synthesise keyboard/mouse input. Scoped to explicit
+    # actuation verbs so it doesn't steal "type of X" (noun) or notify/task
+    # phrasings. High-risk + approval-gated in the organ policy.
+    (r"^(?:please\s+)?type\b(?!\s+of\b)[:\s]+\S|"
+     r"\b(?:press|hit)\b\s+(?:the\s+)?"
+     r"(?:key\b|enter\b|return\b|escape\b|esc\b|tab\b|space\b|backspace\b|"
+     r"ctrl\b|alt\b|shift\b|\w+\+\w)|"
+     r"\b(?:left|right|middle|double)[- ]?click\b|"
+     r"\b(?:mouse|double)?[- ]?click\s+(?:at|on\s+\d)|"
+     r"\bmove\s+(?:the\s+)?(?:mouse|cursor)\b|"
+     r"\bscroll\s+(?:up|down)\b|"
+     r"\b(?:keyboard|mouse|cursor)\s+(?:input|control)\b|"
+     r"^click$",
+     "input_control"),
     # NOTE: notification phrasings ("notify me", "send me a notification",
     # "alert me") are owned by send_push, which now degrades credential-free
     # to a local popup/inbox via prism_local_notify when remote push isn't
