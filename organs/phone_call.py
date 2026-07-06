@@ -43,12 +43,31 @@ def execute(intent: str, message: str, ctx: dict):
     from_number = twilio_cfg.get("from_number", "").strip()
 
     if not (account_sid and auth_token and from_number):
-        return text_card(
-            "Phone calls require Twilio credentials.\n"
-            "Add [twilio] account_sid, auth_token, from_number to prism_config.toml\n"
-            "or set TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM env vars.",
-            "Phone",
-        )
+        # Degrade credential-free: rather than a hard wall, raise a local
+        # notification so "call me / text me a reminder to ..." still produces
+        # an alert on this machine. Honest that no real call/text was placed.
+        try:
+            from prism_local_notify import deliver
+            report = deliver("PRISM reminder", message.strip(),
+                             urgency="critical", source="phone_call")
+            where = (f"popup via {report['popup']}" if report["popup"]
+                     else "your PRISM inbox")
+            return text_card(
+                "Telephony isn't configured, so I couldn't place a real "
+                f"call/text — I raised a local reminder instead ({where}):\n"
+                f"  “{message.strip()}”\n\n"
+                "To send real calls/SMS, add [twilio] account_sid, auth_token, "
+                "from_number to prism_config.toml (or TWILIO_* env vars).",
+                "Phone")
+        except Exception:
+            return text_card(
+                "Phone calls require Twilio credentials.\n"
+                "Add [twilio] account_sid, auth_token, from_number to "
+                "prism_config.toml\n"
+                "or set TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM "
+                "env vars.",
+                "Phone",
+            )
 
     try:
         from twilio.rest import Client  # type: ignore[import]

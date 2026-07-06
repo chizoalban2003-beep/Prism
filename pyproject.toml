@@ -124,6 +124,7 @@ py-modules = [
     "prism_persona",
     "prism_pwa",
     "prism_pipelines",
+    "prism_local_notify",
     "prism_planner",
     "prism_policy",
     "prism_proactive",
