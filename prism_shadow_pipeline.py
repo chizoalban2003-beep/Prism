@@ -185,12 +185,24 @@ class PrismShadowPipeline:
                         reading_phase = reading.phase.value if "reading" in dir() else "STABLE"
                         budget = _sp.get_policy().current_budget(delta_b=delta_b, phase_name=reading_phase)
                         if budget.throttle_reason:
-                            _log.info(
-                                "[shadow] silicon budget active: %s (tokens≤%d cap≤%d)",
-                                budget.throttle_reason,
-                                budget.max_tokens,
-                                budget.capability_ceil,
-                            )
+                            # Log at INFO only when the throttle state
+                            # changes — this loop ticks every ~5s and a
+                            # steady throttle wrote the same line ~700x/h.
+                            state = (budget.throttle_reason,
+                                     budget.max_tokens,
+                                     budget.capability_ceil)
+                            if state != getattr(self, "_last_throttle_state", None):
+                                self._last_throttle_state = state
+                                _log.info(
+                                    "[shadow] silicon budget active: %s (tokens≤%d cap≤%d)",
+                                    budget.throttle_reason,
+                                    budget.max_tokens,
+                                    budget.capability_ceil,
+                                )
+                        else:
+                            if getattr(self, "_last_throttle_state", None) is not None:
+                                self._last_throttle_state = None
+                                _log.info("[shadow] silicon budget lifted")
                     except Exception:
                         pass
             except Exception as exc:
