@@ -267,16 +267,21 @@ class TestKineticEngineLinkConfidence:
 # ---------------------------------------------------------------------------
 
 class TestActionWindow:
-    def test_message_contains_lever_id(self):
+    def test_user_message_is_human_not_telemetry(self):
+        # #28-129: the user-facing message is plain language; the lever_id and
+        # Z/ΔA maths live in debug_line() for logs, not in the notification.
         sig = PersonalSignal("health", "hrv_drop", raw_value=80, mu=60, sigma=10)
         win = ActionWindow(
             window_id="abc123", lever_id="intervene_now", source_signal=sig,
             v_potential=0.8, v_current=0.0, c_friction=0.1, delta_a=0.7,
         )
         msg = win.to_proactive_message()
-        assert "intervene_now" in msg
+        assert "intervene_now" not in msg          # no jargon to the user
+        assert "Z=" not in msg and "ΔA" not in msg
+        assert len(msg) > 20                        # a real sentence
+        assert "intervene_now" in win.debug_line()  # id preserved for logs
 
-    def test_crisis_message_says_urgent(self):
+    def test_crisis_message_signals_urgency(self):
         sig = PersonalSignal("health", "hrv_drop", raw_value=90, mu=0, sigma=10)
         win = ActionWindow(
             window_id="abc", lever_id="intervene_now", source_signal=sig,
@@ -284,4 +289,4 @@ class TestActionWindow:
             is_crisis=True,
         )
         msg = win.to_proactive_message()
-        assert "crisis" in msg.lower() or "urgent" in msg.lower()
+        assert "time-sensitive" in msg.lower()

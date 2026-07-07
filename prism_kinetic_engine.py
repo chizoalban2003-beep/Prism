@@ -207,7 +207,9 @@ class ActionWindow:
         base = self._HUMAN.get(
             self.lever_id,
             "I noticed a shift in your patterns worth a quick check-in.")
-        return ("Heads up — " + base[0].lower() + base[1:]) if self.is_crisis else base
+        if self.is_crisis:
+            return "This one's time-sensitive — " + base[0].lower() + base[1:]
+        return base
 
     def debug_line(self) -> str:
         """Full telemetry for logs/diagnostics — not shown to the user."""
