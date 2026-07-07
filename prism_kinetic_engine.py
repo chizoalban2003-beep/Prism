@@ -191,13 +191,32 @@ class ActionWindow:
     is_crisis: bool = False  # True when Z ≥ 8 or velocity crisis bypassed dampers
     triggered_at: float = field(default_factory=time.time)
 
+    #: lever_id → plain-language suggestion. The Z-score/ΔA telemetry stays
+    #: internal (see debug_line) — users get a sentence, not the maths.
+    _HUMAN = {
+        "defer_decision":  "You seem low on energy right now — it may be a good "
+                           "time to put off big decisions until you've recharged.",
+        "intervene_now":   "A few things are stacking up at once — worth pausing "
+                           "to handle the most pressing one before it snowballs.",
+        "proactive_assist": "You've got some breathing room and a few pending "
+                            "tasks — a good moment to knock one out, if you like.",
+    }
+
     def to_proactive_message(self) -> str:
-        direction = "urgent — crisis bypass active" if self.is_crisis else "suggested"
+        """Plain-language suggestion for the user (no internal telemetry)."""
+        base = self._HUMAN.get(
+            self.lever_id,
+            "I noticed a shift in your patterns worth a quick check-in.")
+        return ("Heads up — " + base[0].lower() + base[1:]) if self.is_crisis else base
+
+    def debug_line(self) -> str:
+        """Full telemetry for logs/diagnostics — not shown to the user."""
+        direction = "crisis bypass active" if self.is_crisis else "suggested"
         return (
-            f"[Kinetic/{self.lever_id}] Compound signal threshold crossed "
-            f"({self.source_signal.domain}/{self.source_signal.signal_type} "
-            f"Z={self.source_signal.z_score:.1f}, ΔA={self.delta_a:.2f}) — {direction}"
-        )
+            f"[Kinetic/{self.lever_id}] Z="
+            f"{self.source_signal.z_score:.1f} ΔA={self.delta_a:.2f} "
+            f"({self.source_signal.domain}/{self.source_signal.signal_type}) — "
+            f"{direction}")
 
 
 class KineticEngine:

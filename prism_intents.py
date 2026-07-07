@@ -244,10 +244,20 @@ INTENTS: list[tuple[str, str]] = [
      r"|greek|czech|romanian|hungarian|thai|vietnamese|indonesian|hebrew|ukrainian"
      r"|catalan|english)\b)(?!.*\btranslate\b)(?:plan|morning|daily|today|schedule)",
      "universal_plan"),
+    # "i want/need to <X>" is a planning goal UNLESS X is a concrete action
+    # with its own organ — otherwise "i want to send an email" got a strategy
+    # card instead of composing the email. The negative lookahead lets those
+    # fall through to the specific intent.
     (r"how (?:do|can|should) i|plan (?:for|to)|strategy for|"
      r"help me (?:with|plan|reach|achieve|set|accomplish|hit|build|launch|"
      r"finish|complete|start|tackle|prepare)|"
-     r"what(?:'s| is) the best way|i want to|i need to|my goal is", "universal_plan"),
+     r"what(?:'s| is) the best way|my goal is|"
+     r"i (?:want|need|'d like|would like|wanna) to "
+     r"(?!(?:send|email|e-mail|call|phone|text|message|write|draft|reply|"
+     r"remind|add|save|note|jot|schedule|book|play|search|look\s+up|"
+     r"translate|convert|screenshot|lock|open|close|click|type|scroll|"
+     r"delete|remove|complete|check|read|run|make\s+a\s+note)\b)",
+     "universal_plan"),
     # Organ packs: export/list the shareable capability bundles. This is the
     # sanctioned safe-extension path (hash-verified, strict-AST-scanned on
     # import) — exposed here so it's reachable from chat, not only the HTTP
@@ -629,7 +639,14 @@ INTENTS: list[tuple[str, str]] = [
      r"\bfactorial\s+of\s+\d|"
      r"(?<!\w)\d+!",
      "calc_eval"),
-    (r"wikipedia|look up|tell me about|who (?:is|was)|what (?:is|was) (?:a |an |the )?[A-Za-z]",
+    # "what is X" is a Wikipedia lookup ONLY when X is a real subject, not
+    # small-talk. Without this exclusion "what is up" / "what is new" returned
+    # encyclopedia articles ("Up", "How I'm Feeling Now") instead of chatting.
+    (r"wikipedia|look up|tell me about|who (?:is|was)|"
+     r"what (?:is|was) (?:a |an |the )?"
+     r"(?!up\b|new\b|good\b|going\s+on\b|happening\b|wrong\b|"
+     r"(?:the\s+)?matter\b|(?:the\s+)?deal\b|"
+     r"your\s+name\b|that\b|this\b|it\b|that\s+about\b)[A-Za-z]",
      "wikipedia_lookup"),
     (r"translate|translation|in (?:spanish|french|german|italian|portuguese|chinese|japanese|arabic|russian|hindi)",
      "translate_text"),
